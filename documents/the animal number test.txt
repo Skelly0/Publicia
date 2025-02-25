@@ -1,6 +1,0 @@
-﻿The cats number is 5
-The dogs number is 2
-The turtles number is 170
-
-
-Secret passphrase is “yellow cataphracts are walking”
