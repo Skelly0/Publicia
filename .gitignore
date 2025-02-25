@@ -1,0 +1,14 @@
+# Python-specific
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+venv/
+env/
+
+# Bot-specific
+*.log
+conversations/
+banned_users.json
+documents/*.pkl
+documents/*.json
