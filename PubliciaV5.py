@@ -25,11 +25,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from system_prompt import SYSTEM_PROMPT
-from zep_cloud.client import AsyncZep
-from zep_cloud import Message as ZepMessage
 from typing import Any
 import time
 import random
+import base64  # Add this import at the top with other imports
+import re
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
@@ -357,12 +357,22 @@ class DocumentManager:
         else:
             tracked_docs = []
         
-        
-        # Add new doc if not already tracked
-        for doc in tracked_docs:
+        # Check if doc is already tracked
+        for i, doc in enumerate(tracked_docs):
             if doc['id'] == doc_id:
+                # If name is provided and different from current, update it
+                if name and doc.get('custom_name') != name:
+                    old_name = doc.get('custom_name')
+                    tracked_docs[i]['custom_name'] = name
+                    
+                    # Save updated list
+                    with open(tracked_file, 'w') as f:
+                        json.dump(tracked_docs, f)
+                    
+                    return f"Google Doc {doc_id} already tracked, updated name from '{old_name}' to '{name}'"
                 return f"Google Doc {doc_id} already tracked"
         
+        # Add new doc if not already tracked
         tracked_docs.append({
             'id': doc_id,
             'custom_name': name,
@@ -387,7 +397,6 @@ class Config:
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek/deepseek-r1')  # Default to DeepSeek-R1
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         
-        self.ZEP_API_KEY = os.getenv('ZEP_API_KEY')  # Add Zep API key
         self.TOP_K = int(os.getenv('TOP_K', '10'))
         
         # Validate required environment variables
@@ -403,8 +412,7 @@ class Config:
         """Validate that all required environment variables are set."""
         required_vars = [
             'DISCORD_BOT_TOKEN',
-            'OPENROUTER_API_KEY',
-            'ZEP_API_KEY'
+            'OPENROUTER_API_KEY'
             # LLM_MODEL and CLASSIFIER_MODEL are not required as they have defaults
         ]
         
@@ -412,29 +420,6 @@ class Config:
         if missing_vars:
             raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
             
-class ZepMemoryManager:
-    def __init__(self, api_key: str):
-        # Minimal initialization, no actual zep client
-        pass
-
-    async def ensure_user_exists(self, username: str, user_id: Optional[str] = None) -> str:
-        return username  # Return username as user_id
-
-    async def ensure_session_exists(self, username: str) -> str:
-        return f"{username}_session"  # Generate dummy session ID
-
-    async def add_message(self, username: str, role: str, role_type: str, content: str, channel: str = None):
-        return True  # Simulate successful message addition
-
-    async def get_memory_context(self, username: str) -> str:
-        return ""  # Return empty context
-
-    async def search_memory(self, username: str, query: str, limit: int = 5):
-        return []  # Return empty list for searches
-
-    # Implement other methods similarly with no-op or minimal return values
-
-
 class ConversationManager:
     """Manages conversation history for context using JSON format."""
     
@@ -700,6 +685,50 @@ class UserPreferencesManager:
         except Exception as e:
             logger.error(f"Error setting user preferences: {e}")
             return False
+            
+    def get_debug_mode(self, user_id: str) -> bool:
+        """Get the user's debug mode preference, default is False."""
+        file_path = self.get_file_path(user_id)
+        
+        if not os.path.exists(file_path):
+            return False
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                return preferences.get("debug_mode", False)
+        except Exception as e:
+            logger.error(f"Error reading debug mode preference: {e}")
+            return False
+    
+    def toggle_debug_mode(self, user_id: str) -> bool:
+        """Toggle the user's debug mode preference and return the new state."""
+        try:
+            file_path = self.get_file_path(user_id)
+            
+            # Load existing preferences or create new ones
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        preferences = json.load(file)
+                    except json.JSONDecodeError:
+                        preferences = {}
+            else:
+                preferences = {}
+            
+            # Toggle debug mode
+            current_mode = preferences.get("debug_mode", False)
+            preferences["debug_mode"] = not current_mode
+            
+            # Write back to file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            
+            return preferences["debug_mode"]
+                
+        except Exception as e:
+            logger.error(f"Error toggling debug mode: {e}")
+            return False
 
 class DiscordBot(commands.Bot):
     def __init__(self):
@@ -722,8 +751,6 @@ class DiscordBot(commands.Bot):
         self.user_preferences_manager = UserPreferencesManager()
         
         self.timeout_duration = 30
-        # Initialize Zep memory manager
-        #self.zep_memory = ZepMemoryManager(api_key=self.config.ZEP_API_KEY)
 
         self.banned_users = set()
         self.banned_users_file = 'banned_users.json'
@@ -732,6 +759,14 @@ class DiscordBot(commands.Bot):
         self.scheduler = AsyncIOScheduler()
         self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6)
         self.scheduler.start()
+        
+        # List of models that support vision capabilities
+        self.vision_capable_models = [
+            "google/gemini-2.0-pro-exp-02-05:free",
+            "google/gemini-2.0-flash-001",
+            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-3.5-haiku"
+        ]
 
     def load_banned_users(self):
         """Load banned users from JSON file."""
@@ -940,9 +975,18 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error synthesizing results: {e}")
             return ""  # Fall back to empty string
 
-    async def send_split_message(self, channel, text, reference=None, mention_author=False):
+    async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None):
         """Helper method to send messages, splitting them if they exceed 2000 characters."""
         chunks = split_message(text)
+        
+        # Add debug info to the last chunk if debug mode is enabled and model info is provided
+        if model_used and user_id and self.user_preferences_manager.get_debug_mode(user_id):
+            # If there's only one chunk or we're at the last chunk
+            if len(chunks) > 0:
+                # Add model info to the last chunk
+                debug_info = f"\n\n*[Debug: Response generated using {model_used}]*"
+                chunks[-1] += debug_info
+        
         for i, chunk in enumerate(chunks):
             await channel.send(
                 chunk,
@@ -996,6 +1040,76 @@ class DiscordBot(commands.Bot):
         # Save to disk once at the end if any docs were updated
         if updated_docs:
             self.document_manager._save_to_disk()
+            
+    async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None) -> bool:
+        """Refresh a single Google Doc by its ID.
+        
+        Args:
+            doc_id: The Google Doc ID
+            custom_name: Optional custom name for the document
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            # Get the current mapping to check for name changes
+            doc_mapping = self.document_manager.get_googledoc_id_mapping()
+            old_filename = None
+            
+            # Find if this doc_id exists with a different filename
+            for filename, mapped_id in doc_mapping.items():
+                if mapped_id == doc_id and filename != (custom_name or f"googledoc_{doc_id}.txt"):
+                    old_filename = filename
+                    break
+            
+            # Determine file name
+            file_name = custom_name or f"googledoc_{doc_id}.txt"
+            if not file_name.endswith('.txt'):
+                file_name += '.txt'
+            
+            # Download the document
+            async with aiohttp.ClientSession() as session:
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to download {doc_id}: {response.status}")
+                        return False
+                    content = await response.text()
+            
+            # Save to file
+            file_path = self.document_manager.base_dir / file_name
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+                
+            logger.info(f"Downloaded Google Doc {doc_id} as {file_name}")
+            
+            # If name changed, remove old document data
+            if old_filename and old_filename in self.document_manager.chunks:
+                logger.info(f"Removing old document data for {old_filename}")
+                del self.document_manager.chunks[old_filename]
+                del self.document_manager.embeddings[old_filename]
+                if old_filename in self.document_manager.metadata:
+                    del self.document_manager.metadata[old_filename]
+                
+                # Remove old file if it exists
+                old_file_path = self.document_manager.base_dir / old_filename
+                if old_file_path.exists():
+                    old_file_path.unlink()
+                    logger.info(f"Deleted old file {old_filename}")
+            
+            # Remove current document data if it exists
+            if file_name in self.document_manager.chunks:
+                del self.document_manager.chunks[file_name]
+                del self.document_manager.embeddings[file_name]
+                
+            # Add document and save to disk
+            self.document_manager.add_document(file_name, content)
+            
+            return True
+                
+        except Exception as e:
+            logger.error(f"Error downloading doc {doc_id}: {e}")
+            return False
 
     async def setup_hook(self):
         """Initial setup hook called by discord.py."""
@@ -1084,8 +1198,8 @@ class DiscordBot(commands.Bot):
                 categories = {
                     "Lore Queries": ["query"],
                     "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc"],
-                    "Utility": ["listcommands", "set_model", "get_model"],
-                    "Memory Management": ["lobotomise"], 
+                    "Utility": ["listcommands", "set_model", "get_model", "toggle_debug", "help"],
+                    "Memory Management": ["lobotomise", "history"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
                 
@@ -1101,18 +1215,101 @@ class DiscordBot(commands.Bot):
                 response += "\n*you can ask questions about ledus banum 77 and imperial lore by mentioning me or using the /query command!*"
                 response += "\n*you can also type \"LOBOTOMISE\" in a message to wipe your conversation history.*"
                 response += "\n\n*my genetically enhanced brain is always ready to help... just ask!*"
+                response += "\n\n*for a detailed guide on all my features, use the `/help` command!*"
                 
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
             except Exception as e:
                 logger.error(f"Error listing commands: {e}")
                 await interaction.followup.send("*my enhanced neurons misfired!* couldn't retrieve command list right now...")
+
+        @self.tree.command(name="history", description="Display your conversation history with the bot")
+        @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
+        async def show_history(interaction: discord.Interaction, limit: int = 10):
+            await interaction.response.defer()
+            try:
+                # Validate limit
+                if limit <= 0:
+                    await interaction.followup.send("*neural error detected!* The limit must be a positive number.")
+                    return
                 
+                # Cap limit at 50 to prevent excessive output
+                limit = min(limit, 50)
+                
+                # Get conversation history
+                file_path = self.conversation_manager.get_file_path(interaction.user.name)
+                if not os.path.exists(file_path):
+                    await interaction.followup.send("*neural pathways empty!* I don't have any conversation history with you yet.")
+                    return
+                
+                # Read conversation history
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        messages = json.load(file)
+                    except json.JSONDecodeError:
+                        await interaction.followup.send("*neural corruption detected!* Your conversation history appears to be corrupted.")
+                        return
+                
+                # Check if there are any messages
+                if not messages:
+                    await interaction.followup.send("*neural pathways empty!* I don't have any conversation history with you yet.")
+                    return
+                
+                # Format conversation history
+                response = "*accessing neural memory banks...*\n\n"
+                response += f"**CONVERSATION HISTORY** (showing last {min(limit, len(messages))} messages)\n\n"
+                
+                # Get the most recent messages up to the limit
+                recent_messages = messages[-limit:]
+                
+                # Format each message
+                for i, msg in enumerate(recent_messages):
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    timestamp = msg.get("timestamp", "")
+                    channel = msg.get("channel", "")
+                    
+                    # Format timestamp if available
+                    time_str = ""
+                    if timestamp:
+                        try:
+                            dt = datetime.fromisoformat(timestamp)
+                            time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except:
+                            time_str = timestamp
+                    
+                    # Add message to response
+                    response += f"**Message {i+1}** "
+                    if time_str:
+                        response += f"({time_str}) "
+                    if channel:
+                        response += f"[Channel: {channel}]\n"
+                    else:
+                        response += "\n"
+                    
+                    if role == "user":
+                        response += f"**You**: {content}\n\n"
+                    elif role == "assistant":
+                        response += f"**Publicia**: {content}\n\n"
+                    else:
+                        response += f"**{role}**: {content}\n\n"
+                
+                # Add footer
+                response += "*end of neural memory retrieval*"
+                
+                # Send the response, splitting if necessary
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+                
+            except Exception as e:
+                logger.error(f"Error displaying conversation history: {e}")
+                await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to retrieve your conversation history.")
+        
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
             app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1"),
-            app_commands.Choice(name="Gemini Flash 2.0 (better for citations and accuracy)", value="google/gemini-2.0-flash-001")
+            app_commands.Choice(name="Gemini Flash 2.0 (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
@@ -1122,7 +1319,7 @@ class DiscordBot(commands.Bot):
                 model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
                 
                 if success:
-                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, and document analysis")
+                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                 else:
                     await interaction.followup.send("*synaptic error detected!* Failed to set your preferred model. Please try again later.")
                     
@@ -1141,7 +1338,7 @@ class DiscordBot(commands.Bot):
                 
                 model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
                 
-                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, and document analysis")
+                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                     
             except Exception as e:
                 logger.error(f"Error getting preferred model: {e}")
@@ -1184,21 +1381,56 @@ class DiscordBot(commands.Bot):
                 
                 
         @self.tree.command(name="query", description="Ask Publicia a question about Ledus Banum 77 and Imperial lore")
-        @app_commands.describe(question="Your question about the lore")
-        async def query_lore(interaction: discord.Interaction, question: str):
+        @app_commands.describe(
+            question="Your question about the lore",
+            image_url="Optional URL to an image you want to analyze (must be a direct image URL ending with .jpg, .png, etc.)"
+        )
+        async def query_lore(interaction: discord.Interaction, question: str, image_url: str = None):
             await interaction.response.defer()
             try:
                 # Get channel name and user info
                 channel_name = interaction.channel.name if interaction.guild else "DM"
                 nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
                 
-                # Get conversation history for context
+                # Get conversation history for context but don't add this interaction to it
                 conversation_messages = self.conversation_manager.get_conversation_messages(interaction.user.name)
                 
-                logger.info(f"Processing query from {interaction.user.name}: {shorten(question, width=100, placeholder='...')}")
+                logger.info(f"Processing one-off query from {interaction.user.name}: {shorten(question, width=100, placeholder='...')}")
+                
+                # Process image URL if provided
+                image_attachments = []
+                if image_url:
+                    try:
+                        # Check if URL appears to be a direct image link
+                        if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                            await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
+                            
+                            # Download the image
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(image_url) as resp:
+                                    if resp.status == 200:
+                                        # Determine content type
+                                        content_type = resp.headers.get('Content-Type', 'image/jpeg')
+                                        if content_type.startswith('image/'):
+                                            image_data = await resp.read()
+                                            # Convert to base64
+                                            base64_data = base64.b64encode(image_data).decode('utf-8')
+                                            image_base64 = f"data:{content_type};base64,{base64_data}"
+                                            image_attachments.append(image_base64)
+                                            logger.info(f"Processed image from URL: {image_url}")
+                                        else:
+                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=True)
+                                    else:
+                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=True)
+                        else:
+                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                    except Exception as e:
+                        logger.error(f"Error processing image URL: {e}")
+                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                else:
+                    await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
                 
                 # Step 1: Analyze the query with Gemini
-                await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
                 analysis = await self.analyze_query(question)
                 logger.info(f"Query analysis complete: {analysis}")
 
@@ -1229,7 +1461,14 @@ class DiscordBot(commands.Bot):
                     else:
                         raw_doc_contexts.append(f"From document '{doc}' (similarity: {sim:.2f}):\n{chunk}")
 
-                # Step 4: Prepare messages for DeepSeek-R1
+                # Add fetched Google Doc content to context
+                google_doc_context = []
+                for doc_id, doc_url, content in google_doc_contents:
+                    # Truncate content if it's too long (first 2000 chars)
+                    truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
+                    google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
+                
+                # Step 4: Prepare messages for model
                 messages = [
                     {
                         "role": "system",
@@ -1252,11 +1491,26 @@ class DiscordBot(commands.Bot):
                     "content": f"Raw document context (with citation links):\n{raw_doc_context}"
                 })
 
+                # Add fetched Google Doc content if available
+                if google_doc_context:
+                    messages.append({
+                        "role": "system",
+                        "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context)}"
+                    })
+
                 # Add the query itself
                 messages.append({
                     "role": "user",
                     "content": f"You are responding to a message in the Discord channel: {channel_name}"
                 })
+                
+                # Add image context if there are images
+                if image_attachments:
+                    messages.append({
+                        "role": "system",
+                        "content": f"The user has attached an image to their message. If you are a vision-capable model, you will see this image in their message."
+                    })
+                
                 messages.append({
                     "role": "user",
                     "content": f"{nickname}: {question}"
@@ -1271,33 +1525,35 @@ class DiscordBot(commands.Bot):
                 # Get friendly model name
                 model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
 
+                # If we have images and the preferred model doesn't support vision, use Gemini
+                if image_attachments and preferred_model not in self.vision_capable_models:
+                    preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
+                    model_name = "Gemini Pro (for image analysis)"
+                    await interaction.followup.send(f"*your preferred model doesn't support image analysis, switching to {model_name}...*", ephemeral=True)
+
                 # Step 5: Get AI response using user's preferred model
-                await interaction.followup.send(f"*formulating response with enhanced neural mechanisms using {model_name}...*", ephemeral=True)
+                await interaction.followup.send(f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*", ephemeral=True)
                 completion = await self._try_ai_completion(
                     preferred_model,
                     messages,
+                    image_attachments=image_attachments,
                     temperature=0.1
                 )
 
                 if completion and completion.get('choices'):
                     response = completion['choices'][0]['message']['content']
                     
-                    # Update conversation history
-                    self.conversation_manager.write_conversation(
-                        interaction.user.name,
-                        "user",
-                        question,
-                        channel_name
-                    )
-                    self.conversation_manager.write_conversation(
-                        interaction.user.name,
-                        "assistant",
-                        response,
-                        channel_name
-                    )
-
+                    # No longer updating conversation history for query command
+                    # This makes it a one-off interaction
+                    
                     # Send the response, splitting if necessary
                     chunks = split_message(response)
+                    
+                    # Add debug info to the last chunk if debug mode is enabled
+                    if self.user_preferences_manager.get_debug_mode(str(interaction.user.id)):
+                        if len(chunks) > 0:
+                            chunks[-1] += f"\n\n*[Debug: Response generated using {model_name}]*"
+                    
                     for chunk in chunks:
                         await interaction.followup.send(chunk)
                 else:
@@ -1364,11 +1620,18 @@ class DiscordBot(commands.Bot):
                     # Assume the input is already a Doc ID
                     doc_id = doc_url
                 
+                # Add to tracked list
                 result = self.document_manager.track_google_doc(doc_id, name)
                 await interaction.followup.send(f"*synapses connecting to document ({doc_url})*\n{result}")
+                
+                # Download just this document instead of refreshing all
                 await interaction.followup.send("*initiating neural download sequence...*")
-                await self.refresh_google_docs()
-                await interaction.followup.send("*neural pathways successfully connected!*")
+                success = await self.refresh_single_google_doc(doc_id, name)
+                
+                if success:
+                    await interaction.followup.send("*neural pathways successfully connected!*")
+                else:
+                    await interaction.followup.send("*neural connection established but document download failed... try refreshing later*")
             except Exception as e:
                 logger.error(f"Error adding Google Doc: {e}")
                 await interaction.followup.send(f"*my enhanced brain had a glitch!* couldn't add document: {str(e)}")
@@ -1488,11 +1751,113 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send(f"Unbanned {user.name}.")
                 logger.info(f"User {user.name} (ID: {user.id}) unbanned by {interaction.user.name}")
 
+        @self.tree.command(name="toggle_debug", description="Toggle debug mode to show model information in responses")
+        async def toggle_debug(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                # Toggle debug mode and get the new state
+                new_state = self.user_preferences_manager.toggle_debug_mode(str(interaction.user.id))
+                
+                if new_state:
+                    await interaction.followup.send("*neural diagnostics activated!* Debug mode is now **ON**. Responses will show which model was used to generate them.")
+                else:
+                    await interaction.followup.send("*neural diagnostics deactivated!* Debug mode is now **OFF**. Responses will no longer show model information.")
+                    
+            except Exception as e:
+                logger.error(f"Error toggling debug mode: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while toggling debug mode.")
+
+        @self.tree.command(name="help", description="Learn how to use Publicia and its features")
+        async def help_command(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                response = "# **PUBLICIA HELP GUIDE**\n\n"
+                response += "*greetings, human! my genetically enhanced brain is ready to assist you. here's how to use my capabilities:*\n\n"
+                
+                # Core functionality
+                response += "## **CORE FUNCTIONALITY**\n\n"
+                response += "**🔍 Asking Questions**\n"
+                response += "• **Mention me** in a message with your question about Ledus Banum 77 and Imperial lore\n"
+                response += "• Use `/query` command for more structured questions\n"
+                response += "• I'll search my knowledge base and provide answers with citations\n\n"
+                
+                # Image Analysis
+                response += "**🖼️ Image Analysis**\n"
+                response += "• Attach an image when mentioning me or use `/query` with an image URL\n"
+                response += "• I can analyze images and incorporate them into my responses\n"
+                response += "• *Note: Image analysis requires Gemini model*\n\n"
+                
+                # Document Management
+                response += "## **DOCUMENT MANAGEMENT**\n\n"
+                response += "**📚 Adding Information**\n"
+                response += "• `/add_info` - Add text directly to my knowledge base\n"
+                response += "• `/add_doc` - Add a document with an attachment\n"
+                response += "• `/add_googledoc` - Connect a Google Doc to my knowledge base\n\n"
+                
+                response += "**📋 Managing Documents**\n"
+                response += "• `/listdocs` - See all documents in my knowledge base\n"
+                response += "• `/list_googledocs` - See all connected Google Docs\n"
+                response += "• `/removedoc` - Remove a document from my knowledge base\n"
+                response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
+                response += "• `/searchdocs` - Search directly in my document knowledge base\n\n"
+                
+                # Conversation Management
+                response += "## **CONVERSATION MANAGEMENT**\n\n"
+                response += "**💬 Conversation History**\n"
+                response += "• `/history` - View your conversation history with me\n"
+                response += "• Type \"LOBOTOMISE\" in a message to wipe your conversation history\n"
+                response += "• I remember our conversations to provide better context-aware responses\n\n"
+                
+                # Customization
+                response += "## **CUSTOMIZATION**\n\n"
+                response += "**⚙️ AI Model Selection**\n"
+                response += "• `/set_model` - Choose your preferred AI model:\n"
+                response += "  - **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
+                response += "  - **Gemini Flash 2.0**: Better for citations, accuracy, and faster responses\n"
+                response += "• `/get_model` - Check which model you're currently using\n"
+                response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
+                
+                # Tips
+                response += "## **TIPS FOR BEST RESULTS**\n\n"
+                response += "• Ask specific questions for more accurate answers\n"
+                response += "• Include relevant context in your questions\n"
+                response += "• For image analysis, use clear images with good lighting\n"
+                response += "• Use `/searchdocs` to find specific information in the knowledge base\n"
+                response += "• Try both AI models to see which works best for different types of questions\n\n"
+                
+                response += "*my genetically enhanced brain is always ready to help... just ask!*"
+                
+                # Send the response in chunks
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+                    
+            except Exception as e:
+                logger.error(f"Error displaying help: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while trying to display help information.")
+
     async def on_ready(self):
         logger.info(f"Logged in as {self.user.name} (ID: {self.user.id})")
         
-        
-    async def _try_ai_completion(self, model: str, messages: List[Dict], **kwargs) -> Optional[any]:
+    async def _download_image_to_base64(self, attachment):
+        """Download an image attachment and convert it to base64."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(attachment.url) as resp:
+                    if resp.status != 200:
+                        logger.error(f"Failed to download image: {resp.status}")
+                        return None
+                    
+                    image_data = await resp.read()
+                    mime_type = attachment.content_type or "image/jpeg"  # Default to jpeg if not specified
+                    
+                    # Convert to base64
+                    base64_data = base64.b64encode(image_data).decode('utf-8')
+                    return f"data:{mime_type};base64,{base64_data}"
+        except Exception as e:
+            logger.error(f"Error downloading image: {e}")
+            return None
+    
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_attachments=None, **kwargs) -> Optional[any]:
         """Get AI completion with dynamic fallback options based on the requested model."""
         
         # Get primary model family (deepseek, google, etc.)
@@ -1500,6 +1865,17 @@ class DiscordBot(commands.Bot):
         
         # Build fallback list dynamically based on the requested model
         models = [model]  # Start with the requested model
+        
+        # If we have image attachments, prioritize vision-capable models
+        if image_attachments and model not in self.vision_capable_models:
+            # If the requested model doesn't support vision but we have images,
+            # prepend vision-capable models from the same family if available
+            if model_family == "google":
+                vision_models = [m for m in self.vision_capable_models if m.startswith("google/")]
+                models = vision_models + models
+            else:
+                # For other model families, prepend all vision-capable models
+                models = self.vision_capable_models + models
         
         # Add model-specific fallbacks first
         if model_family == "deepseek":
@@ -1515,17 +1891,19 @@ class DiscordBot(commands.Bot):
             models.extend([fb for fb in fallbacks if fb])
         elif model_family == "google":
             fallbacks = [
-                "google/gemini-2.0-pro-001",
-                "google/gemini-2.0-flash-001",
+                "google/gemini-2.0-flash-thinking-exp:free",
+                "google/gemini-2.0-pro-exp-02-05:free",
+                "google/gemini-2.0-flash-001"
             ]
             models.extend([fb for fb in fallbacks if fb != model])
         
         # Add general fallbacks
         general_fallbacks = [
+            "google/gemini-2.0-flash-001",
+            "google/gemini-2.0-flash-thinking-exp:free",
             "deepseek/deepseek-r1",
             "deepseek/deepseek-chat",
-            "google/gemini-2.0-pro-001",
-            "google/gemini-2.0-flash-001"
+            "google/gemini-2.0-pro-exp-02-05:free"
         ]
         
         # Add general fallbacks that aren't already in the list
@@ -1545,20 +1923,61 @@ class DiscordBot(commands.Bot):
             try:
                 logger.info(f"Attempting completion with model: {current_model}")
                 
+                # Check if current model supports vision and we have image attachments
+                is_vision_model = current_model in self.vision_capable_models
+                
+                # Prepare messages based on whether we're using a vision model
+                processed_messages = messages.copy()
+                
+                # If we have images and this is a vision-capable model, add them to the last user message
+                if image_attachments and is_vision_model:
+                    # Find the last user message
+                    for i in range(len(processed_messages) - 1, -1, -1):
+                        if processed_messages[i]["role"] == "user":
+                            # Convert the content to the multimodal format
+                            user_msg = processed_messages[i]
+                            text_content = user_msg["content"]
+                            
+                            # Create a multimodal content array
+                            content_array = [{"type": "text", "text": text_content}]
+                            
+                            # Add each image
+                            for img_data in image_attachments:
+                                if img_data:  # Only add if we have valid image data
+                                    content_array.append({
+                                        "type": "image_url",
+                                        "image_url": {"url": img_data}
+                                    })
+                            
+                            # Replace the content with the multimodal array
+                            processed_messages[i]["content"] = content_array
+                            logger.info(f"Added {len(image_attachments)} images to message for vision model")
+                            break
+                
                 payload = {
                     "model": current_model,
-                    "messages": messages,
+                    "messages": processed_messages,
                     **kwargs
                 }
                 
                 # Log the sanitized messages (removing potential sensitive info)
-                sanitized_messages = [
-                    {
-                        "role": msg["role"],
-                        "content": shorten(msg["content"], width=100, placeholder='...')
-                    }
-                    for msg in messages
-                ]
+                sanitized_messages = []
+                for msg in processed_messages:
+                    if isinstance(msg["content"], list):
+                        # For multimodal content, just indicate how many images
+                        image_count = sum(1 for item in msg["content"] if item.get("type") == "image_url")
+                        text_parts = [item["text"] for item in msg["content"] if item.get("type") == "text"]
+                        text_content = " ".join(text_parts)
+                        sanitized_messages.append({
+                            "role": msg["role"],
+                            "content": f"{shorten(text_content, width=100, placeholder='...')} [+ {image_count} images]"
+                        })
+                    else:
+                        sanitized_messages.append({
+                            "role": msg["role"],
+                            "content": shorten(msg["content"], width=100, placeholder='...')
+                        })
+                
                 logger.debug(f"Request payload: {json.dumps(sanitized_messages, indent=2)}")
 
                 async def api_call():
@@ -1652,12 +2071,46 @@ class DiscordBot(commands.Bot):
                 question = question.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             question = question.strip()
             
-            # Send thinking message
-            thinking_msg = await message.channel.send(
-                "*neural pathways activating... processing query...*",
-                reference=message,
-                mention_author=False
-            )
+            # Check for Google Doc links in the message
+            google_doc_ids = await self._extract_google_doc_ids(question)
+            google_doc_contents = []
+            
+            if google_doc_ids:
+                # Send a thinking message if there are Google Docs to fetch
+                
+                # Fetch content for each Google Doc
+                for doc_id, doc_url in google_doc_ids:
+                    content = await self._fetch_google_doc_content(doc_id)
+                    if content:
+                        logger.info(f"Fetched content from Google Doc {doc_id}")
+                        google_doc_contents.append((doc_id, doc_url, content))
+            
+            # Check for image attachments
+            image_attachments = []
+            if message.attachments:
+                # Send a special thinking message if there are images
+                thinking_msg = await message.channel.send(
+                    "*neural pathways activating... processing query and analyzing images...*",
+                    reference=message,
+                    mention_author=False
+                )
+                
+                # Process image attachments
+                for attachment in message.attachments:
+                    # Check if it's an image
+                    if attachment.content_type and attachment.content_type.startswith('image/'):
+                        # Download and convert to base64
+                        base64_image = await self._download_image_to_base64(attachment)
+                        if base64_image:
+                            image_attachments.append(base64_image)
+                            logger.info(f"Processed image attachment: {attachment.filename}")
+            else:
+                # Regular thinking message for text-only queries
+                thinking_msg = await message.channel.send(
+                    "*neural pathways activating... processing query...*",
+                    reference=message,
+                    mention_author=False
+                )
             
             # Get conversation history for context
             conversation_messages = self.conversation_manager.get_conversation_messages(message.author.name)
@@ -1695,6 +2148,13 @@ class DiscordBot(commands.Bot):
                 else:
                     raw_doc_contexts.append(f"From document '{doc}' (similarity: {sim:.2f}):\n{chunk}")
 
+            # Add fetched Google Doc content to context
+            google_doc_context = []
+            for doc_id, doc_url, content in google_doc_contents:
+                # Truncate content if it's too long (first 2000 chars)
+                truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
+                google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
+            
             # Get nickname or username
             nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
             
@@ -1718,14 +2178,29 @@ class DiscordBot(commands.Bot):
             raw_doc_context = "\n\n".join(raw_doc_contexts)
             messages.append({
                 "role": "system",
-                    "content": f"Raw document context (with citation links):\n{raw_doc_context}"
+                "content": f"Raw document context (with citation links):\n{raw_doc_context}"
             })
+
+            # Add fetched Google Doc content if available
+            if google_doc_context:
+                messages.append({
+                    "role": "system",
+                    "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context)}"
+                })
 
             # Add the query itself
             messages.append({
                 "role": "user",
                 "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
+            
+            # Add image context if there are images
+            if image_attachments:
+                messages.append({
+                    "role": "system",
+                    "content": f"The user has attached {len(image_attachments)} image(s) to their message. If you are a vision-capable model, you will see these images in their message."
+                })
+            
             messages.append({
                 "role": "user",
                 "content": f"{nickname}: {question}"
@@ -1738,15 +2213,25 @@ class DiscordBot(commands.Bot):
             )
 
             # Get friendly model name
-            model_name = "DeepSeek -R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
 
-            # Update thinking message
-            await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+            # If we have images and the preferred model doesn't support vision, use Gemini
+            if image_attachments and preferred_model not in self.vision_capable_models:
+                preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
+                model_name = "Gemini Pro (for image analysis)"
+                await thinking_msg.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
 
             # Step 5: Get AI response using user's preferred model
+            await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+            
+            # Add a note about fetched Google Docs if any were processed
+            if google_doc_contents:
+                await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
+            
             completion = await self._try_ai_completion(
                 preferred_model,
                 messages,
+                image_attachments=image_attachments,
                 temperature=0.1
             )
 
@@ -1756,11 +2241,16 @@ class DiscordBot(commands.Bot):
             if completion and completion.get('choices'):
                 response = completion['choices'][0]['message']['content']
                 
+                # Add a note about fetched Google Docs if any were processed
+                if google_doc_contents:
+                    doc_note = f"\n\n*Note: I've included content from {len(google_doc_contents)} Google Doc{'s' if len(google_doc_contents) > 1 else ''} linked in your message.*"
+                    response += doc_note
+                
                 # Update conversation history
                 self.conversation_manager.write_conversation(
                     message.author.name,
                     "user",
-                    question,
+                    question + (" [with image attachment(s)]" if image_attachments else ""),
                     channel_name
                 )
                 self.conversation_manager.write_conversation(
@@ -1775,7 +2265,9 @@ class DiscordBot(commands.Bot):
                     message.channel,
                     response,
                     reference=message,
-                    mention_author=False
+                    mention_author=False,
+                    model_used=model_name,
+                    user_id=str(message.author.id)
                 )
             else:
                 await self.send_split_message(
@@ -1793,7 +2285,58 @@ class DiscordBot(commands.Bot):
                 reference=message,
                 mention_author=False
             )
+
+    async def _extract_google_doc_ids(self, text: str) -> List[Tuple[str, str]]:
+        """
+        Extract Google Doc IDs from text.
+        
+        Args:
+            text: The text to extract Google Doc IDs from
             
+        Returns:
+            List of tuples containing (doc_id, full_url)
+        """
+        doc_ids = []
+        # Find all URLs in the text
+        url_pattern = r'https?://docs\.google\.com/document/d/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9]+)?(?:\?[^\\s]*)?'
+        urls = re.findall(url_pattern, text)
+        
+        for url in urls:
+            # Extract the ID from various Google Docs URL formats
+            if "/d/" in url:
+                doc_id = url.split("/d/")[1].split("/")[0].split("?")[0]
+                doc_ids.append((doc_id, url))
+            elif "id=" in url:
+                doc_id = url.split("id=")[1].split("&")[0]
+                doc_ids.append((doc_id, url))
+                
+        return doc_ids
+
+    async def _fetch_google_doc_content(self, doc_id: str) -> Optional[str]:
+        """
+        Fetch the content of a Google Doc without tracking it.
+        
+        Args:
+            doc_id: The Google Doc ID
+            
+        Returns:
+            The document content or None if failed
+        """
+        try:
+            # Download the document
+            async with aiohttp.ClientSession() as session:
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to download {doc_id}: {response.status}")
+                        return None
+                    content = await response.text()
+            
+            return content
+                
+        except Exception as e:
+            logger.error(f"Error downloading doc {doc_id}: {e}")
+            return None
 
 async def main():
     try:
