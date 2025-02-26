@@ -384,6 +384,95 @@ class DocumentManager:
             json.dump(tracked_docs, f)
         
         return f"Added Google Doc {doc_id} to tracked list"
+    
+    def rename_document(self, old_name: str, new_name: str) -> str:
+        """Rename a document in the system (regular doc, Google Doc, or lorebook).
+        
+        Args:
+            old_name: Current name of the document
+            new_name: New name for the document
+            
+        Returns:
+            Status message indicating success or failure
+        """
+        # Check if it's a regular document
+        if old_name in self.metadata:
+            # Add .txt extension to new_name if it doesn't have it and old_name does
+            if old_name.endswith('.txt') and not new_name.endswith('.txt'):
+                new_name += '.txt'
+                
+            # Update the in-memory dictionaries
+            self.chunks[new_name] = self.chunks.pop(old_name)
+            self.embeddings[new_name] = self.embeddings.pop(old_name)
+            self.metadata[new_name] = self.metadata.pop(old_name)
+            
+            # Save the changes to disk
+            self._save_to_disk()
+            
+            # Check if there's a file on disk to rename
+            old_file_path = self.base_dir / old_name
+            if old_file_path.exists():
+                new_file_path = self.base_dir / new_name
+                old_file_path.rename(new_file_path)
+                
+            return f"Document renamed from '{old_name}' to '{new_name}'"
+            
+        # Check if it's a Google Doc
+        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+        if tracked_file.exists():
+            with open(tracked_file, 'r') as f:
+                tracked_docs = json.load(f)
+            
+            # Check if old_name is a Google Doc custom name or filename
+            for i, doc in enumerate(tracked_docs):
+                doc_id = doc['id']
+                custom_name = doc.get('custom_name')
+                filename = f"googledoc_{doc_id}.txt"
+                
+                if old_name == custom_name or old_name == filename:
+                    # Update the custom name
+                    tracked_docs[i]['custom_name'] = new_name
+                    
+                    # Save the updated list
+                    with open(tracked_file, 'w') as f:
+                        json.dump(tracked_docs, f)
+                    
+                    # If the document is also in the main storage, update it there
+                    old_filename = custom_name or filename
+                    if old_filename.endswith('.txt') and not new_name.endswith('.txt'):
+                        new_name += '.txt'
+                        
+                    # Update in-memory dictionaries if present
+                    if old_filename in self.metadata:
+                        self.chunks[new_name] = self.chunks.pop(old_filename)
+                        self.embeddings[new_name] = self.embeddings.pop(old_filename)
+                        self.metadata[new_name] = self.metadata.pop(old_filename)
+                        self._save_to_disk()
+                    
+                    # Rename the file on disk if it exists
+                    old_file_path = self.base_dir / old_filename
+                    if old_file_path.exists():
+                        new_file_path = self.base_dir / new_name
+                        old_file_path.rename(new_file_path)
+                    
+                    return f"Google Doc renamed from '{old_name}' to '{new_name}'"
+        
+        # Check if it's a lorebook
+        lorebooks_path = self.get_lorebooks_path()
+        old_file_path = lorebooks_path / old_name
+        if not old_file_path.exists() and not old_name.endswith('.txt'):
+            old_file_path = lorebooks_path / f"{old_name}.txt"
+            
+        if old_file_path.exists():
+            # Add .txt extension to new_name if it doesn't have it
+            if old_file_path.name.endswith('.txt') and not new_name.endswith('.txt'):
+                new_name += '.txt'
+                
+            new_file_path = lorebooks_path / new_name
+            old_file_path.rename(new_file_path)
+            return f"Lorebook renamed from '{old_name}' to '{new_name}'"
+        
+        return f"Document '{old_name}' not found in the system"
 
 class Config:
     """Configuration settings for the bot."""
@@ -1197,7 +1286,7 @@ class DiscordBot(commands.Bot):
                 
                 categories = {
                     "Lore Queries": ["query"],
-                    "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc"],
+                    "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
                     "Utility": ["listcommands", "set_model", "get_model", "toggle_debug", "help"],
                     "Memory Management": ["lobotomise", "history"], 
                     "Moderation": ["ban_user", "unban_user"]
@@ -1309,17 +1398,17 @@ class DiscordBot(commands.Bot):
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
             app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1"),
-            app_commands.Choice(name="Gemini Flash 2.0 (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
+            app_commands.Choice(name="Gemini 2.0 Flash (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
             try:
                 success = self.user_preferences_manager.set_preferred_model(str(interaction.user.id), model)
                 
-                model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
                 if success:
-                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
+                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                 else:
                     await interaction.followup.send("*synaptic error detected!* Failed to set your preferred model. Please try again later.")
                     
@@ -1336,9 +1425,9 @@ class DiscordBot(commands.Bot):
                     default_model=self.config.LLM_MODEL
                 )
                 
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
-                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
+                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                     
             except Exception as e:
                 logger.error(f"Error getting preferred model: {e}")
@@ -1399,11 +1488,13 @@ class DiscordBot(commands.Bot):
                 
                 # Process image URL if provided
                 image_attachments = []
+                status_message = None
+                
                 if image_url:
                     try:
                         # Check if URL appears to be a direct image link
                         if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                            await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
+                            status_message = await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
                             
                             # Download the image
                             async with aiohttp.ClientSession() as session:
@@ -1419,16 +1510,23 @@ class DiscordBot(commands.Bot):
                                             image_attachments.append(image_base64)
                                             logger.info(f"Processed image from URL: {image_url}")
                                         else:
-                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=True)
+                                            await status_message.edit(content="*neural error detected!* The URL does not point to a valid image.")
+                                            return
                                     else:
-                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=True)
+                                        await status_message.edit(content=f"*neural error detected!* Could not download image (status code: {resp.status}).")
+                                        return
                         else:
-                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            status_message = await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            return
                     except Exception as e:
                         logger.error(f"Error processing image URL: {e}")
-                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        if status_message:
+                            await status_message.edit(content="*neural error detected!* Failed to process the image URL.")
+                        else:
+                            status_message = await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        return
                 else:
-                    await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
+                    status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
                 
                 # Step 1: Analyze the query with Gemini
                 analysis = await self.analyze_query(question)
@@ -1439,12 +1537,24 @@ class DiscordBot(commands.Bot):
                 logger.info(f"Found {len(search_results)} relevant document sections")
 
                 # Step 3: Synthesize search results with Gemini
-                await interaction.followup.send("*searching imperial databases... synthesizing information...*", ephemeral=True)
+                await status_message.edit(content="*searching imperial databases... synthesizing information...*")
                 synthesis = await self.synthesize_results(question, search_results, analysis)
                 logger.info(f"Document synthesis complete")
                 
                 # Load Google Doc ID mapping for citation links
                 googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
+
+                # Initialize google_doc_contents
+                google_doc_contents = []
+                
+                # Check if the question contains any Google Doc links
+                doc_ids = await self._extract_google_doc_ids(question)
+                if doc_ids:
+                    await status_message.edit(content="*detected Google Doc links in your query... fetching content...*")
+                    for doc_id, doc_url in doc_ids:
+                        content = await self._fetch_google_doc_content(doc_id)
+                        if content:
+                            google_doc_contents.append((doc_id, doc_url, content))
 
                 # Format raw results with citation info
                 import urllib.parse
@@ -1523,16 +1633,16 @@ class DiscordBot(commands.Bot):
                 )
 
                 # Get friendly model name
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
                 # If we have images and the preferred model doesn't support vision, use Gemini
                 if image_attachments and preferred_model not in self.vision_capable_models:
                     preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
                     model_name = "Gemini Pro (for image analysis)"
-                    await interaction.followup.send(f"*your preferred model doesn't support image analysis, switching to {model_name}...*", ephemeral=True)
+                    await status_message.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
 
                 # Step 5: Get AI response using user's preferred model
-                await interaction.followup.send(f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*", ephemeral=True)
+                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
                 completion = await self._try_ai_completion(
                     preferred_model,
                     messages,
@@ -1546,7 +1656,7 @@ class DiscordBot(commands.Bot):
                     # No longer updating conversation history for query command
                     # This makes it a one-off interaction
                     
-                    # Send the response, splitting if necessary
+                    # Split the response if necessary
                     chunks = split_message(response)
                     
                     # Add debug info to the last chunk if debug mode is enabled
@@ -1554,14 +1664,21 @@ class DiscordBot(commands.Bot):
                         if len(chunks) > 0:
                             chunks[-1] += f"\n\n*[Debug: Response generated using {model_name}]*"
                     
-                    for chunk in chunks:
+                    # Replace the status message with the first chunk
+                    await status_message.edit(content=chunks[0])
+                    
+                    # Send any additional chunks as new messages
+                    for chunk in chunks[1:]:
                         await interaction.followup.send(chunk)
                 else:
-                    await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
+                    await status_message.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
             except Exception as e:
                 logger.error(f"Error processing query: {e}")
-                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+                if 'status_message' in locals() and status_message:
+                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
+                else:
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
 
         @self.tree.command(name="searchdocs", description="Search the document knowledge base")
         @app_commands.describe(query="What to search for")
@@ -1577,6 +1694,7 @@ class DiscordBot(commands.Bot):
                     response += f"\nFrom {doc_name} (similarity: {similarity:.2f}):\n"
                     response += f"{chunk[:200]}...\n"
                 response += "```"
+                
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
             except Exception as e:
@@ -1620,12 +1738,20 @@ class DiscordBot(commands.Bot):
                     # Assume the input is already a Doc ID
                     doc_id = doc_url
                 
+                # If no custom name provided, try to get the document title
+                if name is None:
+                    await interaction.followup.send("*scanning document metadata...*")
+                    doc_title = await self._fetch_google_doc_title(doc_id)
+                    if doc_title:
+                        name = doc_title
+                        await interaction.followup.send(f"*document identified as: '{doc_title}'*")
+                
                 # Add to tracked list
                 result = self.document_manager.track_google_doc(doc_id, name)
                 await interaction.followup.send(f"*synapses connecting to document ({doc_url})*\n{result}")
                 
                 # Download just this document instead of refreshing all
-                await interaction.followup.send("*initiating neural download sequence...*")
+                #await interaction.followup.send("*initiating neural download sequence...*")
                 success = await self.refresh_single_google_doc(doc_id, name)
                 
                 if success:
@@ -1661,7 +1787,21 @@ class DiscordBot(commands.Bot):
             
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
-                
+            
+        @self.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook")
+        @app_commands.describe(
+            current_name="Current name of the document to rename",
+            new_name="New name for the document"
+        )
+        async def rename_document(interaction: discord.Interaction, current_name: str, new_name: str):
+            await interaction.response.defer()
+            try:
+                result = self.document_manager.rename_document(current_name, new_name)
+                await interaction.followup.send(f"*synaptic pathways reconfiguring...*\n{result}")
+            except Exception as e:
+                logger.error(f"Error renaming document: {e}")
+                await interaction.followup.send(f"*neural pathway error!* couldn't rename document: {str(e)}")
+
         @self.tree.command(name="remove_googledoc", description="Remove a Google Doc from the tracked list")
         @app_commands.describe(
             identifier="Google Doc ID, URL, or custom name to remove"
@@ -1813,7 +1953,7 @@ class DiscordBot(commands.Bot):
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
                 response += "  - **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
-                response += "  - **Gemini Flash 2.0**: Better for citations, accuracy, and faster responses\n"
+                response += "  - **Gemini 2.0 Flash**: Better for citations, accuracy, and faster responses\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
@@ -2213,7 +2353,7 @@ class DiscordBot(commands.Bot):
             )
 
             # Get friendly model name
-            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
             # If we have images and the preferred model doesn't support vision, use Gemini
             if image_attachments and preferred_model not in self.vision_capable_models:
@@ -2336,6 +2476,43 @@ class DiscordBot(commands.Bot):
                 
         except Exception as e:
             logger.error(f"Error downloading doc {doc_id}: {e}")
+            return None
+
+    async def _fetch_google_doc_title(self, doc_id: str) -> Optional[str]:
+        """
+        Fetch the title of a Google Doc.
+        
+        Args:
+            doc_id: The Google Doc ID
+            
+        Returns:
+            The document title or None if failed
+        """
+        try:
+            # Use the Drive API endpoint to get document metadata
+            async with aiohttp.ClientSession() as session:
+                # This is a public metadata endpoint that works for publicly accessible documents
+                url = f"https://docs.google.com/document/d/{doc_id}/mobilebasic"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to get metadata for {doc_id}: {response.status}")
+                        return None
+                    
+                    html_content = await response.text()
+                    
+                    # Extract title from HTML content
+                    # The title is typically in the <title> tags
+                    match = re.search(r'<title>(.*?)</title>', html_content)
+                    if match:
+                        title = match.group(1)
+                        # Remove " - Google Docs" suffix if present
+                        title = re.sub(r'\s*-\s*Google\s+Docs$', '', title)
+                        return title
+            
+            return None
+                
+        except Exception as e:
+            logger.error(f"Error getting title for doc {doc_id}: {e}")
             return None
 
 async def main():
