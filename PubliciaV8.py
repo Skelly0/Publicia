@@ -1154,10 +1154,9 @@ class DiscordBot(commands.Bot):
                     1. Overall scene composition and setting
                     2. Characters or entities present
                     3. Any text or symbols visible
-                    4. Architectural elements or technology
-                    5. Atmosphere and mood
-                    6. Style and medium (painting, sketch, digital art, etc.)
-                    7. Potential connections to Ledus Banum 77 or Imperial lore
+                    4. Potential connections to Ledus Banum 77 or Imperial lore
+
+                    If an image contains words or labels, make sure to include ALL of them in the description.
                     
                     Be objective and detailed while making connections to the setting where appropriate.
                     """
@@ -1210,7 +1209,7 @@ class DiscordBot(commands.Bot):
                     "https://openrouter.ai/api/v1/chat/completions",
                     headers=headers,
                     json=payload,
-                    timeout=60
+                    timeout=120
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -1698,6 +1697,10 @@ class DiscordBot(commands.Bot):
                         if generate_description == "yes":
                             await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
                             description = await self._generate_image_description(image_data)
+                            if description == "Error generating description.":
+                                await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
+                                return
+                            description = name + ": " + description
                             
                             # Add to image manager
                             image_id = self.image_manager.add_image(name, image_data, description)
