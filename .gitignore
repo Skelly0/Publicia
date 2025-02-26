@@ -29,6 +29,7 @@ venv/
 ENV/
 .venv
 .python-version
+.history
 
 # Discord bot specific
 conversations/

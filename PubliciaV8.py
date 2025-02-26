@@ -30,6 +30,7 @@ import time
 import random
 import base64  # Add this import at the top with other imports
 import re
+import uuid
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
@@ -183,6 +184,196 @@ def display_startup_banner():
 # Configure logging
 logger = configure_logging()
 
+class ImageManager:
+    """Manages image storage, descriptions, and retrieval."""
+    
+    def __init__(self, base_dir: str = "images", document_manager = None):
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Reference to DocumentManager
+        self.document_manager = document_manager
+        
+        # Storage for image metadata
+        self.metadata = {}
+        
+        # Load existing images
+        self._load_images()
+    
+    def add_image(self, name: str, image_data: bytes, description: str = None):
+        """Add a new image to the system with optional description."""
+        try:
+            # Generate a unique ID for the image
+            image_id = str(uuid.uuid4())
+            
+            # Use .png for all images for simplicity
+            image_path = self.base_dir / f"{image_id}.png"
+            with open(image_path, 'wb') as f:
+                f.write(image_data)
+            
+            # Create metadata
+            self.metadata[image_id] = {
+                'name': name,
+                'added': datetime.now().isoformat(),
+                'description': description,
+                'path': str(image_path)
+            }
+            
+            # Save metadata
+            self._save_metadata()
+            
+            # Add description as a document for search if provided
+            if description and self.document_manager:
+                doc_name = f"image_{image_id}.txt"
+                self.document_manager.add_document(doc_name, description)
+                
+                # Add image reference to document metadata
+                if doc_name in self.document_manager.metadata:
+                    self.document_manager.metadata[doc_name]['image_id'] = image_id
+                    self.document_manager.metadata[doc_name]['image_name'] = name
+                    self.document_manager._save_to_disk()
+            
+            return image_id
+            
+        except Exception as e:
+            logger.error(f"Error adding image {name}: {e}")
+            raise
+    
+    def get_image(self, image_id: str) -> Tuple[bytes, str]:
+        """Get image data and description by ID."""
+        if image_id not in self.metadata:
+            raise ValueError(f"Image ID {image_id} not found")
+        
+        image_path = Path(self.metadata[image_id]['path'])
+        
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file {image_path} not found")
+        
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        description = self.metadata[image_id].get('description', '')
+        
+        return image_data, description
+    
+    def get_base64_image(self, image_id: str) -> str:
+        """Get base64-encoded image data by ID."""
+        if image_id not in self.metadata:
+            raise ValueError(f"Image ID {image_id} not found")
+            
+        image_path = Path(self.metadata[image_id]['path'])
+        
+        if not image_path.exists():
+            raise FileNotFoundError(f"Image file {image_path} not found")
+            
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        # Default to image/png for simplicity
+        base64_data = base64.b64encode(image_data).decode('utf-8')
+        return f"data:image/png;base64,{base64_data}"
+    
+    def _save_metadata(self):
+        """Save image metadata to disk."""
+        try:
+            with open(self.base_dir / 'metadata.json', 'w') as f:
+                json.dump(self.metadata, f)
+                
+        except Exception as e:
+            logger.error(f"Error saving image metadata: {e}")
+            raise
+    
+    def _load_images(self):
+        """Load image metadata from disk."""
+        try:
+            metadata_path = self.base_dir / 'metadata.json'
+            if metadata_path.exists():
+                with open(metadata_path, 'r') as f:
+                    self.metadata = json.load(f)
+                logger.info(f"Loaded metadata for {len(self.metadata)} images")
+            else:
+                self.metadata = {}
+                logger.info("No image metadata found, starting fresh")
+                
+        except Exception as e:
+            logger.error(f"Error loading image metadata: {e}")
+            self.metadata = {}
+    
+    def list_images(self) -> List[Dict]:
+        """List all images with their metadata."""
+        return [
+            {
+                'id': image_id,
+                'name': meta['name'],
+                'added': meta['added'],
+                'has_description': bool(meta.get('description'))
+            }
+            for image_id, meta in self.metadata.items()
+        ]
+    
+    def delete_image(self, image_id: str) -> bool:
+        """Delete an image and its associated description document."""
+        if image_id not in self.metadata:
+            return False
+        
+        try:
+            # Delete image file
+            image_path = Path(self.metadata[image_id]['path'])
+            if image_path.exists():
+                image_path.unlink()
+            
+            # Delete description document
+            doc_name = f"image_{image_id}.txt"
+            if self.document_manager and doc_name in self.document_manager.chunks:
+                del self.document_manager.chunks[doc_name]
+                del self.document_manager.embeddings[doc_name]
+                del self.document_manager.metadata[doc_name]
+                self.document_manager._save_to_disk()
+            
+            # Delete metadata
+            del self.metadata[image_id]
+            self._save_metadata()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error deleting image {image_id}: {e}")
+            return False
+            
+    def update_description(self, image_id: str, description: str) -> bool:
+        """Update the description for an image."""
+        if image_id not in self.metadata:
+            return False
+        
+        try:
+            # Update metadata
+            self.metadata[image_id]['description'] = description
+            self._save_metadata()
+            
+            # Update document
+            doc_name = f"image_{image_id}.txt"
+            if self.document_manager:
+                # Remove old document if it exists
+                if doc_name in self.document_manager.chunks:
+                    del self.document_manager.chunks[doc_name]
+                if doc_name in self.document_manager.embeddings:
+                    del self.document_manager.embeddings[doc_name]
+                
+                # Add new document
+                self.document_manager.add_document(doc_name, description)
+                
+                # Add image reference to document metadata
+                if doc_name in self.document_manager.metadata:
+                    self.document_manager.metadata[doc_name]['image_id'] = image_id
+                    self.document_manager.metadata[doc_name]['image_name'] = self.metadata[image_id]['name']
+                    self.document_manager._save_to_disk()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating image description {image_id}: {e}")
+            return False
+
 class DocumentManager:
     """Manages document storage, embeddings, and retrieval."""
     
@@ -262,8 +453,11 @@ class DocumentManager:
         
         return mapping
     
-    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float]]:
-        """Search for relevant document chunks."""
+    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str]]]:
+        """
+        Search for relevant document chunks.
+        Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable)
+        """
         try:
             # Use instance top_k if none provided
             if top_k is None:
@@ -286,18 +480,31 @@ class DocumentManager:
                 top_indices = np.argsort(similarities)[-top_k:]
                 
                 for idx in top_indices:
+                    # Check if this is an image description
+                    image_id = None
+                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                        # Extract image ID from document name
+                        image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
+                    
+                    # Check if metadata has image_id set explicitly
+                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                        image_id = self.metadata[doc_name]['image_id']
+                    
                     results.append((
                         doc_name,
                         self.chunks[doc_name][idx],
-                        float(similarities[idx])
+                        float(similarities[idx]),
+                        image_id
                     ))
             
             # Sort by similarity
             results.sort(key=lambda x: x[2], reverse=True)
             
             # Log search results
-            for doc_name, chunk, similarity in results[:top_k]:
+            for doc_name, chunk, similarity, image_id in results[:top_k]:
                 logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f})")
+                if image_id:
+                    logger.info(f"This is an image description for image ID: {image_id}")
                 logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
             
             return results[:top_k]
@@ -497,6 +704,30 @@ class DocumentManager:
             return f"Lorebook renamed from '{old_name}' to '{new_name}'"
         
         return f"Document '{old_name}' not found in the system"
+
+    def delete_document(self, name: str) -> bool:
+        """Delete a document from the system."""
+        try:
+            if name not in self.chunks:
+                return False
+                
+            # Remove from memory
+            del self.chunks[name]
+            del self.embeddings[name]
+            del self.metadata[name]
+            
+            # Save changes
+            self._save_to_disk()
+            
+            # Remove file if it exists
+            file_path = self.base_dir / name
+            if file_path.exists():
+                file_path.unlink()
+                
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting document {name}: {e}")
+            return False
 
 class Config:
     """Configuration settings for the bot."""
@@ -861,9 +1092,12 @@ class DiscordBot(commands.Bot):
         # Pass the TOP_K value to DocumentManager
         self.document_manager = DocumentManager(top_k=self.config.TOP_K)
         
+        # Initialize the ImageManager with a reference to the DocumentManager
+        self.image_manager = ImageManager(document_manager=self.document_manager)
+        
         self.user_preferences_manager = UserPreferencesManager()
         
-        self.timeout_duration = 30
+        self.timeout_duration = 150
 
         self.banned_users = set()
         self.banned_users_file = 'banned_users.json'
@@ -895,7 +1129,106 @@ class DiscordBot(commands.Bot):
         with open(self.banned_users_file, 'w') as f:
             json.dump({'banned_users': list(self.banned_users)}, f)
             
-    # Add these methods to the DiscordBot class
+    async def _generate_image_description(self, image_data: bytes) -> str:
+        """Generate a description for an image using a vision-capable model."""
+        try:
+            # Convert image to base64
+            base64_image = base64.b64encode(image_data).decode('utf-8')
+            
+            # Prepare API call
+            headers = {
+                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://discord.com",
+                "X-Title": "Publicia - Image Describer",
+                "Content-Type": "application/json"
+            }
+            
+            messages = [
+                {
+                    "role": "system",
+                    "content": """You are an image description generator for the Ledus Banum 77 lore repository. 
+                    
+                    Provide detailed, comprehensive descriptions of images that capture all visual elements, context, and potential connections to the lore.
+                    
+                    Focus on:
+                    1. Overall scene composition and setting
+                    2. Characters or entities present
+                    3. Any text or symbols visible
+                    4. Architectural elements or technology
+                    5. Atmosphere and mood
+                    6. Style and medium (painting, sketch, digital art, etc.)
+                    7. Potential connections to Ledus Banum 77 or Imperial lore
+                    
+                    Be objective and detailed while making connections to the setting where appropriate.
+                    """
+                },
+                {
+                    "role": "system",
+                    "content": """
+                    <universe_background>
+                    This universe (or rather multiverse) is largely similar to our own with some chief differences. First of all, it is a completely fictional one. Earth as we know does not exist, and the season itself largely operates around a single political entity - the Infinite Empire. The Empire is a multiversal entity, spanning multiple planes of existence, each different from each other in very small ways. Millions of worlds, trillions of individuals, thousands of years of history, hundreds of wars. It's not a centralized entity, as nothing of such a scale can be, but rather a confederation of noble houses, corporations, divergent churches, charterworlds, and freeplanes who pay service to the One Emperor back in Core.
+
+                    The universe itself is split along "planes", which could also be related as the multiverse being split into its own universes. In any case there are thousands of them, often visualized as layers of a cake stacked on top of each other, each only just slightly different than the one above or below, but very much different than its equivalent on a plane 200 layers away. Travel between planets and planes both is done by the same tool - Resonant Drilling. Some planets connect to their equivalents on different planes, and many connect to other planets on the same one. RD is a closely guarded enterprise, available only for the rich or imperial.
+
+                    The universe outside of the Empire is irrelevant, empty, cold. There are no aliens, the most you'll see are variants of humans that may prove useful to the empire, or animals and plants we would call alien and unusual but which are perfectly edible by the average person. Humanity existed on its own on many different of these planets, not just one Earth-equivalent. All that we know of have been conquered by the Empire and are now ruled over by it. There is no escape from the Empire. You do not know anything about space, such as stars.
+                    </universe_background>
+
+                    <ledus_banum_info>
+                    Ledus Banum 77, which is the planet that interests us, is located in the Frontier plane of Eberras, it being first considered full imperial territory only barely 500 years ago. It's a very new conquest and during the early days of the Empire it would warrant little attention. The difference now are plentiful amounts of the resource Ordinium on the planet (common across all Ledus Banums, refined into both fuel and material for RD instruments) the lack of new conquests coming to the Empire, as the last discovered world before LB-77 was itself conquered 115 years after the one before it. Growth of the Empire has stalled for some time now, but it is little to be worried about. The Empire has recently invaded Ledus Banum 77, around 4 years ago, and a group of institutions are now integrating the planet and it's populace into the Empire.
+                    </ledus_banum_info>
+
+                    <imperial_institutions>
+                    The Imperial Institutions which have arrived on Tundra are: House Alpeh, The Universal Temple of the Church of the Golden-Starred River, The Imperial Manezzo Corporation (IMC), The Grand Chamber of Technology (GCT), The Kindred of the Rhodium Throne, and House Chaurus.
+
+                    While we have presented the Empire as an almost monolithic entity to this point, a cohesive moving object of purpose and Imperial unity; beneath the gleam of Imperial sanction, obligations, and rituals lies the individual machinations, functions, and ambitions of the dozens upon thousands of institutions that in reality make up the Empire. Make no mistake — loyalty to the Imperial throne is an occasional obligation rather than a real ideal. One that belongs to, and is only truly believed by, dukes and scholars of the imperial core. Beyond the planar grasp of the court's grip, each institution, much like the needle on a compass, points away from the center towards a lodestone of their desire — be it a heterodox ideal, material wealth, or other forms of self-interest. Nevertheless it is these institutions that keep the wheel of the Eternal Empire turning in a competitive equilibrium, and if one spoke breaks the rest of the wheel goes with it.
+                    </imperial_institutions>
+                    """
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Please provide a detailed description of this image, focusing on all visual elements and potential connections to Ledus Banum 77 or Imperial lore."
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
+                        }
+                    ]
+                }
+            ]
+            
+            payload = {
+                "model": "google/gemini-2.0-flash-001",  # Use a vision-capable model
+                "messages": messages,
+                "temperature": 0.1
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=60
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"Image description API error: {error_text}")
+                        return "Failed to generate description."
+                        
+                    completion = await response.json()
+            
+            if not completion or not completion.get('choices'):
+                return "Failed to generate description."
+                
+            # Get the generated description
+            description = completion['choices'][0]['message']['content']
+            return description
+            
+        except Exception as e:
+            logger.error(f"Error generating image description: {e}")
+            return "Error generating description."
 
     async def analyze_query(self, query: str) -> Dict:
         """Use the configured classifier model to analyze the query and extract keywords/topics."""
@@ -979,7 +1312,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error analyzing query: {e}")
             return {"success": False}
 
-    async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float]]:
+    async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float, Optional[str]]]:
         """Perform an enhanced search based on query analysis."""
         try:
             # Check if analysis is a dictionary and has the success key
@@ -1004,20 +1337,30 @@ class DiscordBot(commands.Bot):
             # Perform search with enhanced query
             search_results = self.document_manager.search(enhanced_query)
             
-            return search_results
+            # Log found image results
+            image_count = sum(1 for _, _, _, img_id in search_results if img_id)
+            if image_count > 0:
+                logger.info(f"Search found {image_count} relevant image results")
             
+            return search_results
+                
         except Exception as e:
             logger.error(f"Error in enhanced search: {e}")
             return self.document_manager.search(query)  # Fall back to basic search
 
-    async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float]], analysis: Dict) -> str:
+    async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float, Optional[str]]], analysis: Dict) -> str:
         """Use the configured classifier model to synthesize search results into a coherent context."""
         try:
-            # Format search results into a string
-            result_text = "\n\n".join([
-                f"Document: {doc}\nContent: {chunk}\nRelevance: {score:.2f}"
-                for doc, chunk, score in search_results[:10]  # Limit to top 10 results
-            ])
+            # Format search results into a string, handling image descriptions
+            result_text = ""
+            for doc, chunk, score, image_id in search_results[:10]:  # Limit to top 10 results
+                if image_id:
+                    # This is an image description
+                    image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                    result_text += f"\nImage: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
+                else:
+                    # Regular document
+                    result_text += f"\nDocument: {doc}\nContent: {chunk}\nRelevance: {score:.2f}\n"
             
             # Include the analysis if available
             analysis_text = ""
@@ -1039,10 +1382,12 @@ class DiscordBot(commands.Bot):
                     3. Organize the information in a structured way
                     4. Highlight connections between different pieces of information
                     5. Note any contradictions or gaps in the information
+                    6. Identify any images that appear in the search results and incorporate them in your synthesis
                     
                     Synthesize this information into a coherent context that can be used to answer the query.
                     Focus on extracting and organizing the facts, not on answering the query directly.
                     Include any citation information found in the document sections.
+                    If there are relevant images, indicate where they should be referenced in responses.
                     """
                 },
                 {
@@ -1261,10 +1606,18 @@ class DiscordBot(commands.Bot):
         """Set up all slash and prefix commands."""
         
         # Add this as a traditional prefix command instead of slash command
-        @self.command(name="add_doc", brief="Add a new document to the knowledge base")
-        async def adddoc_prefix(ctx, name: str):
+        @self.command(name="add_doc", brief="Add a new document to the knowledge base. Usage: Publicia! add_doc \"Document Name\"")
+        async def adddoc_prefix(ctx, *, args):
             """Add a document via prefix command with optional file attachment."""
             try:
+                # Extract name from quotation marks
+                match = re.match(r'"([^"]+)"', args)
+                
+                if not match:
+                    await ctx.send('*neural error detected!* Please provide a name in quotes. Example: `Publicia! add_doc "Document Name"`')
+                    return
+                    
+                name = match.group(1)  # The text between quotes
                 lorebooks_path = self.document_manager.get_lorebooks_path()
 
                 if ctx.message.attachments:
@@ -1303,7 +1656,86 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error adding document: {e}")
                 await ctx.send(f"Error adding document: {str(e)}")
 
-        # Keep the slash command version but make it text-only
+        @self.command(name="add_image", brief="Add an image to the knowledge base. \nUsage: `Publicia! add_image \"Your Image Name\" [yes/no]` \n(yes/no controls whether to auto-generate a description, default is yes)")
+        async def addimage_prefix(ctx, *, args=""):
+            """Add an image via prefix command with file attachment.
+            
+            Usage:
+            - Publicia! add_image "Your Image Name" [yes/no]
+            (yes/no controls whether to auto-generate a description, default is yes)
+            """
+            try:
+                # Parse arguments to extract name and generate_description option
+                match = re.match(r'"([^"]+)"\s*(\w*)', args)
+                
+                if not match:
+                    await ctx.send('*neural error detected!* Please provide a name in quotes. Example: `Publicia! add_image "Image Name" yes`')
+                    return
+                    
+                name = match.group(1)  # The text between quotes
+                generate_description = match.group(2).lower() or "yes"  # The word after the quotes, default to "yes"
+                
+                # Check for attachments
+                if not ctx.message.attachments:
+                    await ctx.send("*neural error detected!* Please attach an image to your message.")
+                    return
+                    
+                # Process the first image attachment
+                for attachment in ctx.message.attachments:
+                    if attachment.content_type and attachment.content_type.startswith('image/'):
+                        # Download image
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(attachment.url) as resp:
+                                if resp.status != 200:
+                                    await ctx.send(f"*neural error detected!* Failed to download image (status: {resp.status})")
+                                    return
+                                image_data = await resp.read()
+                        
+                        # Status message
+                        status_msg = await ctx.send("*neural pathways activating... processing image...*")
+                        
+                        # Handle description based on user choice
+                        if generate_description == "yes":
+                            await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
+                            description = await self._generate_image_description(image_data)
+                            
+                            # Add to image manager
+                            image_id = self.image_manager.add_image(name, image_data, description)
+                            
+                            # Success message with preview of auto-generated description
+                            description_preview = description[:1000] + "..." if len(description) > 1000 else description
+                            success_message = f"*neural analysis complete!* Added image '{name}' to my knowledge base with ID: {image_id}\n\nGenerated description: {description_preview}"
+                            await status_msg.edit(content=success_message)
+                        else:
+                            # Ask user to provide a description
+                            await status_msg.edit(content="Please provide a description for the image (type it and send within 60 seconds):")
+                            
+                            try:
+                                # Wait for user to type description
+                                description_msg = await self.wait_for(
+                                    'message',
+                                    timeout=60.0,
+                                    check=lambda m: m.author == ctx.author and m.channel == ctx.channel
+                                )
+                                description = description_msg.content
+                                
+                                # Add to image manager
+                                image_id = self.image_manager.add_image(name, image_data, description)
+                                
+                                await ctx.send(f"*neural pathways reconfigured!* Added image '{name}' with your custom description to my knowledge base with ID: {image_id}")
+                            except asyncio.TimeoutError:
+                                await status_msg.edit(content="*neural pathway timeout!* You didn't provide a description within the time limit.")
+                                return
+                        
+                        return
+                        
+                # If we got here, no valid image was found
+                await ctx.send("*neural error detected!* No valid image attachment found. Please make sure you're attaching an image file.")
+                    
+            except Exception as e:
+                logger.error(f"Error processing image: {e}")
+                await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
+
         @self.tree.command(name="add_info", description="Add new text to Publicia's mind for retrieval")
         @app_commands.describe(
             name="Name of the document",
@@ -1324,17 +1756,21 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send(f"Error adding document: {str(e)}")
         
 
-        @self.tree.command(name="listcommands", description="List all available commands")
+        @self.tree.command(name="list_commands", description="List all available commands")
         async def list_commands(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
                 response = "*accessing command database through enhanced synapses...*\n\n"
                 response += "**AVAILABLE COMMANDS**\n\n"
                 
+                # SLASH COMMANDS SECTION
+                response += "**Slash Commands** (`/command`)\n\n"
+                
                 categories = {
                     "Lore Queries": ["query"],
-                    "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
-                    "Utility": ["listcommands", "set_model", "get_model", "toggle_debug", "help"],
+                    "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
+                    "Image Management": ["list_images", "view_image", "remove_image", "update_image_description"],
+                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help"],
                     "Memory Management": ["lobotomise", "history"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
@@ -1347,6 +1783,37 @@ class DiscordBot(commands.Bot):
                             desc = cmd.description or "No description available"
                             response += f"`/{cmd_name}`: {desc}\n"
                     response += "\n"
+                
+                # PREFIX COMMANDS SECTION
+                response += "**Prefix Commands** (`Publicia! command`)\n\n"
+                
+                # Get prefix commands from the bot
+                prefix_commands = sorted(self.commands, key=lambda x: x.name)
+                
+                # Group prefix commands by category (estimate categories based on names)
+                prefix_categories = {
+                    "Document Management": [],
+                    "Image Management": [],
+                    "Utility": []
+                }
+                
+                # Sort commands into categories
+                for cmd in prefix_commands:
+                    if "doc" in cmd.name.lower():
+                        prefix_categories["Document Management"].append(cmd)
+                    elif "image" in cmd.name.lower():
+                        prefix_categories["Image Management"].append(cmd)
+                    else:
+                        prefix_categories["Utility"].append(cmd)
+                
+                # Format and add each category of prefix commands
+                for category, cmds in prefix_categories.items():
+                    if cmds:  # Only show categories that have commands
+                        response += f"__*{category}*__\n"
+                        for cmd in cmds:
+                            brief = cmd.brief or "No description available"
+                            response += f"`Publicia! {cmd.name}`: {brief}\n"
+                        response += "\n"
                 
                 response += "\n*you can ask questions about ledus banum 77 and imperial lore by mentioning me or using the /query command!*"
                 response += "\n*you can also type \"LOBOTOMISE\" in a message to wipe your conversation history.*"
@@ -1500,7 +1967,7 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send("oops, something went wrong while trying to clear my memory!")
                 
 
-        @self.tree.command(name="listdocs", description="List all available documents")
+        @self.tree.command(name="list_docs", description="List all available documents")
         async def list_documents(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
@@ -1519,7 +1986,186 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send(chunk)
             except Exception as e:
                 await interaction.followup.send(f"Error listing documents: {str(e)}")
+
+        """        
+        @self.tree.command(name="add_image", description="Add an image to Publicia's knowledge base from a URL")
+        @app_commands.describe(
+            name="Name or title for the image",
+            image_url="Direct URL to the image (must end with .jpg, .png, etc.)",
+            description="Optional custom description (if not provided, one will be generated)"
+        )
+        async def add_image(interaction: discord.Interaction, name: str, image_url: str, description: str = None):
+            # Always defer FIRST thing to prevent interaction timeouts
+            try:
+                await interaction.response.defer(ephemeral=False)
+            except discord.errors.NotFound:
+                # If the interaction is already expired/unknown, we can't do anything with it
+                logger.error("Interaction expired before deferring")
+                return
+            except Exception as e:
+                logger.error(f"Error deferring interaction: {e}")
+                return
+            
+            try:
+                # Validate URL format
+                if not any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                    await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.")
+                    return
                 
+                # Status message
+                status_msg = await interaction.followup.send("*neural pathways activating... downloading image...*")
+                
+                # Try to handle both discord CDN URL formats
+                if "media.discordapp.net" in image_url:
+                    # Try to convert media.discordapp.net URLs to cdn.discordapp.com
+                    image_url = image_url.replace("media.discordapp.net", "cdn.discordapp.com")
+                    logger.info(f"Converting Discord CDN URL to: {image_url}")
+                
+                # Download image from URL with extended timeout
+                async with aiohttp.ClientSession() as session:
+                    try:
+                        # Use a longer timeout for image downloads (30 seconds)
+                        async with session.get(image_url, timeout=90) as resp:
+                            if resp.status != 200:
+                                await status_msg.edit(content=f"*neural error detected!* Failed to download image (status code: {resp.status}).\nURL: {image_url}")
+                                return
+                            
+                            # Check content type
+                            content_type = resp.headers.get('Content-Type', '')
+                            if not content_type.startswith('image/'):
+                                # If content-type header isn't reliable, try to proceed anyway if URL ends with image extension
+                                if not any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                                    await status_msg.edit(content=f"*neural error detected!* The URL does not appear to point to a valid image (content-type: {content_type}).")
+                                    return
+                            
+                            # Read image data
+                            image_data = await resp.read()
+                    except aiohttp.ClientError as e:
+                        await status_msg.edit(content=f"*neural error detected!* Failed to download image: {str(e)}\nURL: {image_url}")
+                        return
+                    except asyncio.TimeoutError:
+                        await status_msg.edit(content=f"*neural error detected!* Download timed out. The server may be slow or unreachable.\nURL: {image_url}")
+                        return
+                
+                # Generate description if not provided
+                if not description:
+                    await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
+                    description = await self._generate_image_description(image_data)
+                
+                # Add to image manager
+                image_id = self.image_manager.add_image(name, image_data, description)
+                
+                # Success message
+                success_message = f"*neural analysis complete!* Added image '{name}' to my knowledge base with ID: {image_id}"
+                if description:
+                    description_preview = description[:100] + "..." if len(description) > 100 else description
+                    success_message += f"\n\nDescription: {description_preview}"
+                
+                await status_msg.edit(content=success_message)
+            
+                
+            except Exception as e:
+                logger.error(f"Error processing image URL: {e}")
+                try:
+                    await interaction.followup.send(f"*neural circuit overload!* An error occurred while processing the image: {str(e)}")
+                except:
+                    # If interaction followup fails, we've lost connection to the interaction
+                    pass
+        """
+
+        @self.tree.command(name="list_images", description="List all images in Publicia's knowledge base")
+        async def list_images(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                images = self.image_manager.list_images()
+                
+                if not images:
+                    await interaction.followup.send("*neural pathways empty!* No images found in my knowledge base.")
+                    return
+                
+                response = "*accessing visual memory banks...*\n\n**STORED IMAGES**\n"
+                for img in images:
+                    added_date = datetime.fromisoformat(img['added']).strftime("%Y-%m-%d %H:%M:%S")
+                    response += f"\n**ID**: {img['id']}\n**Name**: {img['name']}\n**Added**: {added_date}\n**Has Description**: {'Yes' if img['has_description'] else 'No'}\n"
+                
+                # Split the message if necessary
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+                    
+            except Exception as e:
+                logger.error(f"Error listing images: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving the image list.")
+
+        @self.tree.command(name="view_image", description="View an image from Publicia's knowledge base")
+        @app_commands.describe(image_id="ID of the image to view")
+        async def view_image(interaction: discord.Interaction, image_id: str):
+            await interaction.response.defer()
+            try:
+                # Check if image exists
+                if image_id not in self.image_manager.metadata:
+                    await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    return
+                
+                # Get image metadata
+                image_meta = self.image_manager.metadata[image_id]
+                image_name = image_meta['name']
+                image_desc = image_meta.get('description', 'No description available')
+                image_path = Path(image_meta['path'])
+                
+                if not image_path.exists():
+                    await interaction.followup.send(f"*neural error detected!* Image file not found for ID: {image_id}")
+                    return
+                
+                # Send description
+                description = f"**Image**: {image_name} (ID: {image_id})\n\n**Description**:\n{image_desc}"
+                
+                # Split if needed
+                for chunk in split_message(description):
+                    await interaction.followup.send(chunk)
+                
+                # Send image file
+                with open(image_path, 'rb') as f:
+                    file = discord.File(f, filename=f"{image_name}.png")
+                    await interaction.followup.send(file=file)
+                
+            except Exception as e:
+                logger.error(f"Error viewing image: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving the image.")
+
+        @self.tree.command(name="remove_image", description="Remove an image from Publicia's knowledge base")
+        @app_commands.describe(image_id="ID of the image to remove")
+        async def remove_image(interaction: discord.Interaction, image_id: str):
+            await interaction.response.defer()
+            try:
+                success = self.image_manager.delete_image(image_id)
+                
+                if success:
+                    await interaction.followup.send(f"*neural pathways reconfigured!* Removed image with ID: {image_id}")
+                else:
+                    await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error removing image: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while removing the image.")
+
+        @self.tree.command(name="update_image_description", description="Update the description for an image")
+        @app_commands.describe(
+            image_id="ID of the image to update",
+            description="New description for the image"
+        )
+        async def update_image_description(interaction: discord.Interaction, image_id: str, description: str):
+            await interaction.response.defer()
+            try:
+                success = self.image_manager.update_description(image_id, description)
+                
+                if success:
+                    await interaction.followup.send(f"*neural pathways reconfigured!* Updated description for image with ID: {image_id}")
+                else:
+                    await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    
+            except Exception as e:
+                logger.error(f"Error updating image description: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while updating the image description.")
                 
         @self.tree.command(name="query", description="Ask Publicia a question about Ledus Banum 77 and Imperial lore")
         @app_commands.describe(
@@ -1599,6 +2245,13 @@ class DiscordBot(commands.Bot):
                 # Initialize google_doc_contents
                 google_doc_contents = []
                 
+                # Extract image IDs from search results
+                image_ids = []
+                for doc, chunk, score, image_id in search_results:
+                    if image_id and image_id not in image_ids:
+                        image_ids.append(image_id)
+                        logger.info(f"Found relevant image: {image_id}")
+                
                 # Check if the question contains any Google Doc links
                 doc_ids = await self._extract_google_doc_ids(question)
                 if doc_ids:
@@ -1611,17 +2264,21 @@ class DiscordBot(commands.Bot):
                 # Format raw results with citation info
                 import urllib.parse
                 raw_doc_contexts = []
-                for doc, chunk, sim in search_results:
-                    if doc in googledoc_mapping:
+                for doc, chunk, score, image_id in search_results:
+                    if image_id:
+                        # This is an image description
+                        image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                        raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
+                    elif doc in googledoc_mapping:
                         # Create citation link for Google Doc
                         doc_id = googledoc_mapping[doc]
                         words = chunk.split()
                         search_text = ' '.join(words[:min(10, len(words))])
                         encoded_search = urllib.parse.quote(search_text)
                         doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
-                        raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {sim:.2f}):\n{chunk}")
+                        raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                     else:
-                        raw_doc_contexts.append(f"From document '{doc}' (similarity: {sim:.2f}):\n{chunk}")
+                        raw_doc_contexts.append(f"From document '{doc}' (similarity: {score:.2f}):\n{chunk}")
 
                 # Add fetched Google Doc content to context
                 google_doc_context = []
@@ -1666,11 +2323,18 @@ class DiscordBot(commands.Bot):
                     "content": f"You are responding to a message in the Discord channel: {channel_name}"
                 })
                 
-                # Add image context if there are images
-                if image_attachments:
+                # Add image context if there are images from search or attachments
+                if image_ids or image_attachments:
+                    total_images = len(image_ids) + len(image_attachments)
+                    img_source = []
+                    if image_ids:
+                        img_source.append(f"{len(image_ids)} from search results")
+                    if image_attachments:
+                        img_source.append(f"{len(image_attachments)} from attachments")
+                        
                     messages.append({
                         "role": "system",
-                        "content": f"The user has attached an image to their message. If you are a vision-capable model, you will see this image in their message."
+                        "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
                     })
                 
                 messages.append({
@@ -1688,7 +2352,7 @@ class DiscordBot(commands.Bot):
                 model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
                 # If we have images and the preferred model doesn't support vision, use Gemini
-                if image_attachments and preferred_model not in self.vision_capable_models:
+                if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
                     preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
                     model_name = "Gemini Pro (for image analysis)"
                     await status_message.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
@@ -1698,6 +2362,7 @@ class DiscordBot(commands.Bot):
                 completion = await self._try_ai_completion(
                     preferred_model,
                     messages,
+                    image_ids=image_ids,
                     image_attachments=image_attachments,
                     temperature=0.1
                 )
@@ -1726,7 +2391,7 @@ class DiscordBot(commands.Bot):
                 else:
                     await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
 
-        @self.tree.command(name="searchdocs", description="Search the document knowledge base")
+        @self.tree.command(name="search_docs", description="Search the document knowledge base")
         @app_commands.describe(query="What to search for")
         async def search_documents(interaction: discord.Interaction, query: str):
             await interaction.response.defer()
@@ -1736,9 +2401,15 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send("No relevant documents found.")
                     return
                 response = "Search results:\n```"
-                for doc_name, chunk, similarity in results:
-                    response += f"\nFrom {doc_name} (similarity: {similarity:.2f}):\n"
-                    response += f"{chunk[:200]}...\n"
+                for doc_name, chunk, similarity, image_id in results:
+                    if image_id:
+                        # This is an image search result
+                        image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                        response += f"\nIMAGE: {image_name} (ID: {image_id}, similarity: {similarity:.2f}):\n"
+                        response += f"{chunk[:200]}...\n"
+                    else:
+                        response += f"\nFrom {doc_name} (similarity: {similarity:.2f}):\n"
+                        response += f"{chunk[:200]}...\n"
                 response += "```"
                 
                 for chunk in split_message(response):
@@ -1746,16 +2417,13 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 await interaction.followup.send(f"Error searching documents: {str(e)}")
 
-        @self.tree.command(name="removedoc", description="Remove a document from the knowledge base")
+        @self.tree.command(name="remove_doc", description="Remove a document from the knowledge base")
         @app_commands.describe(name="Name of the document to remove")
         async def remove_document(interaction: discord.Interaction, name: str):
             await interaction.response.defer()
             try:
-                if name in self.document_manager.metadata:
-                    del self.document_manager.chunks[name]
-                    del self.document_manager.embeddings[name]
-                    del self.document_manager.metadata[name]
-                    self.document_manager._save_to_disk()
+                success = self.document_manager.delete_document(name)
+                if success:
                     await interaction.followup.send(f"Removed document: {name}")
                 else:
                     await interaction.followup.send(f"Document not found: {name}")
@@ -1897,8 +2565,27 @@ class DiscordBot(commands.Bot):
                 doc_id = removed_doc['id']
                 doc_url = f"https://docs.google.com/document/d/{doc_id}"
                 doc_name = removed_doc.get('custom_name') or f"googledoc_{doc_id}"
+
+                local_file_name = doc_name
+                if not local_file_name.endswith('.txt'):
+                    local_file_name += '.txt'
+                    
+                # Remove local file if it exists
+                local_file_path = Path(self.document_manager.base_dir) / local_file_name
+                file_removed = False
                 
-                response = f"*i've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*\n\n*note: document content might still be in my memory. use `/listdocs` to check and `/removedoc` if needed*"
+                if local_file_path.exists():
+                    try:
+                        success = self.document_manager.delete_document(local_file_name)
+                        if success:
+                            await interaction.followup.send(f"Removed document: {local_file_name}")
+                            file_removed = True
+                        else:
+                            await interaction.followup.send(f"Document not found: {local_file_name}")
+                    except Exception as e:
+                        await interaction.followup.send(f"Error removing document: {str(e)}")
+                
+                response = f"*I've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*\n\n*"
                 
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
@@ -1973,13 +2660,13 @@ class DiscordBot(commands.Bot):
                 # Knowledge Base
                 response += "## **KNOWLEDGE BASE & LIMITATIONS**\n\n"
                 response += "**📚 What I Know**\n"
-                response += "• My knowledge is based on documents uploaded to my neural database\n"
+                response += "• My knowledge is based on documents and images uploaded to my neural database\n"
                 response += "• I specialize in Ledus Banum 77 (aka Tundra) lore and Imperial institutions\n"
                 response += "• I can cite specific documents when providing information\n"
                 response += "• I understand the Infinite Empire's structure, planes of existence, and Resonant Drilling\n\n"
                 
                 response += "**⚠️ What I Don't Know**\n"
-                response += "• Information not contained in my document database\n"
+                response += "• Information not contained in my document or image database\n"
                 response += "• I cannot make up lore or information that isn't documented\n"
                 response += "• I do not have knowledge about Earth or our real universe\n"
                 response += "• I cannot access the internet or information outside my documents\n\n"
@@ -1987,7 +2674,7 @@ class DiscordBot(commands.Bot):
                 # How I Work
                 response += "## **HOW I WORK**\n\n"
                 response += "**🧠 Neural Processing**\n"
-                response += "• I use semantic search to find relevant information in my documents\n"
+                response += "• I use semantic search to find relevant information in my documents and images\n"
                 response += "• I analyze your query to understand what you're looking for\n"
                 response += "• I synthesize information from multiple documents when needed\n"
                 response += "• I provide citations to document sources when possible\n"
@@ -1995,24 +2682,32 @@ class DiscordBot(commands.Bot):
                 
                 # Image Analysis
                 response += "**🖼️ Image Analysis**\n"
-                response += "• Attach an image when mentioning me or use `/query` with an image URL\n"
-                response += "• I can analyze images and incorporate them into my responses\n"
-                response += "• *Note: Image analysis requires Gemini model*\n\n"
+                response += "• I can analyze images in three ways:\n"
+                response += "  - Attach an image directly when mentioning me\n"
+                response += "  - Use `/query` with an image URL\n"
+                response += "  - I can search my image database for relevant visual information\n"
+                response += "• I can recognize content in images and integrate them into my responses\n"
+                response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
+                response += "• *Note: Image analysis requires a vision-capable model like Gemini*\n\n"
                 
                 # Document Management
-                response += "## **DOCUMENT MANAGEMENT**\n\n"
+                response += "## **DOCUMENT & IMAGE MANAGEMENT**\n\n"
                 response += "**📚 Adding Information**\n"
                 response += "• `/add_info` - Add text directly to my knowledge base\n"
-                response += "• `/add_doc` - Add a document with an attachment\n"
-                response += "• `/add_googledoc` - Connect a Google Doc to my knowledge base\n\n"
+                response += "• `Publicia! add_doc` - Add a document with an attachment\n"
+                response += "• `/add_googledoc` - Connect a Google Doc to my knowledge base\n"
+                response += "• `Publicia! add_image \"name\" [yes/no](yes/no controls whether to auto-generate a description, default is yes)` - Add an image from an attachment to my visual knowledge base\n\n"
                 
-                response += "**📋 Managing Documents**\n"
-                response += "• `/listdocs` - See all documents in my knowledge base\n"
-                response += "• `/list_googledocs` - See all connected Google Docs\n"
-                response += "• `/removedoc` - Remove a document from my knowledge base\n"
+                response += "**📋 Managing Documents & Images**\n"
+                response += "• `/list_docs` - See all documents in my knowledge base\n"
+                response += "• `/list_images` - See all images in my visual knowledge base\n"
+                response += "• `/view_image` - View an image from my knowledge base\n"
+                response += "• `/remove_doc` - Remove a document from my knowledge base\n"
+                response += "• `/remove_image` - Remove an image from my knowledge base\n"
                 response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
                 response += "• `/rename_document` - Rename a document in my database\n"
-                response += "• `/searchdocs` - Search directly in my document knowledge base\n\n"
+                response += "• `/search_docs` - Search directly in my document knowledge base\n"
+                response += "• `/update_image_description` - Update the description for an image\n\n"
                 
                 # Conversation Management
                 response += "## **CONVERSATION MANAGEMENT**\n\n"
@@ -2025,8 +2720,8 @@ class DiscordBot(commands.Bot):
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "  - **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
-                response += "  - **Gemini 2.0 Flash**: Better for citations, accuracy, and faster responses\n"
+                response += "- **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
+                response += "- **Gemini 2.0 Flash**: Better for citations, accuracy, faster responses, and image analysis\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
@@ -2034,19 +2729,20 @@ class DiscordBot(commands.Bot):
                 response += "## **TECHNICAL INFORMATION**\n\n"
                 response += "**⚙️ Technical Details**\n"
                 response += "• I'm powered by OpenRouter.ai and access to multiple LLM models\n"
-                response += "• I process documents using semantic search and vector embeddings\n"
-                response += "• My document database stores text chunks and their embeddings\n"
+                response += "• I process documents and images using semantic search and vector embeddings\n"
+                response += "• My database stores text chunks, image descriptions, and their embeddings\n"
                 response += "• Google Doc integration uses public access to fetch document content\n"
                 response += "• Image analysis is handled by vision-capable models like Gemini\n\n"
                 
                 # Tips
                 response += "## **TIPS FOR BEST RESULTS**\n\n"
                 response += "• Ask specific questions for more accurate answers\n"
-                response += "• If I don't know something, add relevant documents to my database\n"
+                response += "• If I don't know something, add relevant documents or images to my database\n"
                 response += "• Use Google Docs integration for large, regularly updated documents\n"
                 response += "• Include links to Google Docs in your queries for on-the-fly context\n"
                 response += "• For image analysis, use clear images with good lighting\n"
-                response += "• Use `/searchdocs` to find specific information in the knowledge base\n"
+                response += "• Add relevant images to my knowledge base using `/add_image`\n"
+                response += "• Use `/search_docs` to find specific information in the knowledge base\n"
                 response += "• Try both AI models to see which works best for different types of questions\n\n"
                 
                 response += "*my genetically enhanced brain is always ready to help... just ask!*"
@@ -2081,17 +2777,20 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_attachments=None, **kwargs) -> Optional[any]:
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Optional[any]:
         """Get AI completion with dynamic fallback options based on the requested model."""
         
         # Get primary model family (deepseek, google, etc.)
         model_family = model.split('/')[0] if '/' in model else None
         
+        # Check if we need a vision-capable model
+        need_vision = (image_ids and len(image_ids) > 0) or (image_attachments and len(image_attachments) > 0)
+        
         # Build fallback list dynamically based on the requested model
         models = [model]  # Start with the requested model
         
-        # If we have image attachments, prioritize vision-capable models
-        if image_attachments and model not in self.vision_capable_models:
+        # If we need vision, prioritize vision-capable models
+        if need_vision and model not in self.vision_capable_models:
             # If the requested model doesn't support vision but we have images,
             # prepend vision-capable models from the same family if available
             if model_family == "google":
@@ -2135,7 +2834,7 @@ class DiscordBot(commands.Bot):
             if fb not in models:
                 models.append(fb)
         
-        # Headers and API call logic remains the same
+        # Headers for API calls
         headers = {
             "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
             "HTTP-Referer": "https://discord.com",
@@ -2147,14 +2846,14 @@ class DiscordBot(commands.Bot):
             try:
                 logger.info(f"Attempting completion with model: {current_model}")
                 
-                # Check if current model supports vision and we have image attachments
+                # Check if current model supports vision
                 is_vision_model = current_model in self.vision_capable_models
                 
                 # Prepare messages based on whether we're using a vision model
                 processed_messages = messages.copy()
                 
                 # If we have images and this is a vision-capable model, add them to the last user message
-                if image_attachments and is_vision_model:
+                if need_vision and is_vision_model:
                     # Find the last user message
                     for i in range(len(processed_messages) - 1, -1, -1):
                         if processed_messages[i]["role"] == "user":
@@ -2165,17 +2864,36 @@ class DiscordBot(commands.Bot):
                             # Create a multimodal content array
                             content_array = [{"type": "text", "text": text_content}]
                             
-                            # Add each image
-                            for img_data in image_attachments:
-                                if img_data:  # Only add if we have valid image data
-                                    content_array.append({
-                                        "type": "image_url",
-                                        "image_url": {"url": img_data}
-                                    })
+                            # Add each image from attachments
+                            if image_attachments:
+                                for img_data in image_attachments:
+                                    if img_data:  # Only add if we have valid image data
+                                        content_array.append({
+                                            "type": "image_url",
+                                            "image_url": {"url": img_data}
+                                        })
+                                        logger.info(f"Added direct attachment image to message")
+                            
+                            # Add each image from image_ids
+                            if image_ids:
+                                for img_id in image_ids:
+                                    try:
+                                        # Get base64 image data
+                                        base64_image = self.image_manager.get_base64_image(img_id)
+                                        content_array.append({
+                                            "type": "image_url",
+                                            "image_url": {"url": base64_image}
+                                        })
+                                        logger.info(f"Added search result image {img_id} to message")
+                                    except Exception as e:
+                                        logger.error(f"Error adding image {img_id} to message: {e}")
                             
                             # Replace the content with the multimodal array
                             processed_messages[i]["content"] = content_array
-                            logger.info(f"Added {len(image_attachments)} images to message for vision model")
+                            
+                            # Log the number of images added
+                            image_count = len(content_array) - 1  # Subtract 1 for the text content
+                            logger.info(f"Added {image_count} images to message for vision model")
                             break
                 
                 payload = {
@@ -2305,8 +3023,6 @@ class DiscordBot(commands.Bot):
             google_doc_contents = []
             
             if google_doc_ids:
-                # Send a thinking message if there are Google Docs to fetch
-                
                 # Fetch content for each Google Doc
                 for doc_id, doc_url in google_doc_ids:
                     content = await self._fetch_google_doc_content(doc_id)
@@ -2362,20 +3078,31 @@ class DiscordBot(commands.Bot):
             # Load Google Doc ID mapping for citation links
             googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
 
+            # Extract image IDs from search results
+            image_ids = []
+            for doc, chunk, score, image_id in search_results:
+                if image_id and image_id not in image_ids:
+                    image_ids.append(image_id)
+                    logger.info(f"Found relevant image: {image_id}")
+
             # Format raw results with citation info
             import urllib.parse
             raw_doc_contexts = []
-            for doc, chunk, sim in search_results:
-                if doc in googledoc_mapping:
+            for doc, chunk, score, image_id in search_results:
+                if image_id:
+                    # This is an image description
+                    image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                    raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
+                elif doc in googledoc_mapping:
                     # Create citation link for Google Doc
                     doc_id = googledoc_mapping[doc]
                     words = chunk.split()
                     search_text = ' '.join(words[:min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
-                    raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {sim:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                 else:
-                    raw_doc_contexts.append(f"From document '{doc}' (similarity: {sim:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(f"From document '{doc}' (similarity: {score:.2f}):\n{chunk}")
 
             # Add fetched Google Doc content to context
             google_doc_context = []
@@ -2423,11 +3150,18 @@ class DiscordBot(commands.Bot):
                 "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
             
-            # Add image context if there are images
-            if image_attachments:
+            # Add image context if there are images from search or attachments
+            if image_ids or image_attachments:
+                total_images = len(image_ids) + len(image_attachments)
+                img_source = []
+                if image_ids:
+                    img_source.append(f"{len(image_ids)} from search results")
+                if image_attachments:
+                    img_source.append(f"{len(image_attachments)} from attachments")
+                    
                 messages.append({
                     "role": "system",
-                    "content": f"The user has attached {len(image_attachments)} image(s) to their message. If you are a vision-capable model, you will see these images in their message."
+                    "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
                 })
             
             messages.append({
@@ -2445,7 +3179,7 @@ class DiscordBot(commands.Bot):
             model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
             # If we have images and the preferred model doesn't support vision, use Gemini
-            if image_attachments and preferred_model not in self.vision_capable_models:
+            if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
                 preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
                 model_name = "Gemini Pro (for image analysis)"
                 await thinking_msg.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
@@ -2460,6 +3194,7 @@ class DiscordBot(commands.Bot):
             completion = await self._try_ai_completion(
                 preferred_model,
                 messages,
+                image_ids=image_ids,
                 image_attachments=image_attachments,
                 temperature=0.1
             )
@@ -2473,6 +3208,11 @@ class DiscordBot(commands.Bot):
                 if google_doc_contents:
                     doc_note = f"\n\n*Note: I've included content from {len(google_doc_contents)} Google Doc{'s' if len(google_doc_contents) > 1 else ''} linked in your message.*"
                     response += doc_note
+                
+                # Add a note about found images if any were found in search results
+                if image_ids:
+                    img_note = f"\n\n*Note: I found {len(image_ids)} relevant image{'s' if len(image_ids) > 1 else ''} in my knowledge base related to your query.*"
+                    response += img_note
                 
                 # Update conversation history
                 self.conversation_manager.write_conversation(
