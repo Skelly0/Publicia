@@ -1956,19 +1956,42 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error toggling debug mode: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while toggling debug mode.")
 
-        @self.tree.command(name="help", description="Learn how to use Publicia and its features")
+        @self.tree.command(name="help", description="Learn how to use Publicia and understand her capabilities and limitations")
         async def help_command(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
                 response = "# **PUBLICIA HELP GUIDE**\n\n"
-                response += "*greetings, human! my genetically enhanced brain is ready to assist you. here's how to use my capabilities:*\n\n"
+                response += "*greetings, human! my genetically enhanced brain is ready to assist you with imperial knowledge. here's how to use my capabilities:*\n\n"
                 
                 # Core functionality
                 response += "## **CORE FUNCTIONALITY**\n\n"
                 response += "**🔍 Asking Questions**\n"
                 response += "• **Mention me** in a message with your question about Ledus Banum 77 and Imperial lore\n"
                 response += "• Use `/query` command for more structured questions\n"
-                response += "• I'll search my knowledge base and provide answers with citations\n\n"
+                response += "• I'll search my knowledge base and provide answers with citations where possible\n\n"
+                
+                # Knowledge Base
+                response += "## **KNOWLEDGE BASE & LIMITATIONS**\n\n"
+                response += "**📚 What I Know**\n"
+                response += "• My knowledge is based on documents uploaded to my neural database\n"
+                response += "• I specialize in Ledus Banum 77 (aka Tundra) lore and Imperial institutions\n"
+                response += "• I can cite specific documents when providing information\n"
+                response += "• I understand the Infinite Empire's structure, planes of existence, and Resonant Drilling\n\n"
+                
+                response += "**⚠️ What I Don't Know**\n"
+                response += "• Information not contained in my document database\n"
+                response += "• I cannot make up lore or information that isn't documented\n"
+                response += "• I do not have knowledge about Earth or our real universe\n"
+                response += "• I cannot access the internet or information outside my documents\n\n"
+                
+                # How I Work
+                response += "## **HOW I WORK**\n\n"
+                response += "**🧠 Neural Processing**\n"
+                response += "• I use semantic search to find relevant information in my documents\n"
+                response += "• I analyze your query to understand what you're looking for\n"
+                response += "• I synthesize information from multiple documents when needed\n"
+                response += "• I provide citations to document sources when possible\n"
+                response += "• I use vector embeddings to match your questions with relevant content\n\n"
                 
                 # Image Analysis
                 response += "**🖼️ Image Analysis**\n"
@@ -1988,6 +2011,7 @@ class DiscordBot(commands.Bot):
                 response += "• `/list_googledocs` - See all connected Google Docs\n"
                 response += "• `/removedoc` - Remove a document from my knowledge base\n"
                 response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
+                response += "• `/rename_document` - Rename a document in my database\n"
                 response += "• `/searchdocs` - Search directly in my document knowledge base\n\n"
                 
                 # Conversation Management
@@ -2006,10 +2030,21 @@ class DiscordBot(commands.Bot):
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
+                # Technical Information
+                response += "## **TECHNICAL INFORMATION**\n\n"
+                response += "**⚙️ Technical Details**\n"
+                response += "• I'm powered by OpenRouter.ai and access to multiple LLM models\n"
+                response += "• I process documents using semantic search and vector embeddings\n"
+                response += "• My document database stores text chunks and their embeddings\n"
+                response += "• Google Doc integration uses public access to fetch document content\n"
+                response += "• Image analysis is handled by vision-capable models like Gemini\n\n"
+                
                 # Tips
                 response += "## **TIPS FOR BEST RESULTS**\n\n"
                 response += "• Ask specific questions for more accurate answers\n"
-                response += "• Include relevant context in your questions\n"
+                response += "• If I don't know something, add relevant documents to my database\n"
+                response += "• Use Google Docs integration for large, regularly updated documents\n"
+                response += "• Include links to Google Docs in your queries for on-the-fly context\n"
                 response += "• For image analysis, use clear images with good lighting\n"
                 response += "• Use `/searchdocs` to find specific information in the knowledge base\n"
                 response += "• Try both AI models to see which works best for different types of questions\n\n"
