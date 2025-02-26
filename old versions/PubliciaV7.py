@@ -37,7 +37,7 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
-def split_message(text, max_length=2000):
+def split_message(text, max_length=1900):
         """
         Split a text string into chunks under max_length characters,
         preserving newlines where possible.
@@ -384,6 +384,482 @@ class DocumentManager:
             json.dump(tracked_docs, f)
         
         return f"Added Google Doc {doc_id} to tracked list"
+    
+    def rename_document(self, old_name: str, new_name: str) -> str:
+        """Rename a document in the system (regular doc, Google Doc, or lorebook).
+        
+        Args:
+            old_name: Current name of the document
+            new_name: New name for the document
+            
+        Returns:
+            Status message indicating success or failure
+        """
+        # Check if it's a regular document
+        if old_name in self.metadata:
+            # Add .txt extension to new_name if it doesn't have it and old_name does
+            if old_name.endswith('.txt') and not new_name.endswith('.txt'):
+                new_name += '.txt'
+                
+            # Update the in-memory dictionaries
+            self.chunks[new_name] = self.chunks.pop(old_name)
+            self.embeddings[new_name] = self.embeddings.pop(old_name)
+            self.metadata[new_name] = self.metadata.pop(old_name)
+            
+            # Save the changes to disk
+            self._save_to_disk()
+            
+            # Check if there's a file on disk to rename
+            old_file_path = self.base_dir / old_name
+            if old_file_path.exists():
+                new_file_path = self.base_dir / new_name
+                old_file_path.rename(new_file_path)
+                
+            return f"Document renamed from '{old_name}' to '{new_name}'"
+            
+        # Check if it's a Google Doc
+        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+        if tracked_file.exists():
+            with open(tracked_file, 'r') as f:
+                tracked_docs = json.load(f)
+            
+            # Check if old_name is a Google Doc custom name or filename
+            for i, doc in enumerate(tracked_docs):
+                doc_id = doc['id']
+                custom_name = doc.get('custom_name')
+                filename = f"googledoc_{doc_id}.txt"
+                
+                if old_name == custom_name or old_name == filename:
+                    # Update the custom name
+                    tracked_docs[i]['custom_name'] = new_name
+                    
+                    # Save the updated list
+                    with open(tracked_file, 'w') as f:
+                        json.dump(tracked_docs, f)
+                    
+                    # If the document is also in the main storage, update it there
+                    old_filename = custom_name or filename
+                    if old_filename.endswith('.txt') and not new_name.endswith('.txt'):
+                        new_name += '.txt'
+                        
+                    # Update in-memory dictionaries if present
+                    if old_filename in self.metadata:
+                        self.chunks[new_name] = self.chunks.pop(old_filename)
+                        self.embeddings[new_name] = self.embeddings.pop(old_filename)
+                        self.metadata[new_name] = self.metadata.pop(old_filename)
+                        self._save_to_disk()
+                    
+                    # Rename the file on disk if it exists
+                    old_file_path = self.base_dir / old_filename
+                    if old_file_path.exists():
+                        new_file_path = self.base_dir / new_name
+                        old_file_path.rename(new_file_path)
+                    
+                    return f"Google Doc renamed from '{old_name}' to '{new_name}'"
+        
+        # Check if it's a lorebook
+        lorebooks_path = self.get_lorebooks_path()
+        old_file_path = lorebooks_path / old_name
+        if not old_file_path.exists() and not old_name.endswith('.txt'):
+            old_file_path = lorebooks_path / f"{old_name}.txt"
+            
+        if old_file_path.exists():
+            # Add .txt extension to new_name if it doesn't have it
+            if old_file_path.name.endswith('.txt') and not new_name.endswith('.txt'):
+                new_name += '.txt'
+                
+            new_file_path = lorebooks_path / new_name
+            old_file_path.rename(new_file_path)
+            return f"Lorebook renamed from '{old_name}' to '{new_name}'"
+        
+        return f"Document '{old_name}' not found in the system"
+
+class ChunkDescriptionManager:
+    """Manages document chunk descriptions for enhanced search."""
+    
+    def __init__(self, document_manager, base_dir="descriptions"):
+        self.document_manager = document_manager
+        self.base_dir = Path(base_dir)
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.descriptions = {}
+        self.last_update = {}
+        
+        # Load cached descriptions
+        self._load_descriptions()
+    
+    def _get_description_path(self, doc_name):
+        """Generate file path for document descriptions."""
+        safe_name = "".join(c for c in doc_name if c.isalnum() or c in (' ', '.', '_')).rstrip()
+        return self.base_dir / f"{safe_name}_descriptions.json"
+    
+    def _load_descriptions(self):
+        """Load cached descriptions from disk."""
+        try:
+            # Find all description files
+            desc_files = list(self.base_dir.glob("*_descriptions.json"))
+            
+            for desc_file in desc_files:
+                try:
+                    with open(desc_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        doc_name = data.get("document_name")
+                        if doc_name:
+                            self.descriptions[doc_name] = data.get("chunks", [])
+                            self.last_update[doc_name] = data.get("last_updated")
+                except Exception as e:
+                    logger.error(f"Error loading description file {desc_file}: {e}")
+            
+            logger.info(f"Loaded descriptions for {len(self.descriptions)} documents")
+        except Exception as e:
+            logger.error(f"Error loading descriptions: {e}")
+    
+    def _save_description(self, doc_name, chunks):
+        """Save descriptions for a document to disk."""
+        try:
+            file_path = self._get_description_path(doc_name)
+            
+            data = {
+                "document_name": doc_name,
+                "last_updated": datetime.now().isoformat(),
+                "chunks": chunks
+            }
+            
+            with open(file_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2)
+                
+            self.descriptions[doc_name] = chunks
+            self.last_update[doc_name] = data["last_updated"]
+            
+            logger.info(f"Saved descriptions for {doc_name} with {len(chunks)} chunks")
+        except Exception as e:
+            logger.error(f"Error saving descriptions for {doc_name}: {e}")
+    
+    def needs_update(self, doc_name):
+        """Check if a document's descriptions need updating."""
+        # If no descriptions for this document
+        if doc_name not in self.descriptions:
+            return True
+            
+        # If chunk count doesn't match
+        if doc_name in self.document_manager.chunks:
+            if len(self.descriptions[doc_name]) != len(self.document_manager.chunks[doc_name]):
+                return True
+        
+        # If last update was more than 30 days ago
+        if doc_name in self.last_update:
+            try:
+                last_update = datetime.fromisoformat(self.last_update[doc_name])
+                age = datetime.now() - last_update
+                if age.days > 30:
+                    return True
+            except:
+                return True
+                
+        return False
+    
+    async def generate_batch_descriptions(self, chunks, bot):
+        """Generate descriptions for a batch of chunks in a single API call."""
+        try:
+            # Prepare batch prompt
+            batch_text = "\n\n---\n\n".join([f"CHUNK {i+1}:\n{chunk}" for i, chunk in enumerate(chunks)])
+            
+            prompt = [
+                {
+                    "role": "system",
+                    "content": """You are a document analyzer. For each provided text chunk, write a concise 
+                    description (40-60 words) capturing the key information. Focus on:
+                    - Main topics and entities
+                    - Key facts and relationships
+                    - Locations, events, and concepts
+                    
+                    Format your response as a JSON array of descriptions, with one description per chunk.
+                    Example: ["Description of chunk 1", "Description of chunk 2", ...]
+                    """
+                },
+                {
+                    "role": "user",
+                    "content": f"Generate descriptions for these {len(chunks)} text chunks:\n\n{batch_text}"
+                }
+            ]
+            
+            # Make API call
+            result = await bot._try_ai_completion(
+                bot.config.CLASSIFIER_MODEL,  # Use Gemini
+                prompt,
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            
+            if result and result.get('choices'):
+                try:
+                    response_content = result['choices'][0]['message']['content']
+                    response = json.loads(response_content)
+                    descriptions = []
+                    
+                    # Handle different potential response formats
+                    if isinstance(response, list):
+                        # If response is directly a list of descriptions
+                        descriptions = response
+                    elif isinstance(response, dict):
+                        # If response is an object with descriptions key
+                        descriptions = response.get("descriptions", [])
+                    
+                    # Ensure we have the right number of descriptions
+                    if len(descriptions) == len(chunks):
+                        return descriptions
+                    else:
+                        # If count mismatch, generate individually as fallback
+                        logger.warning(f"Description count mismatch: got {len(descriptions)}, expected {len(chunks)}")
+                        return await self.generate_individual_descriptions(chunks, bot)
+                        
+                except Exception as e:
+                    logger.error(f"Error parsing batch descriptions: {e}")
+                    return await self.generate_individual_descriptions(chunks, bot)
+            
+            # Fallback to individual generation
+            return await self.generate_individual_descriptions(chunks, bot)
+                
+        except Exception as e:
+            logger.error(f"Error generating batch descriptions: {e}")
+            return ["No description available"] * len(chunks)
+    
+    async def generate_individual_descriptions(self, chunks, bot):
+        """Generate descriptions for chunks individually (fallback method)."""
+        descriptions = []
+        
+        for chunk in chunks:
+            try:
+                prompt = [
+                    {
+                        "role": "system",
+                        "content": """Generate a concise description (40-60 words) that captures the key information 
+                        in this document chunk. Focus on main topics, entities, facts, and relationships."""
+                    },
+                    {
+                        "role": "user",
+                        "content": chunk
+                    }
+                ]
+                
+                result = await bot._try_ai_completion(
+                    bot.config.CLASSIFIER_MODEL,
+                    prompt,
+                    temperature=0.1
+                )
+                
+                if result and result.get('choices'):
+                    descriptions.append(result['choices'][0]['message']['content'])
+                else:
+                    descriptions.append("No description available")
+                    
+                # Add delay to avoid rate limits
+                await asyncio.sleep(0.5)
+                
+            except Exception as e:
+                logger.error(f"Error generating individual description: {e}")
+                descriptions.append("No description available")
+        
+        return descriptions
+    
+    async def extract_key_topics(self, descriptions, bot):
+        """Extract key topics from a list of descriptions in a single API call."""
+        try:
+            descriptions_text = "\n\n".join([f"Description {i+1}: {desc}" for i, desc in enumerate(descriptions)])
+            
+            prompt = [
+                {
+                    "role": "system",
+                    "content": """Extract 3-5 key topics from each description provided. 
+                    Format your response as a JSON array of arrays, where each inner array contains 
+                    the topics for one description.
+                    Example: [["topic1", "topic2"], ["topic3", "topic4"]]
+                    """
+                },
+                {
+                    "role": "user",
+                    "content": f"Extract key topics from these descriptions:\n\n{descriptions_text}"
+                }
+            ]
+            
+            result = await bot._try_ai_completion(
+                bot.config.CLASSIFIER_MODEL,
+                prompt,
+                temperature=0.1,
+                response_format={"type": "json_object"}
+            )
+            
+            if result and result.get('choices'):
+                try:
+                    response = json.loads(result['choices'][0]['message']['content'])
+                    return response.get("topics", [[] for _ in descriptions])
+                except:
+                    return [[] for _ in descriptions]
+            
+            return [[] for _ in descriptions]
+                
+        except Exception as e:
+            logger.error(f"Error extracting key topics: {e}")
+            return [[] for _ in descriptions]
+    
+    async def update_document_descriptions(self, doc_name, bot):
+        """Update descriptions for a document."""
+        try:
+            if doc_name not in self.document_manager.chunks:
+                logger.warning(f"Document {doc_name} not found in document manager")
+                return False
+                
+            chunks = self.document_manager.chunks[doc_name]
+            chunk_descriptions = []
+            
+            # Process chunks in batches of 5 to reduce API calls
+            for i in range(0, len(chunks), 5):
+                batch = chunks[i:i+5]
+                
+                # Generate descriptions for this batch
+                descriptions = await self.generate_batch_descriptions(batch, bot)
+                
+                # Extract key topics for all descriptions in batch
+                topics = await self.extract_key_topics(descriptions, bot)
+                
+                # Add descriptions and topics to results
+                for j, (desc, topic_list) in enumerate(zip(descriptions, topics)):
+                    if i+j < len(chunks):
+                        chunk_descriptions.append({
+                            "chunk_index": i+j,
+                            "description": desc,
+                            "topics": topic_list
+                        })
+                
+                # Add delay between batches
+                await asyncio.sleep(1)
+            
+            # Save descriptions
+            self._save_description(doc_name, chunk_descriptions)
+            
+            return True
+                
+        except Exception as e:
+            logger.error(f"Error updating descriptions for {doc_name}: {e}")
+            return False
+    
+    async def update_all_documents(self, bot):
+        """Update descriptions for all documents that need updating."""
+        try:
+            update_count = 0
+            
+            for doc_name in self.document_manager.chunks.keys():
+                if self.needs_update(doc_name):
+                    logger.info(f"Updating descriptions for {doc_name}")
+                    success = await self.update_document_descriptions(doc_name, bot)
+                    if success:
+                        update_count += 1
+                    
+                    # Add delay between documents
+                    await asyncio.sleep(2)
+            
+            logger.info(f"Updated descriptions for {update_count} documents")
+            return update_count
+                
+        except Exception as e:
+            logger.error(f"Error updating all documents: {e}")
+            return 0
+    
+    def get_descriptions(self, doc_name):
+        """Get descriptions for a document."""
+        return self.descriptions.get(doc_name, [])
+    
+    async def find_matching_chunks(self, topics, bot):
+        """Find chunks matching the given topics."""
+        try:
+            # Create a flattened list of all descriptions
+            all_descriptions = []
+            for doc_name, chunk_descs in self.descriptions.items():
+                for chunk in chunk_descs:
+                    all_descriptions.append({
+                        "doc_name": doc_name,
+                        "chunk_index": chunk["chunk_index"],
+                        "description": chunk["description"],
+                        "topics": chunk.get("topics", [])
+                    })
+            
+            # If we have too many descriptions, we need to batch the matching
+            matches = []
+            
+            # Convert topics to a string
+            topics_str = "\n".join([f"Topic {i+1}: {topic}" for i, topic in enumerate(topics)])
+            
+            # Create batches of descriptions (max 50 per batch)
+            for i in range(0, len(all_descriptions), 50):
+                batch = all_descriptions[i:i+50]
+                
+                # Format descriptions as string
+                descriptions_str = "\n\n".join([
+                    f"Description {j+1} [Doc: {desc['doc_name']}, Chunk: {desc['chunk_index']}]:\n{desc['description']}"
+                    for j, desc in enumerate(batch)
+                ])
+                
+                # Match topics against descriptions
+                prompt = [
+                    {
+                        "role": "system",
+                        "content": """You are a document matcher. Determine which descriptions are most relevant 
+                        to the given topics. Return the matches as a JSON array of objects, each with:
+                        - index: the description index (1-based)
+                        - relevance: a score from 0.0 to 1.0 indicating relevance
+                        
+                        Only include matches with relevance >= 0.7. Sort by relevance (highest first).
+                        Example: [{"index": 2, "relevance": 0.9}, {"index": 5, "relevance": 0.8}]
+                        """
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Topics to match:\n{topics_str}\n\nDescriptions to search:\n{descriptions_str}"
+                    }
+                ]
+                
+                result = await bot._try_ai_completion(
+                    bot.config.CLASSIFIER_MODEL,
+                    prompt,
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                )
+                
+                if result and result.get('choices'):
+                    try:
+                        response_content = result['choices'][0]['message']['content']
+                        response = json.loads(response_content)
+                        batch_matches = []
+                        
+                        # Handle different potential response formats
+                        if isinstance(response, list):
+                            # If response is directly a list of matches
+                            batch_matches = response
+                        elif isinstance(response, dict):
+                            # If response is an object with matches key
+                            batch_matches = response.get("matches", [])
+                        
+                        # Convert match indices to actual documents and chunks
+                        for match in batch_matches:
+                            if isinstance(match, dict):
+                                index = match.get("index")
+                                relevance = match.get("relevance", 0)
+                                
+                                # Adjust for 1-based indexing
+                                if 1 <= index <= len(batch):
+                                    desc = batch[index-1]
+                                    matches.append((
+                                        desc["doc_name"],
+                                        desc["chunk_index"],
+                                        relevance
+                                    ))
+                    except Exception as e:
+                        logger.error(f"Error parsing match results: {e}")
+            
+            return matches
+                
+        except Exception as e:
+            logger.error(f"Error finding matching chunks: {e}")
+            return []
 
 class Config:
     """Configuration settings for the bot."""
@@ -748,6 +1224,9 @@ class DiscordBot(commands.Bot):
         # Pass the TOP_K value to DocumentManager
         self.document_manager = DocumentManager(top_k=self.config.TOP_K)
         
+        # Initialize chunk description manager BEFORE setting up scheduler
+        self.chunk_description_manager = ChunkDescriptionManager(self.document_manager)
+        
         self.user_preferences_manager = UserPreferencesManager()
         
         self.timeout_duration = 30
@@ -756,8 +1235,11 @@ class DiscordBot(commands.Bot):
         self.banned_users_file = 'banned_users.json'
         self.load_banned_users()
 
+        # Set up scheduler AFTER initializing chunk_description_manager
         self.scheduler = AsyncIOScheduler()
         self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6)
+        # Now this is safe because chunk_description_manager exists
+        self.scheduler.add_job(self._update_descriptions, 'cron', hour=3, minute=0)
         self.scheduler.start()
         
         # List of models that support vision capabilities
@@ -767,6 +1249,37 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-sonnet",
             "anthropic/claude-3.5-haiku"
         ]
+
+    async def _update_descriptions(self):
+        """Update document descriptions as needed."""
+        try:
+            logger.info("Running update of document descriptions")
+            
+            # Safety check - just in case
+            if not hasattr(self, 'chunk_description_manager'):
+                logger.error("chunk_description_manager not initialized yet, skipping update")
+                return
+                
+            await self.chunk_description_manager.update_all_documents(self)
+        except Exception as e:
+            logger.error(f"Error updating descriptions: {e}")
+
+    async def _is_complex_query(self, query):
+        """Determine if a query is complex and needs enhanced search."""
+        # Simple heuristic checks
+        if len(query.split()) > 50:  # Long query
+            return True
+            
+        if query.count('?') > 2:  # Multiple questions
+            return True
+        
+        if re.search(r'\b\d+[\.\)]\s', query):  # Numbered list items
+            return True
+            
+        if any(term in query.lower() for term in ["quiz", "test", "list", "explain all", "multiple"]):
+            return True
+            
+        return False
 
     def load_banned_users(self):
         """Load banned users from JSON file."""
@@ -867,30 +1380,115 @@ class DiscordBot(commands.Bot):
             return {"success": False}
 
     async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float]]:
-        """Perform an enhanced search based on query analysis."""
+        """Perform an enhanced search based on query analysis and descriptions."""
         try:
+            # Check if this is a complex query
+            is_complex = await self._is_complex_query(query)
+            
+            # Perform standard enhanced search first
             if not analysis.get("success", False):
                 # Fall back to basic search if analysis failed
-                return self.document_manager.search(query)
+                standard_results = self.document_manager.search(query)
+            else:
+                # Extract search keywords
+                search_keywords = analysis.get("analysis", {}).get("search_keywords", [])
+                if not search_keywords:
+                    search_keywords = [query]
+                        
+                # Combine original query with keywords for better search
+                enhanced_query = query
+                if search_keywords:
+                    enhanced_query += " " + " ".join(str(kw) for kw in search_keywords if kw)
                 
-            # Extract search keywords
-            search_keywords = analysis.get("analysis", {}).get("search_keywords", [])
-            if not search_keywords:
-                search_keywords = [query]
+                # Log the enhanced query
+                logger.info(f"Enhanced query: {enhanced_query}")
                 
-            # Combine original query with keywords for better search
-            enhanced_query = query
-            if search_keywords:
-                enhanced_query += " " + " ".join(str(kw) for kw in search_keywords if kw)
+                # Perform search with enhanced query
+                standard_results = self.document_manager.search(enhanced_query)
             
-            # Log the enhanced query
-            logger.info(f"Enhanced query: {enhanced_query}")
+            # For simple queries, just return standard results
+            if not is_complex:
+                return standard_results
+                
+            # For complex queries, find additional chunks based on descriptions
+            logger.info(f"Complex query detected: '{shorten(query, width=100, placeholder='...')}' - using description-based search")
             
-            # Perform search with enhanced query
-            search_results = self.document_manager.search(enhanced_query)
+            # Extract topics from the query
+            if analysis.get("success", False):
+                # Use analysis data if available
+                search_keywords = analysis.get("analysis", {}).get("search_keywords", [])
+                topics = search_keywords if search_keywords else [query]
+            else:
+                # Extract topics from the query
+                prompt = [
+                    {
+                        "role": "system",
+                        "content": """Break this complex query into distinct topics or questions. 
+                        Return a JSON array of topics, where each topic is a concise phrase or question."""
+                    },
+                    {
+                        "role": "user",
+                        "content": query
+                    }
+                ]
+                
+                result = await self._try_ai_completion(
+                    self.config.CLASSIFIER_MODEL,
+                    prompt,
+                    temperature=0.1,
+                    response_format={"type": "json_object"}
+                )
+                
+                if result and result.get('choices'):
+                    try:
+                        response_content = result['choices'][0]['message']['content']
+                        response = json.loads(response_content)
+                        topics = []
+                        
+                        # Handle different potential response formats
+                        if isinstance(response, list):
+                            # If response is directly a list of topics
+                            topics = response
+                        elif isinstance(response, dict):
+                            # If response is an object with topics key
+                            topics = response.get("topics", [])
+                            
+                        # Ensure we have at least one topic
+                        if not topics:
+                            topics = [query]
+                    except Exception as e:
+                        logger.error(f"Error parsing topics: {e}")
+                        topics = [query]
+                else:
+                    topics = [query]
             
-            return search_results
+            # Find additional chunks based on descriptions
+            logger.info(f"Finding additional chunks for complex query with {len(topics)} topics")
+            matches = await self.chunk_description_manager.find_matching_chunks(topics, self)
             
+            # Convert matches to the same format as standard results
+            existing_chunks = set((doc, chunk) for doc, chunk, _ in standard_results)
+            additional_results = []
+            
+            for doc_name, chunk_index, relevance in matches:
+                try:
+                    if doc_name in self.document_manager.chunks and chunk_index < len(self.document_manager.chunks[doc_name]):
+                        chunk = self.document_manager.chunks[doc_name][chunk_index]
+                        
+                        # Only add if not already in standard results
+                        if (doc_name, chunk) not in existing_chunks:
+                            additional_results.append((doc_name, chunk, float(relevance)))
+                            logger.info(f"Added additional chunk from {doc_name} (relevance: {relevance:.2f})")
+                except Exception as e:
+                    logger.error(f"Error processing match {doc_name}:{chunk_index}: {e}")
+            
+            # Combine results
+            combined_results = standard_results + additional_results
+            
+            # Sort by relevance and limit to top_k
+            combined_results.sort(key=lambda x: x[2], reverse=True)
+            return combined_results[:self.document_manager.top_k]
+                
         except Exception as e:
             logger.error(f"Error in enhanced search: {e}")
             return self.document_manager.search(query)  # Fall back to basic search
@@ -993,6 +1591,15 @@ class DiscordBot(commands.Bot):
                 reference=reference if i == 0 else None,
                 mention_author=mention_author if i == 0 else False
             )
+            
+    async def send_split_followup(self, interaction, text, **kwargs):
+        """Helper method to send interaction followup messages, splitting them if they exceed 2000 characters."""
+        chunks = split_message(text)
+        
+        for i, chunk in enumerate(chunks):
+            await interaction.followup.send(chunk, **kwargs)
+            
+        return len(chunks) > 0  # Return True if at least one message was sent
 
     async def refresh_google_docs(self):
         """Refresh all tracked Google Docs."""
@@ -1120,6 +1727,10 @@ class DiscordBot(commands.Bot):
             logger.info(f"Synced {len(synced)} command(s)")
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}")
+        
+        # Generate initial descriptions if needed (as a background task)
+        logger.info("Scheduling initial chunk description generation...")
+        asyncio.create_task(self._update_descriptions())
 
     async def setup_commands(self):
         """Set up all slash and prefix commands."""
@@ -1197,8 +1808,8 @@ class DiscordBot(commands.Bot):
                 
                 categories = {
                     "Lore Queries": ["query"],
-                    "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc"],
-                    "Utility": ["listcommands", "set_model", "get_model", "toggle_debug", "help"],
+                    "Document Management": ["add_info", "add_doc", "listdocs", "removedoc", "searchdocs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
+                    "Utility": ["listcommands", "set_model", "get_model", "toggle_debug", "help", "description_stats"],
                     "Memory Management": ["lobotomise", "history"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
@@ -1222,6 +1833,37 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error listing commands: {e}")
                 await interaction.followup.send("*my enhanced neurons misfired!* couldn't retrieve command list right now...")
+
+        @self.tree.command(name="description_stats", description="Show statistics about chunk descriptions")
+        async def show_description_stats(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                # Count total documents with descriptions
+                doc_count = len(self.chunk_description_manager.descriptions)
+                
+                # Count total chunks with descriptions
+                chunk_count = sum(len(chunks) for chunks in self.chunk_description_manager.descriptions.values())
+                
+                # Find docs that need updates
+                needs_update = [doc for doc in self.document_manager.chunks.keys() 
+                                if self.chunk_description_manager.needs_update(doc)]
+                
+                response = f"*neural description analytics:*\n\n"
+                response += f"**Documents with descriptions:** {doc_count}\n"
+                response += f"**Total chunks with descriptions:** {chunk_count}\n"
+                response += f"**Documents needing updates:** {len(needs_update)}\n"
+                
+                if needs_update:
+                    response += "\n**Pending updates:**\n"
+                    for doc in needs_update[:10]:  # Limit to 10
+                        response += f"- {doc}\n"
+                    if len(needs_update) > 10:
+                        response += f"- *plus {len(needs_update)-10} more...*\n"
+                
+                await interaction.followup.send(response)
+            except Exception as e:
+                logger.error(f"Error showing description stats: {e}")
+                await interaction.followup.send("*neural circuit overload!* couldn't retrieve description statistics.")
 
         @self.tree.command(name="history", description="Display your conversation history with the bot")
         @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
@@ -1309,17 +1951,17 @@ class DiscordBot(commands.Bot):
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
             app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1"),
-            app_commands.Choice(name="Gemini Flash 2.0 (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
+            app_commands.Choice(name="Gemini 2.0 Flash (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
             try:
                 success = self.user_preferences_manager.set_preferred_model(str(interaction.user.id), model)
                 
-                model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
                 if success:
-                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
+                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                 else:
                     await interaction.followup.send("*synaptic error detected!* Failed to set your preferred model. Please try again later.")
                     
@@ -1336,9 +1978,9 @@ class DiscordBot(commands.Bot):
                     default_model=self.config.LLM_MODEL
                 )
                 
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
-                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini Flash 2.0**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
+                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                     
             except Exception as e:
                 logger.error(f"Error getting preferred model: {e}")
@@ -1363,23 +2005,27 @@ class DiscordBot(commands.Bot):
         async def list_documents(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
-                if not self.document_manager.metadata:
+                doc_names = list(self.document_manager.metadata.keys())
+                if not doc_names:
                     await interaction.followup.send("No documents found in the knowledge base.")
                     return
-                    
-                response = "Available documents:\n```"
-                for doc_name, meta in self.document_manager.metadata.items():
-                    chunks = meta['chunk_count']
-                    added = meta['added']
-                    response += f"\n{doc_name} - {chunks} chunks (Added: {added})"
+                
+                # Sort document names
+                doc_names.sort()
+                
+                # Format list with details
+                response = "📚 **Documents in Knowledge Base**:\n```\n"
+                for name in doc_names:
+                    if name in self.document_manager.metadata:
+                        chunks = len(self.document_manager.chunks.get(name, []))
+                        date = self.document_manager.metadata[name].get("date", "Unknown")
+                        response += f"{name} - {chunks} chunks - Added: {date}\n"
                 response += "```"
                 
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                await self.send_split_followup(interaction, response)
             except Exception as e:
                 await interaction.followup.send(f"Error listing documents: {str(e)}")
-                
-                
+
         @self.tree.command(name="query", description="Ask Publicia a question about Ledus Banum 77 and Imperial lore")
         @app_commands.describe(
             question="Your question about the lore",
@@ -1399,11 +2045,13 @@ class DiscordBot(commands.Bot):
                 
                 # Process image URL if provided
                 image_attachments = []
+                status_message = None
+                
                 if image_url:
                     try:
                         # Check if URL appears to be a direct image link
                         if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                            await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
+                            status_message = await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
                             
                             # Download the image
                             async with aiohttp.ClientSession() as session:
@@ -1419,16 +2067,23 @@ class DiscordBot(commands.Bot):
                                             image_attachments.append(image_base64)
                                             logger.info(f"Processed image from URL: {image_url}")
                                         else:
-                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=True)
+                                            await status_message.edit(content="*neural error detected!* The URL does not point to a valid image.")
+                                            return
                                     else:
-                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=True)
+                                        await status_message.edit(content=f"*neural error detected!* Could not download image (status code: {resp.status}).")
+                                        return
                         else:
-                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            status_message = await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            return
                     except Exception as e:
                         logger.error(f"Error processing image URL: {e}")
-                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        if status_message:
+                            await status_message.edit(content="*neural error detected!* Failed to process the image URL.")
+                        else:
+                            status_message = await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        return
                 else:
-                    await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
+                    status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
                 
                 # Step 1: Analyze the query with Gemini
                 analysis = await self.analyze_query(question)
@@ -1439,7 +2094,7 @@ class DiscordBot(commands.Bot):
                 logger.info(f"Found {len(search_results)} relevant document sections")
 
                 # Step 3: Synthesize search results with Gemini
-                await interaction.followup.send("*searching imperial databases... synthesizing information...*", ephemeral=True)
+                await status_message.edit(content="*searching imperial databases... synthesizing information...*")
                 synthesis = await self.synthesize_results(question, search_results, analysis)
                 logger.info(f"Document synthesis complete")
                 
@@ -1452,7 +2107,7 @@ class DiscordBot(commands.Bot):
                 # Check if the question contains any Google Doc links
                 doc_ids = await self._extract_google_doc_ids(question)
                 if doc_ids:
-                    await interaction.followup.send("*detected Google Doc links in your query... fetching content...*", ephemeral=True)
+                    await status_message.edit(content="*detected Google Doc links in your query... fetching content...*")
                     for doc_id, doc_url in doc_ids:
                         content = await self._fetch_google_doc_content(doc_id)
                         if content:
@@ -1535,16 +2190,16 @@ class DiscordBot(commands.Bot):
                 )
 
                 # Get friendly model name
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
                 # If we have images and the preferred model doesn't support vision, use Gemini
                 if image_attachments and preferred_model not in self.vision_capable_models:
                     preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
                     model_name = "Gemini Pro (for image analysis)"
-                    await interaction.followup.send(f"*your preferred model doesn't support image analysis, switching to {model_name}...*", ephemeral=True)
+                    await status_message.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
 
                 # Step 5: Get AI response using user's preferred model
-                await interaction.followup.send(f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*", ephemeral=True)
+                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
                 completion = await self._try_ai_completion(
                     preferred_model,
                     messages,
@@ -1558,7 +2213,7 @@ class DiscordBot(commands.Bot):
                     # No longer updating conversation history for query command
                     # This makes it a one-off interaction
                     
-                    # Send the response, splitting if necessary
+                    # Split the response if necessary
                     chunks = split_message(response)
                     
                     # Add debug info to the last chunk if debug mode is enabled
@@ -1566,14 +2221,21 @@ class DiscordBot(commands.Bot):
                         if len(chunks) > 0:
                             chunks[-1] += f"\n\n*[Debug: Response generated using {model_name}]*"
                     
-                    for chunk in chunks:
+                    # Replace the status message with the first chunk
+                    await status_message.edit(content=chunks[0])
+                    
+                    # Send any additional chunks as new messages
+                    for chunk in chunks[1:]:
                         await interaction.followup.send(chunk)
                 else:
-                    await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
+                    await status_message.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
             except Exception as e:
                 logger.error(f"Error processing query: {e}")
-                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+                if 'status_message' in locals() and status_message:
+                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
+                else:
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
 
         @self.tree.command(name="searchdocs", description="Search the document knowledge base")
         @app_commands.describe(query="What to search for")
@@ -1589,8 +2251,8 @@ class DiscordBot(commands.Bot):
                     response += f"\nFrom {doc_name} (similarity: {similarity:.2f}):\n"
                     response += f"{chunk[:200]}...\n"
                 response += "```"
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                
+                await self.send_split_followup(interaction, response)
             except Exception as e:
                 await interaction.followup.send(f"Error searching documents: {str(e)}")
 
@@ -1632,12 +2294,20 @@ class DiscordBot(commands.Bot):
                     # Assume the input is already a Doc ID
                     doc_id = doc_url
                 
+                # If no custom name provided, try to get the document title
+                if name is None:
+                    await interaction.followup.send("*scanning document metadata...*")
+                    doc_title = await self._fetch_google_doc_title(doc_id)
+                    if doc_title:
+                        name = doc_title
+                        await interaction.followup.send(f"*document identified as: '{doc_title}'*")
+                
                 # Add to tracked list
                 result = self.document_manager.track_google_doc(doc_id, name)
                 await interaction.followup.send(f"*synapses connecting to document ({doc_url})*\n{result}")
                 
                 # Download just this document instead of refreshing all
-                await interaction.followup.send("*initiating neural download sequence...*")
+                #await interaction.followup.send("*initiating neural download sequence...*")
                 success = await self.refresh_single_google_doc(doc_id, name)
                 
                 if success:
@@ -1651,29 +2321,42 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="list_googledocs", description="List all tracked Google Docs")
         async def list_google_docs(interaction: discord.Interaction):
             await interaction.response.defer()
-            tracked_file = Path(self.document_manager.base_dir) / "tracked_google_docs.json"
-            if not tracked_file.exists():
-                await interaction.followup.send("*no google docs detected in my neural network...*")
-                return
+            try:
+                # Get Google Doc mappings
+                doc_mappings = self.document_manager.get_googledoc_id_mapping()
                 
-            with open(tracked_file, 'r') as f:
-                tracked_docs = json.load(f)
-            
-            if not tracked_docs:
-                await interaction.followup.send("*my neural pathways show no connected google docs*")
-                return
+                if not doc_mappings:
+                    await interaction.followup.send("*no tracked google docs found in my memory banks!*")
+                    return
                 
-            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n```"
-            for doc in tracked_docs:
-                doc_id = doc['id']
-                name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
-                doc_url = f"https://docs.google.com/document/d/{doc_id}"
-                response += f"\n{name} - URL: {doc_url}"
-            response += "```"
-            
-            for chunk in split_message(response):
-                await interaction.followup.send(chunk)
+                # Format the list
+                response = "🔗 **Tracked Google Documents**:\n```\n"
+                for name, doc_id in doc_mappings.items():
+                    doc_url = f"https://docs.google.com/document/d/{doc_id}"
+                    response += f"{name} - {doc_url}\n"
+                response += "```"
                 
+                # Ensure message is not too long
+                await self.send_split_followup(interaction, response)
+                
+            except Exception as e:
+                logger.error(f"Error listing Google Docs: {e}")
+                await interaction.followup.send("*neural error!* couldn't retrieve google docs list right now...")
+
+        @self.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook")
+        @app_commands.describe(
+            current_name="Current name of the document to rename",
+            new_name="New name for the document"
+        )
+        async def rename_document(interaction: discord.Interaction, current_name: str, new_name: str):
+            await interaction.response.defer()
+            try:
+                result = self.document_manager.rename_document(current_name, new_name)
+                await interaction.followup.send(f"*synaptic pathways reconfiguring...*\n{result}")
+            except Exception as e:
+                logger.error(f"Error renaming document: {e}")
+                await interaction.followup.send(f"*neural pathway error!* couldn't rename document: {str(e)}")
+
         @self.tree.command(name="remove_googledoc", description="Remove a Google Doc from the tracked list")
         @app_commands.describe(
             identifier="Google Doc ID, URL, or custom name to remove"
@@ -1825,7 +2508,7 @@ class DiscordBot(commands.Bot):
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
                 response += "  - **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
-                response += "  - **Gemini Flash 2.0**: Better for citations, accuracy, and faster responses\n"
+                response += "  - **Gemini 2.0 Flash**: Better for citations, accuracy, and faster responses\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
@@ -2032,6 +2715,7 @@ class DiscordBot(commands.Bot):
 
     async def on_message(self, message: discord.Message):
         """Handle incoming messages, ignoring banned users."""
+        print("----------------------------------------------")
         try:
             # Process commands first
             await self.process_commands(message)
@@ -2225,7 +2909,7 @@ class DiscordBot(commands.Bot):
             )
 
             # Get friendly model name
-            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini Flash 2.0"
+            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
 
             # If we have images and the preferred model doesn't support vision, use Gemini
             if image_attachments and preferred_model not in self.vision_capable_models:
@@ -2348,6 +3032,43 @@ class DiscordBot(commands.Bot):
                 
         except Exception as e:
             logger.error(f"Error downloading doc {doc_id}: {e}")
+            return None
+
+    async def _fetch_google_doc_title(self, doc_id: str) -> Optional[str]:
+        """
+        Fetch the title of a Google Doc.
+        
+        Args:
+            doc_id: The Google Doc ID
+            
+        Returns:
+            The document title or None if failed
+        """
+        try:
+            # Use the Drive API endpoint to get document metadata
+            async with aiohttp.ClientSession() as session:
+                # This is a public metadata endpoint that works for publicly accessible documents
+                url = f"https://docs.google.com/document/d/{doc_id}/mobilebasic"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to get metadata for {doc_id}: {response.status}")
+                        return None
+                    
+                    html_content = await response.text()
+                    
+                    # Extract title from HTML content
+                    # The title is typically in the <title> tags
+                    match = re.search(r'<title>(.*?)</title>', html_content)
+                    if match:
+                        title = match.group(1)
+                        # Remove " - Google Docs" suffix if present
+                        title = re.sub(r'\s*-\s*Google\s+Docs$', '', title)
+                        return title
+            
+            return None
+                
+        except Exception as e:
+            logger.error(f"Error getting title for doc {doc_id}: {e}")
             return None
 
 async def main():

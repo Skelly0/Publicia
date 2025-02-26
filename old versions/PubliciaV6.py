@@ -37,64 +37,40 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
-def split_message(text, max_length=1750):
+def split_message(text, max_length=2000):
         """
         Split a text string into chunks under max_length characters,
-        preserving newlines where possible but avoiding unnecessary splits.
+        preserving newlines where possible.
         """
-        if not text:
-            return []
-            
-        # If the text is shorter than max_length, return it as a single chunk
-        if len(text) <= max_length:
-            return [text]
-            
+        lines = text.split('\n')
         chunks = []
-        current_chunk = ""
+        current_chunk = []
+        current_text = ""
         
-        # Split by paragraphs first (double newlines)
-        paragraphs = text.split('\n\n')
-        
-        for i, paragraph in enumerate(paragraphs):
-            # Check if adding this paragraph (with double newline if not the first paragraph)
-            # would exceed the max length
-            separator = '\n\n' if current_chunk and i > 0 else ''
-            if len(current_chunk + separator + paragraph) <= max_length:
-                # We can add this paragraph to the current chunk
-                current_chunk = current_chunk + separator + paragraph
+        for line in lines:
+            if current_chunk:
+                test_text = current_text + '\n' + line
             else:
-                # Check if the current chunk has content
-                if current_chunk:
-                    chunks.append(current_chunk)
-                
-                # If the paragraph itself is longer than max_length, split it by lines
-                if len(paragraph) > max_length:
-                    lines = paragraph.split('\n')
-                    current_chunk = ""
-                    
-                    for line in lines:
-                        if len(current_chunk + ('' if not current_chunk else '\n') + line) <= max_length:
-                            current_chunk = current_chunk + ('' if not current_chunk else '\n') + line
-                        else:
-                            # If the line itself is too long
-                            if current_chunk:
-                                chunks.append(current_chunk)
-                                current_chunk = ""
-                            
-                            # Split the line into smaller chunks
-                            for j in range(0, len(line), max_length):
-                                line_chunk = line[j:j + max_length]
-                                if j + max_length >= len(line):
-                                    current_chunk = line_chunk
-                                else:
-                                    chunks.append(line_chunk)
-                else:
-                    current_chunk = paragraph
-        
-        # Add the last chunk if it has content
-        if current_chunk:
-            chunks.append(current_chunk)
+                test_text = line
             
+            if len(test_text) > max_length:
+                if current_chunk:
+                    chunks.append(current_text)
+                    current_chunk = [line]
+                    current_text = line
+                else:
+                    # The single line is too long, split it
+                    for i in range(0, len(line), max_length):
+                        chunks.append(line[i:i+max_length])
+                    current_chunk = []
+                    current_text = ""
+            else:
+                current_chunk.append(line)
+                current_text = test_text
+        
+        if current_chunk:
+            chunks.append(current_text)
+        
         return chunks
         
 def sanitize_for_logging(text: str) -> str:
@@ -516,7 +492,7 @@ class Config:
         self._validate_config()
         
         # Add timeout settings
-        self.API_TIMEOUT = int(os.getenv('API_TIMEOUT', '150'))
+        self.API_TIMEOUT = int(os.getenv('API_TIMEOUT', '30'))
         self.MAX_RETRIES = int(os.getenv('MAX_RETRIES', '10'))
         
         
@@ -982,10 +958,8 @@ class DiscordBot(commands.Bot):
     async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float]]:
         """Perform an enhanced search based on query analysis."""
         try:
-            # Check if analysis is a dictionary and has the success key
-            if not isinstance(analysis, dict) or not analysis.get("success", False):
-                # Fall back to basic search if analysis failed or is not a dict
-                logger.info("Analysis is not valid, falling back to basic search")
+            if not analysis.get("success", False):
+                # Fall back to basic search if analysis failed
                 return self.document_manager.search(query)
                 
             # Extract search keywords
@@ -1090,45 +1064,24 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error synthesizing results: {e}")
             return ""  # Fall back to empty string
 
-    async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None, existing_message=None):
-        """Send a message split into chunks if it's too long."""
+    async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None):
+        """Helper method to send messages, splitting them if they exceed 2000 characters."""
         chunks = split_message(text)
         
-        if model_used and user_id:
-            debug_mode = self.user_preferences_manager.get_debug_mode(user_id)
-            if debug_mode:
+        # Add debug info to the last chunk if debug mode is enabled and model info is provided
+        if model_used and user_id and self.user_preferences_manager.get_debug_mode(user_id):
+            # If there's only one chunk or we're at the last chunk
+            if len(chunks) > 0:
+                # Add model info to the last chunk
                 debug_info = f"\n\n*[Debug: Response generated using {model_used}]*"
-                
-                # Check if adding debug info would exceed the character limit
-                if len(chunks[-1]) + len(debug_info) > 1750:
-                    # Create a new chunk for the debug info
-                    chunks.append(debug_info)
-                else:
-                    chunks[-1] += debug_info
+                chunks[-1] += debug_info
         
-        # Update existing message with first chunk if provided
-        if existing_message and chunks:
-            await existing_message.edit(content=chunks[0])
-            chunks = chunks[1:]  # Remove the first chunk since it's already sent
-        
-        # Send remaining chunks as new messages concurrently to minimize interruptions
-        if chunks:
-            # For the first chunk, use the reference if no existing_message was provided
-            first_message_kwargs = {
-                "content": chunks[0],
-                "reference": reference if existing_message is None else None,
-                "mention_author": mention_author if existing_message is None else False
-            }
-            
-            # Use asyncio.gather to send all chunks concurrently
-            send_tasks = [channel.send(**first_message_kwargs)]
-            
-            # Add the rest of the chunks without reference
-            for chunk in chunks[1:]:
-                send_tasks.append(channel.send(chunk))
-            
-            # Execute all send operations concurrently
-            await asyncio.gather(*send_tasks)
+        for i, chunk in enumerate(chunks):
+            await channel.send(
+                chunk,
+                reference=reference if i == 0 else None,
+                mention_author=mention_author if i == 0 else False
+            )
 
     async def refresh_google_docs(self):
         """Refresh all tracked Google Docs."""
@@ -1455,9 +1408,7 @@ class DiscordBot(commands.Bot):
                 model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
                 if success:
-                    response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times"
-                    for chunk in split_message(response):
-                        await interaction.followup.send(chunk)
+                    await interaction.followup.send(f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                 else:
                     await interaction.followup.send("*synaptic error detected!* Failed to set your preferred model. Please try again later.")
                     
@@ -1476,15 +1427,12 @@ class DiscordBot(commands.Bot):
                 
                 model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
                 
-                response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times"
-                
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                await interaction.followup.send(f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times")
                     
             except Exception as e:
                 logger.error(f"Error getting preferred model: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving your preferred model.")
-
+                
         @self.tree.command(name="lobotomise", description="Wipe your conversation history with the bot")
         async def lobotomise(interaction: discord.Interaction):
             await interaction.response.defer()
@@ -1708,14 +1656,20 @@ class DiscordBot(commands.Bot):
                     # No longer updating conversation history for query command
                     # This makes it a one-off interaction
                     
-                    # Use the status message as the existing message for the first chunk
-                    await self.send_split_message(
-                        interaction.channel,
-                        response,
-                        model_used=model_name,
-                        user_id=str(interaction.user.id),
-                        existing_message=status_message
-                    )
+                    # Split the response if necessary
+                    chunks = split_message(response)
+                    
+                    # Add debug info to the last chunk if debug mode is enabled
+                    if self.user_preferences_manager.get_debug_mode(str(interaction.user.id)):
+                        if len(chunks) > 0:
+                            chunks[-1] += f"\n\n*[Debug: Response generated using {model_name}]*"
+                    
+                    # Replace the status message with the first chunk
+                    await status_message.edit(content=chunks[0])
+                    
+                    # Send any additional chunks as new messages
+                    for chunk in chunks[1:]:
+                        await interaction.followup.send(chunk)
                 else:
                     await status_message.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
@@ -1823,17 +1777,17 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send("*my neural pathways show no connected google docs*")
                 return
                 
-            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"
+            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"#```"
             for doc in tracked_docs:
                 doc_id = doc['id']
                 name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
                 doc_url = f"<https://docs.google.com/document/d/{doc_id}>"
                 response += f"\n{name} - URL: {doc_url}"
+            #response += "```"
             
-            # Split the message to avoid Discord's 2000 character limit
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
-
+            
         @self.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook")
         @app_commands.describe(
             current_name="Current name of the document to rename",
@@ -1898,11 +1852,8 @@ class DiscordBot(commands.Bot):
                 doc_url = f"https://docs.google.com/document/d/{doc_id}"
                 doc_name = removed_doc.get('custom_name') or f"googledoc_{doc_id}"
                 
-                response = f"*i've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*\n\n*note: document content might still be in my memory. use `/listdocs` to check and `/removedoc` if needed*"
+                await interaction.followup.send(f"*i've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*\n\n*note: document content might still be in my memory. use `/listdocs` to check and `/removedoc` if needed*")
                 
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
-                    
             except Exception as e:
                 logger.error(f"Error removing Google Doc: {e}")
                 await interaction.followup.send(f"*my enhanced brain experienced an error!* couldn't remove document: {str(e)}")
@@ -2179,9 +2130,7 @@ class DiscordBot(commands.Bot):
                         ) as response:
                             if response.status != 200:
                                 error_text = await response.text()
-                                logger.error(f"API error (Status {response.status}): {error_text}")
-                                # Log additional context like headers to help diagnose issues
-                                logger.error(f"Request context: URL={response.url}, Headers={response.headers}")
+                                logger.error(f"API error: {error_text}")
                                 return None
                                 
                             return await response.json()
@@ -2203,13 +2152,10 @@ class DiscordBot(commands.Bot):
                     return completion
                     
             except Exception as e:
-                # Get the full traceback information
-                import traceback
-                tb = traceback.format_exc()
-                logger.error(f"Error with model {current_model}: {str(e)}\nTraceback:\n{tb}")
+                logger.error(f"Error with model {current_model}: {e}")
                 continue
         
-        logger.error(f"All models failed to generate completion. Attempted models: {', '.join(models)}")
+        logger.error("All models failed to generate completion")
         return None
 
     async def on_message(self, message: discord.Message):
@@ -2429,7 +2375,8 @@ class DiscordBot(commands.Bot):
                 temperature=0.1
             )
 
-            # We no longer need to delete the thinking message as we'll reuse it
+            # Delete the thinking message
+            await thinking_msg.delete()
 
             if completion and completion.get('choices'):
                 response = completion['choices'][0]['message']['content']
@@ -2453,15 +2400,14 @@ class DiscordBot(commands.Bot):
                     channel_name
                 )
 
-                # Send the response, replacing thinking message with the first chunk
+                # Send the response, splitting if necessary
                 await self.send_split_message(
                     message.channel,
                     response,
                     reference=message,
                     mention_author=False,
                     model_used=model_name,
-                    user_id=str(message.author.id),
-                    existing_message=thinking_msg
+                    user_id=str(message.author.id)
                 )
             else:
                 await self.send_split_message(
