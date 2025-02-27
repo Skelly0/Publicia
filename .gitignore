@@ -39,7 +39,9 @@ images/
 avatars/
 user_preferences/
 *.pkl
+# JSON files (banned_users.json and others excluded by default)
 *.json
+# Exceptions - these JSON files ARE tracked
 !tracked_google_docs.json
 !requirements.json
 
