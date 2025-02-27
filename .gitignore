@@ -35,6 +35,9 @@ ENV/
 conversations/
 documents/
 lorebooks/
+images/
+avatars/
+user_preferences/
 *.pkl
 *.json
 !tracked_google_docs.json
