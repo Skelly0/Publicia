@@ -2175,11 +2175,11 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
-            app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1:free"),
-            app_commands.Choice(name="Gemini 2.0 Flash (better for citations, accuracy, and faster responses, and has image viewing capabilities)", value="google/gemini-2.0-flash-001"),
-            app_commands.Choice(name="Nous: Hermes 405B Instruct", value="nousresearch/hermes-3-llama-3.1-405b"),
-            app_commands.Choice(name="Claude 3.5 Haiku (creative, fast, and has image viewing capabilities)", value="anthropic/claude-3.5-haiku:beta"),
-            app_commands.Choice(name="Claude 3.7 Sonnet (admin only, most advanced, and most expensive)", value="anthropic/claude-3.7-sonnet:beta"),
+            app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses)", value="deepseek/deepseek-r1:free"),
+            app_commands.Choice(name="Gemini 2.0 Flash (best for accuracy, citations, and image analysis)", value="google/gemini-2.0-flash-001"),
+            app_commands.Choice(name="Nous: Hermes 405B (balanced between creativity and factual precision)", value="nousresearch/hermes-3-llama-3.1-405b"),
+            app_commands.Choice(name="Claude 3.5 Haiku (fast responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
+            app_commands.Choice(name="Claude 3.7 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.7-sonnet:beta"),
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
@@ -2207,11 +2207,11 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion",
-                        "**Gemini 2.0 Flash**: Good for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
-                        "**Nous: Hermes 405B Instruct**: Balanced between creativity and accuracy",
-                        "**Claude 3.5 Haiku**: Fast and creative, and has image viewing capabilities",
-                        "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
+                        "**DeepSeek-R1**: Exceptional for roleplaying with vivid descriptions and strong character voice. Creates memorable responses with excellent metaphors. Best for immersion but may prioritize style over strict factual precision.",
+                        "**Gemini 2.0 Flash**: Superior citation formatting and document analysis. Provides well-structured information, faster responses, and supports image analysis. Ideal for research but less immersive than other models.",
+                        "**Nous: Hermes 405B Instruct**: Good balance between creativity and facts with strong reasoning. Handles complex topics with nuance while maintaining character. Perfect middle ground but not specialized in either direction.",
+                        "**Claude 3.5 Haiku**: Fast, creative responses balancing efficiency and character. Supports image analysis with concise delivery. Good for quick interactions but less elaborate than larger models.",
+                        "**Claude 3.7 Sonnet**: Most advanced capabilities combining creative excellence with precision. Excellent citations and image analysis. Restricted to admins due to cost and may be overkill for simple queries."
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -3067,8 +3067,9 @@ class DiscordBot(commands.Bot):
                 response += "## **CORE FUNCTIONALITY**\n\n"
                 response += "**🔍 Asking Questions**\n"
                 response += "• **Mention me** in a message with your question about Ledus Banum 77 and Imperial lore\n"
-                response += "• Use `/query` command for more structured questions\n"
-                response += "• I'll search my knowledge base and provide answers with citations where possible\n\n"
+                response += "• Use `/query` command for more structured questions (supports image URLs for analysis)\n"
+                response += "• I'll search my knowledge base and provide answers with citations where possible\n"
+                response += "• You can attach images directly to mentioned messages for visual analysis\n\n"
                 
                 # Knowledge Base
                 response += "## **KNOWLEDGE BASE & LIMITATIONS**\n\n"
@@ -3091,17 +3092,18 @@ class DiscordBot(commands.Bot):
                 response += "• I analyze your query to understand what you're looking for\n"
                 response += "• I synthesize information from multiple documents when needed\n"
                 response += "• I provide citations to document sources when possible\n"
-                response += "• I use vector embeddings to match your questions with relevant content\n\n"
+                response += "• I use vector embeddings to match your questions with relevant content\n"
+                response += "• I automatically extract content from Google Docs linked in your queries\n\n"
                 
                 # Image Analysis
                 response += "**🖼️ Image Analysis**\n"
                 response += "• I can analyze images in three ways:\n"
-                response += "  - Attach an image directly when mentioning me\n"
-                response += "  - Use `/query` with an image URL\n"
-                response += "  - I can search my image database for relevant visual information\n"
+                response += "- Attach an image directly when mentioning me\n"
+                response += "- Use `/query` with an image URL\n"
+                response += "- I can search my image database for relevant visual information\n"
                 response += "• I can recognize content in images and integrate them into my responses\n"
                 response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
-                response += "• *Note: Image analysis requires a vision-capable model like Gemini*\n\n"
+                response += "• Vision-capable models: Gemini 2.0 Flash, Claude 3.5 Haiku, Claude 3.7 Sonnet\n\n"
                 
                 # Document Management
                 response += "## **DOCUMENT & IMAGE MANAGEMENT**\n\n"
@@ -3109,7 +3111,7 @@ class DiscordBot(commands.Bot):
                 response += "• `/add_info` - Add text directly to my knowledge base\n"
                 response += "• `Publicia! add_doc` - Add a document with an attachment\n"
                 response += "• `/add_googledoc` - Connect a Google Doc to my knowledge base\n"
-                response += "• `Publicia! add_image \"name\" [yes/no](yes/no controls whether to auto-generate a description, default is yes)` - Add an image from an attachment to my visual knowledge base\n\n"
+                response += "• `Publicia! add_image \"name\" [yes/no]` - Add an image with optional auto-description\n\n"
                 
                 response += "**📋 Managing Documents & Images**\n"
                 response += "• `/list_docs` - See all documents in my knowledge base\n"
@@ -3122,32 +3124,36 @@ class DiscordBot(commands.Bot):
                 response += "• `/search_docs` - Search directly in my document knowledge base\n"
                 response += "• `/update_image_description` - Update the description for an image\n\n"
                 
-                # Conversation Management - UPDATED SECTION WITH NEW COMMANDS
+                # Conversation Management
                 response += "## **CONVERSATION MANAGEMENT**\n\n"
                 response += "**💬 Conversation History**\n"
                 response += "• `/history` - View your complete conversation history with me\n"
-                response += "• `/manage_history` - View recent messages with numbered indices for selective deletion\n"
-                response += "• `/delete_history_messages` - Remove specific messages using their indices (requires confirmation with 'confirm:yes')\n"
-                response += "• Type \"LOBOTOMISE\" in a message to wipe your entire conversation history\n"
+                response += "• `/manage_history` - View recent messages with numbered indices for deletion\n"
+                response += "• `/delete_history_messages` - Remove specific messages by indices (use confirm:yes)\n"
+                response += "• Type \"LOBOTOMISE\" in a message to Publicia, or use the /lobotomise command to wipe your entire conversation history\n"
                 response += "• I remember our conversations to provide better context-aware responses\n\n"
                 
                 # Customization
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "- **DeepSeek-R1**: Better for roleplaying, creative responses, and immersion\n"
-                response += "- **Gemini 2.0 Flash**: Better for citations, accuracy, faster responses, and image analysis\n"
+                response += "- **DeepSeek-R1**: Best for immersive roleplaying and creative responses\n"
+                response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis\n"
+                response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
+                response += "- **Claude 3.5 Haiku**: Fast responses with image capabilities\n"
+                response += "- **Claude 3.7 Sonnet**: Admin only, premium all-around capabilities\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
                 # Technical Information
                 response += "## **TECHNICAL INFORMATION**\n\n"
                 response += "**⚙️ Technical Details**\n"
-                response += "• I'm powered by OpenRouter.ai and access to multiple LLM models\n"
+                response += "• I'm powered by OpenRouter.ai with access to multiple LLM models\n"
+                response += "• I have automatic fallback between models if one fails\n"
                 response += "• I process documents and images using semantic search and vector embeddings\n"
                 response += "• My database stores text chunks, image descriptions, and their embeddings\n"
                 response += "• Google Doc integration uses public access to fetch document content\n"
-                response += "• Image analysis is handled by vision-capable models like Gemini\n\n"
+                response += "• Image analysis requires vision-capable models (Gemini, Claude)\n\n"
                 
                 # Tips
                 response += "## **TIPS FOR BEST RESULTS**\n\n"
@@ -3155,11 +3161,8 @@ class DiscordBot(commands.Bot):
                 response += "• If I don't know something, add relevant documents or images to my database\n"
                 response += "• Use Google Docs integration for large, regularly updated documents\n"
                 response += "• Include links to Google Docs in your queries for on-the-fly context\n"
-                response += "• For image analysis, use clear images with good lighting\n"
-                response += "• Add relevant images to my knowledge base using `/add_image`\n"
-                response += "• Use `/search_docs` to find specific information in the knowledge base\n"
-                response += "• Try both AI models to see which works best for different types of questions\n\n"
-                
+                response += "• For adding images, I recommend labelling things within the image to help me have a better idea of how it relates to the lore\n"
+                response += "• If you're unsure about the model to use, use the default Gemini 2.0 Flash for general queries\n"
                 response += "*my genetically enhanced brain is always ready to help... just ask!*"
                 
                 # Send the response in chunks
