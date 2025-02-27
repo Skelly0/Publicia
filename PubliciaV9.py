@@ -3,34 +3,30 @@ import os
 import json
 import logging
 import asyncio
-from datetime import datetime
-from typing import List, Dict, Optional, Tuple  # Added Tuple for the return type
-import numpy as np
-from pathlib import Path
-import pickle
-from sentence_transformers import SentenceTransformer
-import torch
 import aiohttp
 import discord
-from discord.ext import commands
-from dotenv import load_dotenv
-from collections import deque
-from textwrap import shorten
 import sys
 import io
-import asyncio
-import aiohttp
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import discord
-from discord import app_commands
-from discord.ext import commands
-from system_prompt import SYSTEM_PROMPT
-from typing import Any
+import re
+import uuid
+import pickle
 import time
 import random
 import base64
-import re
-import uuid
+from datetime import datetime
+from typing import List, Dict, Optional, Tuple, Any
+from pathlib import Path
+from textwrap import shorten
+from collections import deque
+from dotenv import load_dotenv
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from discord import app_commands
+from discord.ext import commands
+from system_prompt import SYSTEM_PROMPT
+from image_prompt import IMAGE_DESCRIPTION_PROMPT
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import torch
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
@@ -38,65 +34,87 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
+def is_image(attachment):
+    """Check if an attachment is an image based on content type or file extension."""
+    if attachment.content_type and attachment.content_type.startswith('image/'):
+        return True
+    # Fallback to checking file extension
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff']
+    return any(attachment.filename.lower().endswith(ext) for ext in image_extensions)
+
+
 def split_message(text, max_length=1750):
-        """
-        Split a text string into chunks under max_length characters,
-        preserving newlines where possible but avoiding unnecessary splits.
-        """
-        if not text:
-            return []
-            
-        # If the text is shorter than max_length, return it as a single chunk
-        if len(text) <= max_length:
-            return [text]
-            
-        chunks = []
-        current_chunk = ""
+    """
+    Split a text string into chunks under max_length characters,
+    preserving newlines where possible but avoiding unnecessary splits.
+    """
+    if not text:
+        return []
         
-        # Split by paragraphs first (double newlines)
-        paragraphs = text.split('\n\n')
+    # If the text is shorter than max_length, return it as a single chunk
+    if len(text) <= max_length:
+        return [text]
         
-        for i, paragraph in enumerate(paragraphs):
-            # Check if adding this paragraph (with double newline if not the first paragraph)
-            # would exceed the max length
-            separator = '\n\n' if current_chunk and i > 0 else ''
-            if len(current_chunk + separator + paragraph) <= max_length:
-                # We can add this paragraph to the current chunk
-                current_chunk = current_chunk + separator + paragraph
-            else:
-                # Check if the current chunk has content
-                if current_chunk:
-                    chunks.append(current_chunk)
+    chunks = []
+    current_chunk = ""
+    
+    # Split by paragraphs first (double newlines)
+    paragraphs = text.split('\n\n')
+    
+    for i, paragraph in enumerate(paragraphs):
+        # Check if adding this paragraph (with double newline if not the first paragraph)
+        # would exceed the max length
+        separator = '\n\n' if current_chunk and i > 0 else ''
+        if len(current_chunk + separator + paragraph) <= max_length:
+            # We can add this paragraph to the current chunk
+            current_chunk = current_chunk + separator + paragraph
+        else:
+            # Check if the current chunk has content
+            if current_chunk:
+                chunks.append(current_chunk)
+            
+            # If the paragraph itself is longer than max_length, split it by lines
+            if len(paragraph) > max_length:
+                lines = paragraph.split('\n')
+                current_chunk = ""
                 
-                # If the paragraph itself is longer than max_length, split it by lines
-                if len(paragraph) > max_length:
-                    lines = paragraph.split('\n')
-                    current_chunk = ""
-                    
-                    for line in lines:
-                        if len(current_chunk + ('' if not current_chunk else '\n') + line) <= max_length:
-                            current_chunk = current_chunk + ('' if not current_chunk else '\n') + line
-                        else:
-                            # If the line itself is too long
-                            if current_chunk:
-                                chunks.append(current_chunk)
-                                current_chunk = ""
-                            
-                            # Split the line into smaller chunks
+                for line in lines:
+                    if len(current_chunk + ('' if not current_chunk else '\n') + line) <= max_length:
+                        current_chunk = current_chunk + ('' if not current_chunk else '\n') + line
+                    else:
+                        # If the line itself is too long
+                        if current_chunk:
+                            chunks.append(current_chunk)
+                            current_chunk = ""
+                        
+                        # Split the line into smaller chunks if needed
+                        if len(line) > max_length:
                             for j in range(0, len(line), max_length):
                                 line_chunk = line[j:j + max_length]
                                 if j + max_length >= len(line):
                                     current_chunk = line_chunk
                                 else:
                                     chunks.append(line_chunk)
-                else:
-                    current_chunk = paragraph
-        
-        # Add the last chunk if it has content
-        if current_chunk:
-            chunks.append(current_chunk)
-            
-        return chunks
+                        else:
+                            current_chunk = line
+            else:
+                current_chunk = paragraph
+    
+    # Add the last chunk if it has content
+    if current_chunk:
+        chunks.append(current_chunk)
+    
+    # Final safety check: ensure no chunk exceeds max_length
+    final_chunks = []
+    for chunk in chunks:
+        if len(chunk) <= max_length:
+            final_chunks.append(chunk)
+        else:
+            # Split any chunk that somehow exceeds max_length
+            for j in range(0, len(chunk), max_length):
+                final_chunks.append(chunk[j:j + max_length])
+    
+    return final_chunks
         
 def sanitize_for_logging(text: str) -> str:
     """Remove problematic characters like BOM from the string for safe logging."""
@@ -397,11 +415,24 @@ class DocumentManager:
     
     def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
         """Split text into overlapping chunks."""
+        # Handle empty text
+        if not text or not text.strip():
+            return []
+            
         words = text.split()
-        chunks = []
         
+        # Handle text with too few words
+        if not words:
+            return []
+        
+        if len(words) <= chunk_size:
+            return [' '.join(words)]
+        
+        chunks = []
         for i in range(0, len(words), chunk_size - overlap):
-            chunk = ' '.join(words[i:i + chunk_size])
+            # Ensure we don't go out of bounds
+            end_idx = min(i + chunk_size, len(words))
+            chunk = ' '.join(words[i:end_idx])
             chunks.append(chunk)
             
         return chunks
@@ -429,10 +460,15 @@ class DocumentManager:
     def add_document(self, name: str, content: str, save_to_disk: bool = True):
         """Add a new document to the system."""
         try:
+            # Check if content is empty
+            if not content or not content.strip():
+                logger.warning(f"Document {name} has no content. Skipping.")
+                return
+                
             # Create chunks
             chunks = self._chunk_text(content)
             
-            # Check if we have any chunks - THIS IS THE FIX
+            # Check if we have any chunks
             if not chunks:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
                 return
@@ -487,6 +523,11 @@ class DocumentManager:
             # Use instance top_k if none provided
             if top_k is None:
                 top_k = self.top_k
+            
+            # Check if query is empty
+            if not query or not query.strip():
+                logger.warning("Empty query provided to search")
+                return []
                 
             # Generate query embedding
             query_embedding = self.model.encode(query)
@@ -496,36 +537,43 @@ class DocumentManager:
             
             # Search each document
             for doc_name, doc_embeddings in self.embeddings.items():
-                # Skip empty embeddings - THIS IS THE FIX
+                # Skip empty embeddings
                 if len(doc_embeddings) == 0:
                     logger.warning(f"Skipping document {doc_name} with empty embeddings")
                     continue
                     
                 # Calculate similarities
-                similarities = np.dot(doc_embeddings, query_embedding) / (
-                    np.linalg.norm(doc_embeddings, axis=1) * np.linalg.norm(query_embedding)
-                )
-                
-                # Get top chunks
-                top_indices = np.argsort(similarities)[-top_k:]
-                
-                for idx in top_indices:
-                    # Check if this is an image description
-                    image_id = None
-                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                        # Extract image ID from document name
-                        image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
+                try:
+                    similarities = np.dot(doc_embeddings, query_embedding) / (
+                        np.linalg.norm(doc_embeddings, axis=1) * np.linalg.norm(query_embedding)
+                    )
                     
-                    # Check if metadata has image_id set explicitly
-                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                        image_id = self.metadata[doc_name]['image_id']
-                    
-                    results.append((
-                        doc_name,
-                        self.chunks[doc_name][idx],
-                        float(similarities[idx]),
-                        image_id
-                    ))
+                    # Get top chunks - make sure to handle edge cases
+                    if len(similarities) > 0:
+                        top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
+                        
+                        for idx in top_indices:
+                            # Check if this is an image description
+                            image_id = None
+                            if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                                # Extract image ID from document name
+                                image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
+                            
+                            # Check if metadata has image_id set explicitly
+                            elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                                image_id = self.metadata[doc_name]['image_id']
+                            
+                            # Make sure chunk index is valid
+                            if idx < len(self.chunks[doc_name]):
+                                results.append((
+                                    doc_name,
+                                    self.chunks[doc_name][idx],
+                                    float(similarities[idx]),
+                                    image_id
+                                ))
+                except Exception as e:
+                    logger.error(f"Error calculating similarities for document {doc_name}: {e}")
+                    continue
             
             # Sort by similarity
             results.sort(key=lambda x: x[2], reverse=True)
@@ -539,6 +587,12 @@ class DocumentManager:
             
             return results[:top_k]
             
+        except KeyError as e:
+            logger.error(f"Document or chunk not found in search: {e}")
+            return []
+        except ValueError as e:
+            logger.error(f"Value error in document search: {e}")
+            return []
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
             return []
@@ -781,7 +835,7 @@ class Config:
         self.OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
         
         # Configure models with defaults
-        self.LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek/deepseek-r1')  # Default to DeepSeek-R1
+        self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         
         self.TOP_K = int(os.getenv('TOP_K', '10'))
@@ -928,6 +982,9 @@ class ConversationManager:
                 messages = json.load(file)
                 # Return the most recent messages up to the limit
                 return messages[-limit:]
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON for user {username}")
+            return []
         except Exception as e:
             logger.error(f"Error reading conversation: {e}")
             return []
@@ -1213,6 +1270,7 @@ class UserPreferencesManager:
             logger.error(f"Error toggling debug mode: {e}")
             return False
 
+
 class DiscordBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
@@ -1272,11 +1330,17 @@ class DiscordBot(commands.Bot):
                 self.banned_users = set(data.get('banned_users', []))
         except FileNotFoundError:
             self.banned_users = set()
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding {self.banned_users_file}. Using empty banned users list.")
+            self.banned_users = set()
 
     def save_banned_users(self):
         """Save banned users to JSON file."""
-        with open(self.banned_users_file, 'w') as f:
-            json.dump({'banned_users': list(self.banned_users)}, f)
+        try:
+            with open(self.banned_users_file, 'w') as f:
+                json.dump({'banned_users': list(self.banned_users)}, f)
+        except Exception as e:
+            logger.error(f"Error saving banned users: {e}")
             
     async def _generate_image_description(self, image_data: bytes) -> str:
         """Generate a description for an image using a vision-capable model."""
@@ -1295,42 +1359,7 @@ class DiscordBot(commands.Bot):
             messages = [
                 {
                     "role": "system",
-                    "content": """You are an image description generator for the Ledus Banum 77 lore repository. 
-                    
-                    Provide detailed, comprehensive descriptions of images that capture all visual elements, context, and potential connections to the lore.
-                    
-                    Focus on:
-                    1. Overall scene composition and setting
-                    2. Characters or entities present
-                    3. Any text or symbols visible
-                    4. Potential connections to Ledus Banum 77 or Imperial lore
-
-                    If an image contains words or labels, make sure to include ALL of them in the description.
-                    
-                    Be objective and detailed while making connections to the setting where appropriate.
-                    """
-                },
-                {
-                    "role": "system",
-                    "content": """
-                    <universe_background>
-                    This universe (or rather multiverse) is largely similar to our own with some chief differences. First of all, it is a completely fictional one. Earth as we know does not exist, and the season itself largely operates around a single political entity - the Infinite Empire. The Empire is a multiversal entity, spanning multiple planes of existence, each different from each other in very small ways. Millions of worlds, trillions of individuals, thousands of years of history, hundreds of wars. It's not a centralized entity, as nothing of such a scale can be, but rather a confederation of noble houses, corporations, divergent churches, charterworlds, and freeplanes who pay service to the One Emperor back in Core.
-
-                    The universe itself is split along "planes", which could also be related as the multiverse being split into its own universes. In any case there are thousands of them, often visualized as layers of a cake stacked on top of each other, each only just slightly different than the one above or below, but very much different than its equivalent on a plane 200 layers away. Travel between planets and planes both is done by the same tool - Resonant Drilling. Some planets connect to their equivalents on different planes, and many connect to other planets on the same one. RD is a closely guarded enterprise, available only for the rich or imperial.
-
-                    The universe outside of the Empire is irrelevant, empty, cold. There are no aliens, the most you'll see are variants of humans that may prove useful to the empire, or animals and plants we would call alien and unusual but which are perfectly edible by the average person. Humanity existed on its own on many different of these planets, not just one Earth-equivalent. All that we know of have been conquered by the Empire and are now ruled over by it. There is no escape from the Empire. You do not know anything about space, such as stars.
-                    </universe_background>
-
-                    <ledus_banum_info>
-                    Ledus Banum 77, which is the planet that interests us, is located in the Frontier plane of Eberras, it being first considered full imperial territory only barely 500 years ago. It's a very new conquest and during the early days of the Empire it would warrant little attention. The difference now are plentiful amounts of the resource Ordinium on the planet (common across all Ledus Banums, refined into both fuel and material for RD instruments) the lack of new conquests coming to the Empire, as the last discovered world before LB-77 was itself conquered 115 years after the one before it. Growth of the Empire has stalled for some time now, but it is little to be worried about. The Empire has recently invaded Ledus Banum 77, around 4 years ago, and a group of institutions are now integrating the planet and it's populace into the Empire.
-                    </ledus_banum_info>
-
-                    <imperial_institutions>
-                    The Imperial Institutions which have arrived on Tundra are: House Alpeh, The Universal Temple of the Church of the Golden-Starred River, The Imperial Manezzo Corporation (IMC), The Grand Chamber of Technology (GCT), The Kindred of the Rhodium Throne, and House Chaurus.
-
-                    While we have presented the Empire as an almost monolithic entity to this point, a cohesive moving object of purpose and Imperial unity; beneath the gleam of Imperial sanction, obligations, and rituals lies the individual machinations, functions, and ambitions of the dozens upon thousands of institutions that in reality make up the Empire. Make no mistake — loyalty to the Imperial throne is an occasional obligation rather than a real ideal. One that belongs to, and is only truly believed by, dukes and scholars of the imperial core. Beyond the planar grasp of the court's grip, each institution, much like the needle on a compass, points away from the center towards a lodestone of their desire — be it a heterodox ideal, material wealth, or other forms of self-interest. Nevertheless it is these institutions that keep the wheel of the Eternal Empire turning in a competitive equilibrium, and if one spoke breaks the rest of the wheel goes with it.
-                    </imperial_institutions>
-                    """
+                    "content": IMAGE_DESCRIPTION_PROMPT
                 },
                 {
                     "role": "user",
@@ -1381,6 +1410,11 @@ class DiscordBot(commands.Bot):
     async def analyze_query(self, query: str) -> Dict:
         """Use the configured classifier model to analyze the query and extract keywords/topics."""
         try:
+            # Check if query is empty
+            if not query or not query.strip():
+                logger.warning("Empty query provided to analyze_query")
+                return {"success": False}
+                
             analyzer_prompt = [
                 {
                     "role": "system",
@@ -1463,6 +1497,11 @@ class DiscordBot(commands.Bot):
     async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float, Optional[str]]]:
         """Perform an enhanced search based on query analysis."""
         try:
+            # Check if query is empty
+            if not query or not query.strip():
+                logger.warning("Empty query provided to enhanced_search")
+                return []
+                
             # Check if analysis is a dictionary and has the success key
             if not isinstance(analysis, dict) or not analysis.get("success", False):
                 # Fall back to basic search if analysis failed or is not a dict
@@ -1499,13 +1538,22 @@ class DiscordBot(commands.Bot):
     async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float, Optional[str]]], analysis: Dict) -> str:
         """Use the configured classifier model to synthesize search results into a coherent context."""
         try:
+            # Check if query is empty
+            if not query or not query.strip():
+                logger.warning("Empty query provided to synthesize_results")
+                return ""
+                
             # Format search results into a string, handling image descriptions
             result_text = ""
             for doc, chunk, score, image_id in search_results[:10]:  # Limit to top 10 results
                 if image_id:
                     # This is an image description
-                    image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
-                    result_text += f"\nImage: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
+                    try:
+                        image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                        result_text += f"\nImage: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
+                    except KeyError:
+                        # Handle missing image metadata
+                        result_text += f"\nImage: Unknown (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
                 else:
                     # Regular document
                     result_text += f"\nDocument: {doc}\nContent: {chunk}\nRelevance: {score:.2f}\n"
@@ -1606,30 +1654,46 @@ class DiscordBot(commands.Bot):
         
         # Update existing message with first chunk if provided
         if existing_message and chunks:
-            await existing_message.edit(content=chunks[0])
-            last_message = existing_message
-            chunks = chunks[1:]  # Remove the first chunk since it's already sent
+            try:
+                await existing_message.edit(content=chunks[0])
+                last_message = existing_message
+                chunks = chunks[1:]  # Remove the first chunk since it's already sent
+            except discord.errors.NotFound:
+                # Message was deleted, send as a new message
+                logger.warning("Existing message not found, sending as new message")
+                last_message = None
+            except Exception as e:
+                logger.error(f"Error editing existing message: {e}")
+                last_message = None
         
-        # For the first chunk (if no existing_message was provided), use the original reference
+        # For the first chunk (if no existing_message was provided or editing failed), use the original reference
         if chunks and last_message is None:
-            first_message = await channel.send(
-                content=chunks[0],
-                reference=reference,
-                mention_author=mention_author
-            )
-            last_message = first_message
-            chunks = chunks[1:]  # Remove the first chunk since it's already sent
+            try:
+                first_message = await channel.send(
+                    content=chunks[0],
+                    reference=reference,
+                    mention_author=mention_author
+                )
+                last_message = first_message
+                chunks = chunks[1:]  # Remove the first chunk since it's already sent
+            except Exception as e:
+                logger.error(f"Error sending first message chunk: {e}")
+                return
         
         # Send remaining chunks sequentially, each referencing the previous one
         for chunk in chunks:
-            # Each new chunk references the previous one to maintain the chain
-            new_message = await channel.send(
-                content=chunk,
-                reference=last_message,  # Reference the previous message in the chain
-                mention_author=False  # Don't mention for follow-up chunks
-            )
-            # Update reference for the next chunk
-            last_message = new_message
+            try:
+                # Each new chunk references the previous one to maintain the chain
+                new_message = await channel.send(
+                    content=chunk,
+                    reference=last_message,  # Reference the previous message in the chain
+                    mention_author=False  # Don't mention for follow-up chunks
+                )
+                # Update reference for the next chunk
+                last_message = new_message
+            except Exception as e:
+                logger.error(f"Error sending message chunk: {e}")
+                # Continue with the next chunk anyway
 
     async def refresh_google_docs(self):
         """Refresh all tracked Google Docs."""
@@ -1637,46 +1701,49 @@ class DiscordBot(commands.Bot):
         if not tracked_file.exists():
             return
             
-        with open(tracked_file, 'r') as f:
-            tracked_docs = json.load(f)
+        try:
+            with open(tracked_file, 'r') as f:
+                tracked_docs = json.load(f)
         
-        updated_docs = False  # Track if any docs were updated
-        
-        for doc in tracked_docs:
-            try:
-                doc_id = doc['id']
-                file_name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
-                if not file_name.endswith('.txt'):
-                    file_name += '.txt'
-                
-                async with aiohttp.ClientSession() as session:
-                    url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-                    async with session.get(url) as response:
-                        if response.status != 200:
-                            logger.error(f"Failed to download {doc_id}: {response.status}")
-                            continue
-                        content = await response.text()
-                
-                file_path = self.document_manager.base_dir / file_name
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
+            updated_docs = False  # Track if any docs were updated
+            
+            for doc in tracked_docs:
+                try:
+                    doc_id = doc['id']
+                    file_name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
+                    if not file_name.endswith('.txt'):
+                        file_name += '.txt'
                     
-                logger.info(f"Updated Google Doc {doc_id} as {file_name}")
-                
-                if file_name in self.document_manager.chunks:
-                    del self.document_manager.chunks[file_name]
-                    del self.document_manager.embeddings[file_name]
+                    async with aiohttp.ClientSession() as session:
+                        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                        async with session.get(url) as response:
+                            if response.status != 200:
+                                logger.error(f"Failed to download {doc_id}: {response.status}")
+                                continue
+                            content = await response.text()
                     
-                # Add document without saving to disk yet
-                self.document_manager.add_document(file_name, content, save_to_disk=False)
-                updated_docs = True
-                
-            except Exception as e:
-                logger.error(f"Error refreshing doc {doc_id}: {e}")
-        
-        # Save to disk once at the end if any docs were updated
-        if updated_docs:
-            self.document_manager._save_to_disk()
+                    file_path = self.document_manager.base_dir / file_name
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                        
+                    logger.info(f"Updated Google Doc {doc_id} as {file_name}")
+                    
+                    if file_name in self.document_manager.chunks:
+                        del self.document_manager.chunks[file_name]
+                        del self.document_manager.embeddings[file_name]
+                        
+                    # Add document without saving to disk yet
+                    self.document_manager.add_document(file_name, content, save_to_disk=False)
+                    updated_docs = True
+                    
+                except Exception as e:
+                    logger.error(f"Error refreshing doc {doc_id}: {e}")
+            
+            # Save to disk once at the end if any docs were updated
+            if updated_docs:
+                self.document_manager._save_to_disk()
+        except Exception as e:
+            logger.error(f"Error refreshing Google Docs: {e}")
             
     async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None) -> bool:
         """Refresh a single Google Doc by its ID.
@@ -1837,60 +1904,63 @@ class DiscordBot(commands.Bot):
                     return
                     
                 # Process the first image attachment
+                valid_attachment = None
                 for attachment in ctx.message.attachments:
-                    if attachment.content_type and attachment.content_type.startswith('image/'):
-                        # Download image
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(attachment.url) as resp:
-                                if resp.status != 200:
-                                    await ctx.send(f"*neural error detected!* Failed to download image (status: {resp.status})")
-                                    return
-                                image_data = await resp.read()
+                    if is_image(attachment):
+                        valid_attachment = attachment
+                        break
                         
-                        # Status message
-                        status_msg = await ctx.send("*neural pathways activating... processing image...*")
-                        
-                        # Handle description based on user choice
-                        if generate_description == "yes":
-                            await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
-                            description = await self._generate_image_description(image_data)
-                            if description == "Error generating description.":
-                                await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
-                                return
-                            description = name + ": " + description
-                            
-                            # Add to image manager
-                            image_id = self.image_manager.add_image(name, image_data, description)
-                            
-                            # Success message with preview of auto-generated description
-                            description_preview = description[:1000] + "..." if len(description) > 1000 else description
-                            success_message = f"*neural analysis complete!* Added image '{name}' to my knowledge base with ID: {image_id}\n\nGenerated description: {description_preview}"
-                            await status_msg.edit(content=success_message)
-                        else:
-                            # Ask user to provide a description
-                            await status_msg.edit(content="Please provide a description for the image (type it and send within 60 seconds):")
-                            
-                            try:
-                                # Wait for user to type description
-                                description_msg = await self.wait_for(
-                                    'message',
-                                    timeout=60.0,
-                                    check=lambda m: m.author == ctx.author and m.channel == ctx.channel
-                                )
-                                description = description_msg.content
-                                
-                                # Add to image manager
-                                image_id = self.image_manager.add_image(name, image_data, description)
-                                
-                                await ctx.send(f"*neural pathways reconfigured!* Added image '{name}' with your custom description to my knowledge base with ID: {image_id}")
-                            except asyncio.TimeoutError:
-                                await status_msg.edit(content="*neural pathway timeout!* You didn't provide a description within the time limit.")
-                                return
-                        
+                if not valid_attachment:
+                    await ctx.send("*neural error detected!* No valid image attachment found. Please make sure you're attaching an image file.")
+                    return
+                    
+                # Download image
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(valid_attachment.url) as resp:
+                        if resp.status != 200:
+                            await ctx.send(f"*neural error detected!* Failed to download image (status: {resp.status})")
+                            return
+                        image_data = await resp.read()
+                
+                # Status message
+                status_msg = await ctx.send("*neural pathways activating... processing image...*")
+                
+                # Handle description based on user choice
+                if generate_description == "yes":
+                    await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
+                    description = await self._generate_image_description(image_data)
+                    if description == "Error generating description.":
+                        await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
                         return
+                    description = name + ": " + description
+                    
+                    # Add to image manager
+                    image_id = self.image_manager.add_image(name, image_data, description)
+                    
+                    # Success message with preview of auto-generated description
+                    description_preview = description[:1000] + "..." if len(description) > 1000 else description
+                    success_message = f"*neural analysis complete!* Added image '{name}' to my knowledge base with ID: {image_id}\n\nGenerated description: {description_preview}"
+                    await status_msg.edit(content=success_message)
+                else:
+                    # Ask user to provide a description
+                    await status_msg.edit(content="Please provide a description for the image (type it and send within 60 seconds):")
+                    
+                    try:
+                        # Wait for user to type description
+                        description_msg = await self.wait_for(
+                            'message',
+                            timeout=60.0,
+                            check=lambda m: m.author == ctx.author and m.channel == ctx.channel
+                        )
+                        description = description_msg.content
                         
-                # If we got here, no valid image was found
-                await ctx.send("*neural error detected!* No valid image attachment found. Please make sure you're attaching an image file.")
+                        # Add to image manager
+                        image_id = self.image_manager.add_image(name, image_data, description)
+                        
+                        await ctx.send(f"*neural pathways reconfigured!* Added image '{name}' with your custom description to my knowledge base with ID: {image_id}")
+                    except asyncio.TimeoutError:
+                        await status_msg.edit(content="*neural pathway timeout!* You didn't provide a description within the time limit.")
+                        return
                     
             except Exception as e:
                 logger.error(f"Error processing image: {e}")
@@ -1904,6 +1974,10 @@ class DiscordBot(commands.Bot):
         async def add_document(interaction: discord.Interaction, name: str, content: str):
             await interaction.response.defer()
             try:
+                if not name or not content:
+                    await interaction.followup.send("*neural error detected!* Both name and content are required.")
+                    return
+                    
                 lorebooks_path = self.document_manager.get_lorebooks_path()
                 txt_path = lorebooks_path / f"{name}.txt"
                 txt_path.write_text(content, encoding='utf-8')
@@ -2239,93 +2313,6 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error setting preferred model: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while setting your preferred model.")
 
-        """
-        ## DeepSeek-R1
-
-        **Pros:**
-        - exceptional for roleplaying and creative immersion
-        - vivid, atmospheric descriptions with poetic language
-        - maintains strong character voice while delivering information
-        - creates memorable, emotionally resonant responses
-        - excellent at metaphors and world-building
-        - great for users who want the full immersive experience
-
-        **Cons:**
-        - sometimes prioritizes style over factual precision
-        - responses can be less structured/organized 
-        - citations might not be as methodically formatted
-        - can occasionally add creative embellishments beyond strict lore
-        - might be slower than more efficiency-focused models
-
-        ## Gemini 2.0 Flash
-
-        **Pros:**
-        - superior citation formatting and accuracy
-        - excellent document analysis capabilities 
-        - faster response times than other models
-        - better structured presentation of information
-        - clear organization with bullet points when needed
-        - supports image analysis/viewing
-        - ideal for research-focused queries
-
-        **Cons:**
-        - less creative/atmospheric than roleplaying-focused models
-        - character voice might feel more subdued
-        - prioritizes information over immersion
-        - responses might feel more like information dumps than storytelling
-        - less dramatic and poetic language
-
-        ## Nous: Hermes 405B Instruct
-
-        **Pros:**
-        - good balance between creativity and factual presentation
-        - strong reasoning capabilities
-        - maintains character elements while presenting information
-        - handles complex topics with nuance
-        - balances immersion with clarity
-        - good for users who want both facts and flavor
-
-        **Cons:**
-        - not as imaginative as DeepSeek-R1
-        - not as precise with citations as Gemini
-        - sits in middle ground between immersion and facts
-        - no image viewing capabilities
-        - middle-tier performance in both creative and analytical tasks
-
-        ## Claude 3.5 Haiku
-
-        **Pros:**
-        - fast responses with creative elements
-        - good balance of efficiency and character voice
-        - supports image viewing/analysis
-        - concise but effective responses
-        - maintains character while being informative
-        - good for quick but flavorful interactions
-
-        **Cons:**
-        - not as deeply immersive as DeepSeek or Claude Sonnet
-        - responses might be less elaborate than larger models
-        - potentially less nuanced with very complex lore
-        - strikes middle ground that might not satisfy purists of either style
-
-        ## Claude 3.7 Sonnet
-
-        **Pros:**
-        - most advanced capabilities overall
-        - combines creative excellence with analytical precision
-        - superior handling of complex queries
-        - maintains character while providing detailed information
-        - excellent citation formatting and factual accuracy
-        - supports image analysis with high understanding
-        - best for users who want everything without compromise
-
-        **Cons:**
-        - most expensive model (admin-restricted for cost reasons)
-        - might be overkill for simple queries
-        - potentially slower due to greater complexity
-        - advanced capabilities might not be noticeable for basic questions
-        """
-
         @self.tree.command(name="get_model", description="Show your currently selected AI model")
         async def get_model(interaction: discord.Interaction):
             await interaction.response.defer()
@@ -2401,92 +2388,6 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send(chunk)
             except Exception as e:
                 await interaction.followup.send(f"Error listing documents: {str(e)}")
-
-        """        
-        @self.tree.command(name="add_image", description="Add an image to Publicia's knowledge base from a URL")
-        @app_commands.describe(
-            name="Name or title for the image",
-            image_url="Direct URL to the image (must end with .jpg, .png, etc.)",
-            description="Optional custom description (if not provided, one will be generated)"
-        )
-        async def add_image(interaction: discord.Interaction, name: str, image_url: str, description: str = None):
-            # Always defer FIRST thing to prevent interaction timeouts
-            try:
-                await interaction.response.defer(ephemeral=False)
-            except discord.errors.NotFound:
-                # If the interaction is already expired/unknown, we can't do anything with it
-                logger.error("Interaction expired before deferring")
-                return
-            except Exception as e:
-                logger.error(f"Error deferring interaction: {e}")
-                return
-            
-            try:
-                # Validate URL format
-                if not any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                    await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.")
-                    return
-                
-                # Status message
-                status_msg = await interaction.followup.send("*neural pathways activating... downloading image...*")
-                
-                # Try to handle both discord CDN URL formats
-                if "media.discordapp.net" in image_url:
-                    # Try to convert media.discordapp.net URLs to cdn.discordapp.com
-                    image_url = image_url.replace("media.discordapp.net", "cdn.discordapp.com")
-                    logger.info(f"Converting Discord CDN URL to: {image_url}")
-                
-                # Download image from URL with extended timeout
-                async with aiohttp.ClientSession() as session:
-                    try:
-                        # Use a longer timeout for image downloads (30 seconds)
-                        async with session.get(image_url, timeout=90) as resp:
-                            if resp.status != 200:
-                                await status_msg.edit(content=f"*neural error detected!* Failed to download image (status code: {resp.status}).\nURL: {image_url}")
-                                return
-                            
-                            # Check content type
-                            content_type = resp.headers.get('Content-Type', '')
-                            if not content_type.startswith('image/'):
-                                # If content-type header isn't reliable, try to proceed anyway if URL ends with image extension
-                                if not any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                                    await status_msg.edit(content=f"*neural error detected!* The URL does not appear to point to a valid image (content-type: {content_type}).")
-                                    return
-                            
-                            # Read image data
-                            image_data = await resp.read()
-                    except aiohttp.ClientError as e:
-                        await status_msg.edit(content=f"*neural error detected!* Failed to download image: {str(e)}\nURL: {image_url}")
-                        return
-                    except asyncio.TimeoutError:
-                        await status_msg.edit(content=f"*neural error detected!* Download timed out. The server may be slow or unreachable.\nURL: {image_url}")
-                        return
-                
-                # Generate description if not provided
-                if not description:
-                    await status_msg.edit(content="*neural pathways activating... analyzing image content...*")
-                    description = await self._generate_image_description(image_data)
-                
-                # Add to image manager
-                image_id = self.image_manager.add_image(name, image_data, description)
-                
-                # Success message
-                success_message = f"*neural analysis complete!* Added image '{name}' to my knowledge base with ID: {image_id}"
-                if description:
-                    description_preview = description[:100] + "..." if len(description) > 100 else description
-                    success_message += f"\n\nDescription: {description_preview}"
-                
-                await status_msg.edit(content=success_message)
-            
-                
-            except Exception as e:
-                logger.error(f"Error processing image URL: {e}")
-                try:
-                    await interaction.followup.send(f"*neural circuit overload!* An error occurred while processing the image: {str(e)}")
-                except:
-                    # If interaction followup fails, we've lost connection to the interaction
-                    pass
-        """
 
         @self.tree.command(name="list_images", description="List all images in Publicia's knowledge base")
         async def list_images(interaction: discord.Interaction):
@@ -2571,12 +2472,20 @@ class DiscordBot(commands.Bot):
         async def update_image_description(interaction: discord.Interaction, image_id: str, description: str):
             await interaction.response.defer()
             try:
+                if not description:
+                    await interaction.followup.send("*neural error detected!* Description cannot be empty.")
+                    return
+                    
+                if image_id not in self.image_manager.metadata:
+                    await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    return
+                    
                 success = self.image_manager.update_description(image_id, description)
                 
                 if success:
                     await interaction.followup.send(f"*neural pathways reconfigured!* Updated description for image with ID: {image_id}")
                 else:
-                    await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    await interaction.followup.send(f"*neural error detected!* Could not update image description for ID: {image_id}")
                     
             except Exception as e:
                 logger.error(f"Error updating image description: {e}")
@@ -2590,6 +2499,10 @@ class DiscordBot(commands.Bot):
         async def query_lore(interaction: discord.Interaction, question: str, image_url: str = None):
             await interaction.response.defer()
             try:
+                if not question:
+                    await interaction.followup.send("*neural error detected!* Please provide a question.")
+                    return
+                    
                 # Get channel name and user info
                 channel_name = interaction.channel.name if interaction.guild else "DM"
                 nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
@@ -2623,20 +2536,17 @@ class DiscordBot(commands.Bot):
                                             image_attachments.append(image_base64)
                                             logger.info(f"Processed image from URL: {image_url}")
                                         else:
-                                            await status_message.edit(content="*neural error detected!* The URL does not point to a valid image.")
+                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=True)
                                             return
                                     else:
-                                        await status_message.edit(content=f"*neural error detected!* Could not download image (status code: {resp.status}).")
+                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=True)
                                         return
                         else:
-                            status_message = await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
                             return
                     except Exception as e:
                         logger.error(f"Error processing image URL: {e}")
-                        if status_message:
-                            await status_message.edit(content="*neural error detected!* Failed to process the image URL.")
-                        else:
-                            status_message = await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
                         return
                 else:
                     status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
@@ -2805,23 +2715,30 @@ class DiscordBot(commands.Bot):
                         response,
                         model_used=actual_model,  # Pass the actual model used, not just the preferred model
                         user_id=str(interaction.user.id),
-                        existing_message=status_message
+                        existing_message=None  # Don't use the ephemeral status message
                     )
+                    
+                    # Delete the status message since it's ephemeral and we've now sent the response
+                    try:
+                        await status_message.delete()
+                    except:
+                        pass
                 else:
-                    await status_message.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
+                    await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
             except Exception as e:
                 logger.error(f"Error processing query: {e}")
-                if 'status_message' in locals() and status_message:
-                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
-                else:
-                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
 
         @self.tree.command(name="search_docs", description="Search the document knowledge base")
         @app_commands.describe(query="What to search for")
         async def search_documents(interaction: discord.Interaction, query: str):
             await interaction.response.defer()
             try:
+                if not query:
+                    await interaction.followup.send("*neural error detected!* Please provide a search query.")
+                    return
+                    
                 results = self.document_manager.search(query, top_k=10)
                 if not results:
                     await interaction.followup.send("No relevant documents found.")
@@ -2848,6 +2765,10 @@ class DiscordBot(commands.Bot):
         async def remove_document(interaction: discord.Interaction, name: str):
             await interaction.response.defer()
             try:
+                if not name:
+                    await interaction.followup.send("*neural error detected!* Please provide a document name.")
+                    return
+                    
                 success = self.document_manager.delete_document(name)
                 if success:
                     await interaction.followup.send(f"Removed document: {name}")
@@ -2864,6 +2785,10 @@ class DiscordBot(commands.Bot):
         async def add_google_doc(interaction: discord.Interaction, doc_url: str, name: str = None):
             await interaction.response.defer()
             try:
+                if not doc_url:
+                    await interaction.followup.send("*neural error detected!* Please provide a Google Doc URL or ID.")
+                    return
+                    
                 # Extract Google Doc ID from URL if a URL is provided
                 if "docs.google.com" in doc_url:
                     # Extract the ID from various Google Docs URL formats
@@ -2891,7 +2816,6 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send(f"*synapses connecting to document ({doc_url})*\n{result}")
                 
                 # Download just this document instead of refreshing all
-                #await interaction.followup.send("*initiating neural download sequence...*")
                 success = await self.refresh_single_google_doc(doc_id, name)
                 
                 if success:
@@ -2910,23 +2834,27 @@ class DiscordBot(commands.Bot):
                 await interaction.followup.send("*no google docs detected in my neural network...*")
                 return
                 
-            with open(tracked_file, 'r') as f:
-                tracked_docs = json.load(f)
-            
-            if not tracked_docs:
-                await interaction.followup.send("*my neural pathways show no connected google docs*")
-                return
+            try:
+                with open(tracked_file, 'r') as f:
+                    tracked_docs = json.load(f)
                 
-            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"
-            for doc in tracked_docs:
-                doc_id = doc['id']
-                name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
-                doc_url = f"<https://docs.google.com/document/d/{doc_id}>"
-                response += f"\n{name} - URL: {doc_url}"
-            
-            # Split the message to avoid Discord's 2000 character limit
-            for chunk in split_message(response):
-                await interaction.followup.send(chunk)
+                if not tracked_docs:
+                    await interaction.followup.send("*my neural pathways show no connected google docs*")
+                    return
+                    
+                response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"
+                for doc in tracked_docs:
+                    doc_id = doc['id']
+                    name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
+                    doc_url = f"<https://docs.google.com/document/d/{doc_id}>"
+                    response += f"\n{name} - URL: {doc_url}"
+                
+                # Split the message to avoid Discord's 2000 character limit
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+            except Exception as e:
+                logger.error(f"Error listing Google Docs: {e}")
+                await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to list Google Docs.")
 
         @self.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook")
         @app_commands.describe(
@@ -2936,6 +2864,10 @@ class DiscordBot(commands.Bot):
         async def rename_document(interaction: discord.Interaction, current_name: str, new_name: str):
             await interaction.response.defer()
             try:
+                if not current_name or not new_name:
+                    await interaction.followup.send("*neural error detected!* Both current name and new name are required.")
+                    return
+                    
                 result = self.document_manager.rename_document(current_name, new_name)
                 await interaction.followup.send(f"*synaptic pathways reconfiguring...*\n{result}")
             except Exception as e:
@@ -2949,6 +2881,10 @@ class DiscordBot(commands.Bot):
         async def remove_google_doc(interaction: discord.Interaction, identifier: str):
             await interaction.response.defer()
             try:
+                if not identifier:
+                    await interaction.followup.send("*neural error detected!* Please provide an identifier for the Google Doc to remove.")
+                    return
+                    
                 # Path to the tracked docs file
                 tracked_file = Path(self.document_manager.base_dir) / "tracked_google_docs.json"
                 if not tracked_file.exists():
@@ -3004,14 +2940,15 @@ class DiscordBot(commands.Bot):
                     try:
                         success = self.document_manager.delete_document(local_file_name)
                         if success:
-                            await interaction.followup.send(f"Removed document: {local_file_name}")
                             file_removed = True
                         else:
-                            await interaction.followup.send(f"Document not found: {local_file_name}")
+                            await interaction.followup.send(f"Document tracked, but file not found in document manager: {local_file_name}")
                     except Exception as e:
                         await interaction.followup.send(f"Error removing document: {str(e)}")
                 
-                response = f"*I've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*\n\n*"
+                response = f"*I've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*"
+                if file_removed:
+                    response += f"\n*and removed the local document file ({local_file_name})*"
                 
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
@@ -3189,6 +3126,97 @@ class DiscordBot(commands.Bot):
     async def on_ready(self):
         logger.info(f"Logged in as {self.user.name} (ID: {self.user.id})")
         
+    async def _extract_google_doc_ids(self, text: str) -> List[Tuple[str, str]]:
+        """
+        Extract Google Doc IDs from text.
+        
+        Args:
+            text: The text to extract Google Doc IDs from
+            
+        Returns:
+            List of tuples containing (doc_id, full_url)
+        """
+        doc_ids = []
+        # Find all URLs in the text
+        url_pattern = r'https?://docs\.google\.com/document/d/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9]+)?(?:\?[^\\s]*)?'
+        urls = re.findall(url_pattern, text)
+        
+        for url in urls:
+            # Extract the ID from various Google Docs URL formats
+            if "/d/" in url:
+                doc_id = url.split("/d/")[1].split("/")[0].split("?")[0]
+                doc_ids.append((doc_id, url))
+            elif "id=" in url:
+                doc_id = url.split("id=")[1].split("&")[0]
+                doc_ids.append((doc_id, url))
+                
+        return doc_ids
+
+    async def _fetch_google_doc_content(self, doc_id: str) -> Optional[str]:
+        """
+        Fetch the content of a Google Doc without tracking it.
+        
+        Args:
+            doc_id: The Google Doc ID
+            
+        Returns:
+            The document content or None if failed
+        """
+        try:
+            # Download the document
+            async with aiohttp.ClientSession() as session:
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to download {doc_id}: {response.status}")
+                        return None
+                    content = await response.text()
+            
+            return content
+                
+        except Exception as e:
+            logger.error(f"Error downloading doc {doc_id}: {e}")
+            return None
+
+    async def _fetch_google_doc_title(self, doc_id: str) -> Optional[str]:
+        """
+        Fetch the title of a Google Doc.
+        
+        Args:
+            doc_id: The Google Doc ID
+            
+        Returns:
+            The document title or None if failed
+        """
+        try:
+            # Use the Drive API endpoint to get document metadata
+            async with aiohttp.ClientSession() as session:
+                # This is a public metadata endpoint that works for publicly accessible documents
+                url = f"https://docs.google.com/document/d/{doc_id}/mobilebasic"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to get metadata for {doc_id}: {response.status}")
+                        return None
+                    
+                    html_content = await response.text()
+                    
+                    # Extract title from HTML content
+                    # The title is typically in the <title> tags
+                    match = re.search(r'<title>(.*?)</title>', html_content)
+                    if match:
+                        title = match.group(1)
+                        # Remove " - Google Docs" suffix if present
+                        title = re.sub(r'\s*-\s*Google\s*Docs$', '', title)
+                        return title
+                    
+                    return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Network error getting title for doc {doc_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error getting title for doc {doc_id}: {e}")
+            return None
+            
     async def _download_image_to_base64(self, attachment):
         """Download an image attachment and convert it to base64."""
         try:
@@ -3208,7 +3236,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Tuple[Optional[any], Optional[str]]:
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
         """Get AI completion with dynamic fallback options based on the requested model."""
         
         # Get primary model family (deepseek, google, etc.)
@@ -3219,22 +3247,6 @@ class DiscordBot(commands.Bot):
         
         # Build fallback list dynamically based on the requested model
         models = [model]  # Start with the requested model
-        
-        # If we need vision, prioritize vision-capable models
-        """
-        if need_vision and model not in self.vision_capable_models:
-            # If the requested model doesn't support vision but we have images,
-            # prepend vision-capable models from the same family if available
-            if model_family == "google":
-                vision_models = [m for m in self.vision_capable_models if m.startswith("google/")]
-                models = vision_models + models
-            elif model_family == "anthropic":
-                vision_models = [m for m in self.vision_capable_models if m.startswith("anthropic/")]
-                models = vision_models + models
-            else:
-                # For other model families, prepend all vision-capable models
-                models = self.vision_capable_models + models
-        """
         
         # Add model-specific fallbacks first
         if model_family == "deepseek":
@@ -3481,6 +3493,11 @@ class DiscordBot(commands.Bot):
                 question = question.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             question = question.strip()
             
+            # Check if the stripped question is empty
+            if not question:
+                question = "Hello"
+                logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
+            
             # Check for Google Doc links in the message
             google_doc_ids = await self._extract_google_doc_ids(question)
             google_doc_contents = []
@@ -3506,7 +3523,7 @@ class DiscordBot(commands.Bot):
                 # Process image attachments
                 for attachment in message.attachments:
                     # Check if it's an image
-                    if attachment.content_type and attachment.content_type.startswith('image/'):
+                    if is_image(attachment):
                         # Download and convert to base64
                         base64_image = await self._download_image_to_base64(attachment)
                         if base64_image:
@@ -3651,27 +3668,24 @@ class DiscordBot(commands.Bot):
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
 
+            # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
-                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
-                # No model switching - continues with user's preferred model
+                await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed)*")
             else:
-                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
-
+                # Add a note about fetched Google Docs if any were processed
+                if google_doc_contents:
+                    await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
+                else:
+                    await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+            
             # Step 5: Get AI response using user's preferred model
-            
-            # Add a note about fetched Google Docs if any were processed
-            if google_doc_contents:
-                await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
-            
-            completion, actual_model = await self._try_ai_completion(  # Now unpack the tuple of (completion, actual_model)
+            completion, actual_model = await self._try_ai_completion(
                 preferred_model,
                 messages,
                 image_ids=image_ids,
                 image_attachments=image_attachments,
                 temperature=0.1
             )
-
-            # We no longer need to delete the thinking message as we'll reuse it
 
             if completion and completion.get('choices'):
                 response = completion['choices'][0]['message']['content']
@@ -3711,110 +3725,19 @@ class DiscordBot(commands.Bot):
                     existing_message=thinking_msg
                 )
             else:
-                await self.send_split_message(
-                    message.channel,
-                    "*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.",
-                    reference=message,
-                    mention_author=False
-                )
+                await thinking_msg.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
-            await self.send_split_message(
-                message.channel,
-                "*neural circuit overload!* My brain is struggling and an error has occurred.",
-                reference=message,
-                mention_author=False
-            )
+            try:
+                await message.channel.send(
+                    "*neural circuit overload!* My brain is struggling and an error has occurred.",
+                    reference=message,
+                    mention_author=False
+                )
+            except:
+                pass  # If even sending the error message fails, just log and move on
 
-    async def _extract_google_doc_ids(self, text: str) -> List[Tuple[str, str]]:
-        """
-        Extract Google Doc IDs from text.
-        
-        Args:
-            text: The text to extract Google Doc IDs from
-            
-        Returns:
-            List of tuples containing (doc_id, full_url)
-        """
-        doc_ids = []
-        # Find all URLs in the text
-        url_pattern = r'https?://docs\.google\.com/document/d/[a-zA-Z0-9_-]+(?:/[a-zA-Z0-9]+)?(?:\?[^\\s]*)?'
-        urls = re.findall(url_pattern, text)
-        
-        for url in urls:
-            # Extract the ID from various Google Docs URL formats
-            if "/d/" in url:
-                doc_id = url.split("/d/")[1].split("/")[0].split("?")[0]
-                doc_ids.append((doc_id, url))
-            elif "id=" in url:
-                doc_id = url.split("id=")[1].split("&")[0]
-                doc_ids.append((doc_id, url))
-                
-        return doc_ids
-
-    async def _fetch_google_doc_content(self, doc_id: str) -> Optional[str]:
-        """
-        Fetch the content of a Google Doc without tracking it.
-        
-        Args:
-            doc_id: The Google Doc ID
-            
-        Returns:
-            The document content or None if failed
-        """
-        try:
-            # Download the document
-            async with aiohttp.ClientSession() as session:
-                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to download {doc_id}: {response.status}")
-                        return None
-                    content = await response.text()
-            
-            return content
-                
-        except Exception as e:
-            logger.error(f"Error downloading doc {doc_id}: {e}")
-            return None
-
-    async def _fetch_google_doc_title(self, doc_id: str) -> Optional[str]:
-        """
-        Fetch the title of a Google Doc.
-        
-        Args:
-            doc_id: The Google Doc ID
-            
-        Returns:
-            The document title or None if failed
-        """
-        try:
-            # Use the Drive API endpoint to get document metadata
-            async with aiohttp.ClientSession() as session:
-                # This is a public metadata endpoint that works for publicly accessible documents
-                url = f"https://docs.google.com/document/d/{doc_id}/mobilebasic"
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to get metadata for {doc_id}: {response.status}")
-                        return None
-                    
-                    html_content = await response.text()
-                    
-                    # Extract title from HTML content
-                    # The title is typically in the <title> tags
-                    match = re.search(r'<title>(.*?)</title>', html_content)
-                    if match:
-                        title = match.group(1)
-                        # Remove " - Google Docs" suffix if present
-                        title = re.sub(r'\s*-\s*Google\s+Docs$', '', title)
-                        return title
-            
-            return None
-                
-        except Exception as e:
-            logger.error(f"Error getting title for doc {doc_id}: {e}")
-            return None
 
 async def main():
     try:
@@ -3823,14 +3746,14 @@ async def main():
         async with bot:
             await bot.start(bot.config.DISCORD_BOT_TOKEN)
     except Exception as e:
-        logger.critical(f"bot failed to start: {e}", exc_info=True)
+        logger.critical(f"Bot failed to start: {e}", exc_info=True)
         raise
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("bot shutdown initiated by user")
+        logger.info("Bot shutdown initiated by user")
     except Exception as e:
-        logger.critical(f"fatal error: {e}", exc_info=True)
+        logger.critical(f"Fatal error: {e}", exc_info=True)
         raise

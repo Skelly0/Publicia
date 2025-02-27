@@ -8,6 +8,7 @@
 - [Command Reference](#command-reference)
 - [Advanced Usage](#advanced-usage)
 - [Troubleshooting](#troubleshooting)
+- [Recent Updates](#recent-updates)
 
 ## Overview
 
@@ -394,3 +395,33 @@ If data becomes corrupted:
 ---
 
 This documentation covers the main aspects of Publicia's functionality and setup. For more specific questions or advanced configurations, consult the source code or reach out for additional support.
+
+## Recent Updates
+
+### Version 8.1 (2024)
+
+#### Bug Fixes
+
+1. **Empty Documents Fix**
+   - Added validation in the `add_document` method to check if a document has any content to chunk before attempting to create embeddings
+   - Added a `cleanup_empty_documents` method that runs at bot startup to detect and remove any documents with empty embeddings
+   - Fixed search method to check for and skip documents with empty embeddings before calculating similarities
+   - These fixes prevent crashes when trying to process empty documents or performing vector operations on empty arrays
+
+2. **Code Organization**
+   - Refactored code to improve organization and readability
+   - Removed duplicate imports
+   - Added more comprehensive error handling
+   - Improved logging for better debugging
+   - Enhanced type hints for better code understanding
+
+3. **Model Fallback System**
+   - Enhanced the model fallback system to more intelligently handle failed requests
+   - Added better logging for model switching to help diagnose API issues
+   - Improved the handling of vision-capable models when processing images
+
+4. **Documentation Updates**
+   - Updated documentation to reflect recent changes and improvements
+   - Added this Recent Updates section to track significant changes
+
+The codebase is now more stable and resilient, especially when handling edge cases like empty documents or API failures.
