@@ -738,23 +738,36 @@ class DocumentManager:
     def delete_document(self, name: str) -> bool:
         """Delete a document from the system."""
         try:
-            if name not in self.chunks:
-                return False
+            # Check if it's a regular document
+            if name in self.chunks:
+                # Remove from memory
+                del self.chunks[name]
+                del self.embeddings[name]
+                del self.metadata[name]
                 
-            # Remove from memory
-            del self.chunks[name]
-            del self.embeddings[name]
-            del self.metadata[name]
-            
-            # Save changes
-            self._save_to_disk()
-            
-            # Remove file if it exists
-            file_path = self.base_dir / name
-            if file_path.exists():
-                file_path.unlink()
+                # Save changes
+                self._save_to_disk()
                 
-            return True
+                # Remove file if it exists
+                file_path = self.base_dir / name
+                if file_path.exists():
+                    file_path.unlink()
+                    
+                return True
+                
+            # Check if it's a lorebook
+            lorebooks_path = self.get_lorebooks_path()
+            lorebook_path = lorebooks_path / name
+            
+            # Try with .txt extension if not found
+            if not lorebook_path.exists() and not name.endswith('.txt'):
+                lorebook_path = lorebooks_path / f"{name}.txt"
+                
+            if lorebook_path.exists():
+                lorebook_path.unlink()
+                return True
+                
+            return False
         except Exception as e:
             logger.error(f"Error deleting document {name}: {e}")
             return False
