@@ -4,7 +4,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple  # Added Tuple for the return type
 import numpy as np
 from pathlib import Path
 import pickle
@@ -15,7 +15,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from collections import deque
-from textwrap import shorten  # Add this import
+from textwrap import shorten
 import sys
 import io
 import asyncio
@@ -28,7 +28,7 @@ from system_prompt import SYSTEM_PROMPT
 from typing import Any
 import time
 import random
-import base64  # Add this import at the top with other imports
+import base64
 import re
 import uuid
 
@@ -406,11 +406,36 @@ class DocumentManager:
             
         return chunks
     
+    def cleanup_empty_documents(self):
+        """Remove any documents with empty embeddings from the system."""
+        empty_docs = []
+        for doc_name, doc_embeddings in self.embeddings.items():
+            if len(doc_embeddings) == 0:
+                empty_docs.append(doc_name)
+        
+        for doc_name in empty_docs:
+            logger.info(f"Removing empty document: {doc_name}")
+            del self.chunks[doc_name]
+            del self.embeddings[doc_name]
+            if doc_name in self.metadata:
+                del self.metadata[doc_name]
+        
+        if empty_docs:
+            logger.info(f"Removed {len(empty_docs)} empty documents")
+            self._save_to_disk()
+        
+        return empty_docs
+    
     def add_document(self, name: str, content: str, save_to_disk: bool = True):
         """Add a new document to the system."""
         try:
             # Create chunks
             chunks = self._chunk_text(content)
+            
+            # Check if we have any chunks - THIS IS THE FIX
+            if not chunks:
+                logger.warning(f"Document {name} has no content to chunk. Skipping.")
+                return
             
             # Generate embeddings
             embeddings = self.model.encode(chunks)
@@ -471,6 +496,11 @@ class DocumentManager:
             
             # Search each document
             for doc_name, doc_embeddings in self.embeddings.items():
+                # Skip empty embeddings - THIS IS THE FIX
+                if len(doc_embeddings) == 0:
+                    logger.warning(f"Skipping document {doc_name} with empty embeddings")
+                    continue
+                    
                 # Calculate similarities
                 similarities = np.dot(doc_embeddings, query_embedding) / (
                     np.linalg.norm(doc_embeddings, axis=1) * np.linalg.norm(query_embedding)
@@ -973,6 +1003,102 @@ class ConversationManager:
                     
         except Exception as e:
             logger.error(f"Error limiting conversation size: {e}")
+
+    def get_limited_history(self, username: str, limit: int = 10) -> List[Dict]:
+        """
+        Get a limited view of the most recent conversation history with display indices.
+        
+        Args:
+            username: The username
+            limit: Maximum number of messages to return
+            
+        Returns:
+            List of message dictionaries with added 'display_index' field
+        """
+        file_path = self.get_file_path(username)
+        
+        if not os.path.exists(file_path):
+            return []
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                try:
+                    messages = json.load(file)
+                except json.JSONDecodeError:
+                    return []
+                    
+            # Get the most recent messages
+            recent_messages = messages[-limit:]
+            
+            # Add an index to each message for reference
+            for i, msg in enumerate(recent_messages):
+                msg['display_index'] = i
+                
+            return recent_messages
+        except Exception as e:
+            logger.error(f"Error getting limited history: {e}")
+            return []
+
+    def delete_messages_by_display_index(self, username: str, indices: List[int], limit: int = 50) -> Tuple[bool, str, int]:
+        """
+        Delete messages by their display indices (as shown in get_limited_history).
+        
+        Args:
+            username: The username
+            indices: List of display indices to delete
+            limit: Maximum number of messages that were displayed
+            
+        Returns:
+            Tuple of (success, message, deleted_count)
+        """
+        file_path = self.get_file_path(username)
+        
+        if not os.path.exists(file_path):
+            return False, "No conversation history found.", 0
+            
+        try:
+            # Read the current conversation
+            with open(file_path, 'r', encoding='utf-8') as file:
+                try:
+                    messages = json.load(file)
+                except json.JSONDecodeError:
+                    return False, "Conversation history appears to be corrupted.", 0
+            
+            # Check if there are any messages
+            if not messages:
+                return False, "No messages to delete.", 0
+                
+            # Calculate the offset for display indices
+            offset = max(0, len(messages) - limit)
+            
+            # Convert display indices to actual indices
+            actual_indices = [offset + idx for idx in indices if 0 <= idx < min(limit, len(messages))]
+            
+            # Check if indices are valid
+            if not actual_indices:
+                return False, "No valid message indices provided.", 0
+                
+            if max(actual_indices) >= len(messages) or min(actual_indices) < 0:
+                return False, "Invalid message indices after adjustment.", 0
+            
+            # Remove messages at the specified indices
+            # We need to remove from highest index to lowest to avoid shifting issues
+            sorted_indices = sorted(actual_indices, reverse=True)
+            deleted_count = 0
+            
+            for idx in sorted_indices:
+                messages.pop(idx)
+                deleted_count += 1
+            
+            # Write the updated conversation back to the file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(messages, file, indent=2)
+            
+            return True, f"Successfully deleted {deleted_count} message(s).", deleted_count
+            
+        except Exception as e:
+            logger.error(f"Error deleting messages: {e}")
+            return False, f"Error deleting messages: {str(e)}", 0
             
             
 class UserPreferencesManager:
@@ -1091,6 +1217,11 @@ class DiscordBot(commands.Bot):
         
         # Pass the TOP_K value to DocumentManager
         self.document_manager = DocumentManager(top_k=self.config.TOP_K)
+
+        # Clean up any empty documents - THIS IS THE NEW CODE
+        empty_docs = self.document_manager.cleanup_empty_documents()
+        if empty_docs:
+            logger.info(f"Cleaned up {len(empty_docs)} empty documents at startup")
         
         # Initialize the ImageManager with a reference to the DocumentManager
         self.image_manager = ImageManager(document_manager=self.document_manager)
@@ -1109,10 +1240,15 @@ class DiscordBot(commands.Bot):
         
         # List of models that support vision capabilities
         self.vision_capable_models = [
-            "google/gemini-2.0-pro-exp-02-05:free",
             "google/gemini-2.0-flash-001",
+            "google/gemini-2.0-pro-exp-02-05:free",
+            "anthropic/claude-3.7-sonnet:beta",
+            "anthropic/claude-3.7-sonnet",
+            "anthropic/claude-3.5-sonnet:beta", 
             "anthropic/claude-3.5-sonnet",
-            "anthropic/claude-3.5-haiku"
+            "anthropic/claude-3.5-haiku:beta",
+            "anthropic/claude-3.5-haiku",
+            "anthropic/claude-3-haiku:beta"
         ]
 
     def load_banned_users(self):
@@ -1435,12 +1571,14 @@ class DiscordBot(commands.Bot):
             return ""  # Fall back to empty string
 
     async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None, existing_message=None):
-        """Send a message split into chunks if it's too long."""
+        """Send a message split into chunks if it's too long, with each chunk referencing the previous one."""
         chunks = split_message(text)
         
         if model_used and user_id:
             debug_mode = self.user_preferences_manager.get_debug_mode(user_id)
             if debug_mode:
+                # Format the debug info to show the actual model used
+                # Keep the full model identifier to be transparent about which exact model was used
                 debug_info = f"\n\n*[Debug: Response generated using {model_used}]*"
                 
                 # Check if adding debug info would exceed the character limit
@@ -1450,29 +1588,35 @@ class DiscordBot(commands.Bot):
                 else:
                     chunks[-1] += debug_info
         
+        # Keep track of the last message sent to use as reference for the next chunk
+        last_message = None
+        
         # Update existing message with first chunk if provided
         if existing_message and chunks:
             await existing_message.edit(content=chunks[0])
+            last_message = existing_message
             chunks = chunks[1:]  # Remove the first chunk since it's already sent
         
-        # Send remaining chunks as new messages concurrently to minimize interruptions
-        if chunks:
-            # For the first chunk, use the reference if no existing_message was provided
-            first_message_kwargs = {
-                "content": chunks[0],
-                "reference": reference if existing_message is None else None,
-                "mention_author": mention_author if existing_message is None else False
-            }
-            
-            # Use asyncio.gather to send all chunks concurrently
-            send_tasks = [channel.send(**first_message_kwargs)]
-            
-            # Add the rest of the chunks without reference
-            for chunk in chunks[1:]:
-                send_tasks.append(channel.send(chunk))
-            
-            # Execute all send operations concurrently
-            await asyncio.gather(*send_tasks)
+        # For the first chunk (if no existing_message was provided), use the original reference
+        if chunks and last_message is None:
+            first_message = await channel.send(
+                content=chunks[0],
+                reference=reference,
+                mention_author=mention_author
+            )
+            last_message = first_message
+            chunks = chunks[1:]  # Remove the first chunk since it's already sent
+        
+        # Send remaining chunks sequentially, each referencing the previous one
+        for chunk in chunks:
+            # Each new chunk references the previous one to maintain the chain
+            new_message = await channel.send(
+                content=chunk,
+                reference=last_message,  # Reference the previous message in the chain
+                mention_author=False  # Don't mention for follow-up chunks
+            )
+            # Update reference for the next chunk
+            last_message = new_message
 
     async def refresh_google_docs(self):
         """Refresh all tracked Google Docs."""
@@ -1757,8 +1901,125 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error adding document: {e}")
                 await interaction.followup.send(f"Error adding document: {str(e)}")
-        
 
+        @self.tree.command(name="manage_history", description="View and manage your conversation history")
+        @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
+        async def manage_history(interaction: discord.Interaction, limit: int = 10):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                # Validate limit
+                if limit <= 0:
+                    await interaction.followup.send("*neural error detected!* The limit must be a positive number.")
+                    return
+                
+                # Cap limit at 50 to prevent excessive output
+                limit = min(limit, 50)
+                
+                # Get limited conversation history
+                recent_messages = self.conversation_manager.get_limited_history(interaction.user.name, limit)
+                
+                if not recent_messages:
+                    await interaction.followup.send("*neural pathways empty!* I don't have any conversation history with you yet.")
+                    return
+                
+                # Format conversation history
+                response = "*accessing neural memory banks...*\n\n"
+                response += f"**CONVERSATION HISTORY** (showing last {len(recent_messages)} messages)\n\n"
+                
+                # Format each message
+                for msg in recent_messages:
+                    display_index = msg.get('display_index', 0)
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    timestamp = msg.get("timestamp", "")
+                    channel = msg.get("channel", "")
+                    
+                    # Format timestamp if available
+                    time_str = ""
+                    if timestamp:
+                        try:
+                            dt = datetime.fromisoformat(timestamp)
+                            time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except:
+                            time_str = timestamp
+                    
+                    # Add message to response with index
+                    response += f"**[{display_index}]** "
+                    if time_str:
+                        response += f"({time_str}) "
+                    if channel:
+                        response += f"[Channel: {channel}]\n"
+                    else:
+                        response += "\n"
+                    
+                    if role == "user":
+                        response += f"**You**: {content}\n\n"
+                    elif role == "assistant":
+                        response += f"**Publicia**: {content}\n\n"
+                    else:
+                        response += f"**{role}**: {content}\n\n"
+                
+                # Add instructions for deletion
+                response += "*end of neural memory retrieval*\n\n"
+                response += "**To delete messages:** Use the `/delete_history_messages` command with these options:\n"
+                response += "- `indices`: Comma-separated list of message indices to delete (e.g., '0,2,5')\n"
+                response += "- `confirm`: Set to 'yes' to confirm deletion\n\n"
+                response += "Example: `/delete_history_messages indices:1,3 confirm:yes` will delete messages [1] and [3] from what you see above."
+                
+                # Send the response, splitting if necessary
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk, ephemeral=True)
+                
+            except Exception as e:
+                logger.error(f"Error managing conversation history: {e}")
+                await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to manage your conversation history.")
+
+        @self.tree.command(name="delete_history_messages", description="Delete specific messages from your conversation history")
+        @app_commands.describe(
+            indices="Comma-separated list of message indices to delete (e.g., '0,2,5')",
+            confirm="Type 'yes' to confirm deletion"
+        )
+        async def delete_history_messages(
+            interaction: discord.Interaction, 
+            indices: str,
+            confirm: str = "no"
+        ):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                # Check confirmation
+                if confirm.lower() != "yes":
+                    await interaction.followup.send("*deletion aborted!* Please confirm by setting `confirm` to 'yes'.")
+                    return
+                    
+                # Parse indices
+                try:
+                    indices_list = [int(idx.strip()) for idx in indices.split(',') if idx.strip()]
+                    if not indices_list:
+                        await interaction.followup.send("*neural error detected!* Please provide valid message indices as a comma-separated list (e.g., '0,2,5').")
+                        return
+                except ValueError:
+                    await interaction.followup.send("*neural error detected!* Please provide valid integer indices.")
+                    return
+                    
+                # Delete messages
+                success, message, deleted_count = self.conversation_manager.delete_messages_by_display_index(
+                    interaction.user.name, 
+                    indices_list,
+                    limit=50  # Use same max limit as manage_history
+                )
+                
+                if success:
+                    if deleted_count > 0:
+                        await interaction.followup.send(f"*neural pathways reconfigured!* {message}")
+                    else:
+                        await interaction.followup.send("*no changes made!* No messages were deleted.")
+                else:
+                    await interaction.followup.send(f"*neural error detected!* {message}")
+                    
+            except Exception as e:
+                logger.error(f"Error deleting messages: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while deleting messages.")
+        
         @self.tree.command(name="list_commands", description="List all available commands")
         async def list_commands(interaction: discord.Interaction):
             await interaction.response.defer()
@@ -1774,7 +2035,7 @@ class DiscordBot(commands.Bot):
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
                     "Image Management": ["list_images", "view_image", "remove_image", "update_image_description"],
                     "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help"],
-                    "Memory Management": ["lobotomise", "history"], 
+                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
                 
@@ -1914,18 +2175,48 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
-            app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1"),
-            app_commands.Choice(name="Gemini 2.0 Flash (better for citations, accuracy, and faster responses)", value="google/gemini-2.0-flash-001")
+            app_commands.Choice(name="DeepSeek-R1 (better for roleplaying, more creative)", value="deepseek/deepseek-r1:free"),
+            app_commands.Choice(name="Gemini 2.0 Flash (better for citations, accuracy, and faster responses, and has image viewing capabilities)", value="google/gemini-2.0-flash-001"),
+            app_commands.Choice(name="Nous: Hermes 405B Instruct", value="nousresearch/hermes-3-llama-3.1-405b"),
+            app_commands.Choice(name="Claude 3.5 Haiku (creative, fast, and has image viewing capabilities)", value="anthropic/claude-3.5-haiku:beta"),
+            app_commands.Choice(name="Claude 3.7 Sonnet (admin only, most advanced, and most expensive)", value="anthropic/claude-3.7-sonnet:beta"),
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
             try:
+                # Check if user is allowed to use Claude 3.7 Sonnet
+                if model == "anthropic/claude-3.7-sonnet:beta" and str(interaction.user.id) != "203229662967627777" and not (interaction.guild and interaction.user.guild_permissions.administrator):
+                    await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
+                    return
+                    
                 success = self.user_preferences_manager.set_preferred_model(str(interaction.user.id), model)
                 
-                model_name = "DeepSeek-R1" if model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
+                # Get friendly model name based on the model value
+                model_name = "Unknown Model"
+                if model.startswith("deepseek/"):
+                    model_name = "DeepSeek-R1"
+                elif model.startswith("google/"):
+                    model_name = "Gemini 2.0 Flash"
+                elif model.startswith("nousresearch/"):
+                    model_name = "Nous: Hermes 405B Instruct"
+                elif "claude-3.5-haiku" in model:
+                    model_name = "Claude 3.5 Haiku"
+                elif "claude-3.7-sonnet" in model:
+                    model_name = "Claude 3.7 Sonnet"
                 
                 if success:
-                    response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times"
+                    # Create a description of all model strengths
+                    model_descriptions = [
+                        "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion",
+                        "**Gemini 2.0 Flash**: Good for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
+                        "**Nous: Hermes 405B Instruct**: Balanced between creativity and accuracy",
+                        "**Claude 3.5 Haiku**: Fast and creative, and has image viewing capabilities",
+                        "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
+                    ]
+                    
+                    response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
+                    response += "\n".join(model_descriptions)
+                    
                     for chunk in split_message(response):
                         await interaction.followup.send(chunk)
                 else:
@@ -1934,6 +2225,93 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error setting preferred model: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while setting your preferred model.")
+
+        """
+        ## DeepSeek-R1
+
+        **Pros:**
+        - exceptional for roleplaying and creative immersion
+        - vivid, atmospheric descriptions with poetic language
+        - maintains strong character voice while delivering information
+        - creates memorable, emotionally resonant responses
+        - excellent at metaphors and world-building
+        - great for users who want the full immersive experience
+
+        **Cons:**
+        - sometimes prioritizes style over factual precision
+        - responses can be less structured/organized 
+        - citations might not be as methodically formatted
+        - can occasionally add creative embellishments beyond strict lore
+        - might be slower than more efficiency-focused models
+
+        ## Gemini 2.0 Flash
+
+        **Pros:**
+        - superior citation formatting and accuracy
+        - excellent document analysis capabilities 
+        - faster response times than other models
+        - better structured presentation of information
+        - clear organization with bullet points when needed
+        - supports image analysis/viewing
+        - ideal for research-focused queries
+
+        **Cons:**
+        - less creative/atmospheric than roleplaying-focused models
+        - character voice might feel more subdued
+        - prioritizes information over immersion
+        - responses might feel more like information dumps than storytelling
+        - less dramatic and poetic language
+
+        ## Nous: Hermes 405B Instruct
+
+        **Pros:**
+        - good balance between creativity and factual presentation
+        - strong reasoning capabilities
+        - maintains character elements while presenting information
+        - handles complex topics with nuance
+        - balances immersion with clarity
+        - good for users who want both facts and flavor
+
+        **Cons:**
+        - not as imaginative as DeepSeek-R1
+        - not as precise with citations as Gemini
+        - sits in middle ground between immersion and facts
+        - no image viewing capabilities
+        - middle-tier performance in both creative and analytical tasks
+
+        ## Claude 3.5 Haiku
+
+        **Pros:**
+        - fast responses with creative elements
+        - good balance of efficiency and character voice
+        - supports image viewing/analysis
+        - concise but effective responses
+        - maintains character while being informative
+        - good for quick but flavorful interactions
+
+        **Cons:**
+        - not as deeply immersive as DeepSeek or Claude Sonnet
+        - responses might be less elaborate than larger models
+        - potentially less nuanced with very complex lore
+        - strikes middle ground that might not satisfy purists of either style
+
+        ## Claude 3.7 Sonnet
+
+        **Pros:**
+        - most advanced capabilities overall
+        - combines creative excellence with analytical precision
+        - superior handling of complex queries
+        - maintains character while providing detailed information
+        - excellent citation formatting and factual accuracy
+        - supports image analysis with high understanding
+        - best for users who want everything without compromise
+
+        **Cons:**
+        - most expensive model (admin-restricted for cost reasons)
+        - might be overkill for simple queries
+        - potentially slower due to greater complexity
+        - advanced capabilities might not be noticeable for basic questions
+        """
 
         @self.tree.command(name="get_model", description="Show your currently selected AI model")
         async def get_model(interaction: discord.Interaction):
@@ -1944,9 +2322,30 @@ class DiscordBot(commands.Bot):
                     default_model=self.config.LLM_MODEL
                 )
                 
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
+                # Get friendly model name based on the model value
+                model_name = "Unknown Model"
+                if preferred_model.startswith("deepseek/"):
+                    model_name = "DeepSeek-R1"
+                elif preferred_model.startswith("google/"):
+                    model_name = "Gemini 2.0 Flash"
+                elif preferred_model.startswith("nousresearch/"):
+                    model_name = "Nous: Hermes 405B Instruct"
+                elif "claude-3.5-haiku" in preferred_model:
+                    model_name = "Claude 3.5 Haiku"
+                elif "claude-3.7-sonnet" in preferred_model:
+                    model_name = "Claude 3.7 Sonnet"
                 
-                response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n- **DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion\n- **Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, and has very fast response times"
+                # Create a description of all model strengths
+                model_descriptions = [
+                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion",
+                    "**Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
+                    "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
+                    "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding, and has image viewing capabilities",
+                    "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
+                ]
+                
+                response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
+                response += "\n".join(model_descriptions)
                 
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
@@ -2351,18 +2750,29 @@ class DiscordBot(commands.Bot):
                     default_model=self.config.LLM_MODEL
                 )
 
-                # Get friendly model name
-                model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
+                # Get friendly model name based on the model value
+                model_name = "Unknown Model"
+                if preferred_model.startswith("deepseek/"):
+                    model_name = "DeepSeek-R1"
+                elif preferred_model.startswith("google/"):
+                    model_name = "Gemini 2.0 Flash"
+                elif preferred_model.startswith("nousresearch/"):
+                    model_name = "Nous: Hermes 405B Instruct"
+                elif "claude-3.5-haiku" in preferred_model:
+                    model_name = "Claude 3.5 Haiku"
+                elif "claude-3.7-sonnet" in preferred_model:
+                    model_name = "Claude 3.7 Sonnet"
 
-                # If we have images and the preferred model doesn't support vision, use Gemini
                 if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
-                    preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
-                    model_name = "Gemini Pro (for image analysis)"
-                    await status_message.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
+                    await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
+                    # No model switching - continues with user's preferred model
+                else:
+                    await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
 
                 # Step 5: Get AI response using user's preferred model
-                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
-                completion = await self._try_ai_completion(
+                
+
+                completion, actual_model = await self._try_ai_completion(  # Now unpack the tuple of (completion, actual_model)
                     preferred_model,
                     messages,
                     image_ids=image_ids,
@@ -2380,7 +2790,7 @@ class DiscordBot(commands.Bot):
                     await self.send_split_message(
                         interaction.channel,
                         response,
-                        model_used=model_name,
+                        model_used=actual_model,  # Pass the actual model used, not just the preferred model
                         user_id=str(interaction.user.id),
                         existing_message=status_message
                     )
@@ -2712,11 +3122,13 @@ class DiscordBot(commands.Bot):
                 response += "• `/search_docs` - Search directly in my document knowledge base\n"
                 response += "• `/update_image_description` - Update the description for an image\n\n"
                 
-                # Conversation Management
+                # Conversation Management - UPDATED SECTION WITH NEW COMMANDS
                 response += "## **CONVERSATION MANAGEMENT**\n\n"
                 response += "**💬 Conversation History**\n"
-                response += "• `/history` - View your conversation history with me\n"
-                response += "• Type \"LOBOTOMISE\" in a message to wipe your conversation history\n"
+                response += "• `/history` - View your complete conversation history with me\n"
+                response += "• `/manage_history` - View recent messages with numbered indices for selective deletion\n"
+                response += "• `/delete_history_messages` - Remove specific messages using their indices (requires confirmation with 'confirm:yes')\n"
+                response += "• Type \"LOBOTOMISE\" in a message to wipe your entire conversation history\n"
                 response += "• I remember our conversations to provide better context-aware responses\n\n"
                 
                 # Customization
@@ -2780,7 +3192,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Optional[any]:
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Tuple[Optional[any], Optional[str]]:
         """Get AI completion with dynamic fallback options based on the requested model."""
         
         # Get primary model family (deepseek, google, etc.)
@@ -2793,19 +3205,25 @@ class DiscordBot(commands.Bot):
         models = [model]  # Start with the requested model
         
         # If we need vision, prioritize vision-capable models
+        """
         if need_vision and model not in self.vision_capable_models:
             # If the requested model doesn't support vision but we have images,
             # prepend vision-capable models from the same family if available
             if model_family == "google":
                 vision_models = [m for m in self.vision_capable_models if m.startswith("google/")]
                 models = vision_models + models
+            elif model_family == "anthropic":
+                vision_models = [m for m in self.vision_capable_models if m.startswith("anthropic/")]
+                models = vision_models + models
             else:
                 # For other model families, prepend all vision-capable models
                 models = self.vision_capable_models + models
+        """
         
         # Add model-specific fallbacks first
         if model_family == "deepseek":
             fallbacks = [
+                "deepseek/deepseek-r1:free",
                 "deepseek/deepseek-r1:floor",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-r1:nitro",
@@ -2814,14 +3232,37 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
-            models.extend([fb for fb in fallbacks if fb])
+            models.extend([fb for fb in fallbacks if fb not in models])
         elif model_family == "google":
             fallbacks = [
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-pro-exp-02-05:free",
                 "google/gemini-2.0-flash-001"
             ]
-            models.extend([fb for fb in fallbacks if fb != model])
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif model_family == "nousresearch":
+            fallbacks = [
+                "nousresearch/hermes-3-llama-3.1-70b",
+                "meta-llama/llama-3.3-70b-instruct:free",
+                "meta-llama/llama-3.3-70b-instruct"
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif model_family == "anthropic":
+            if "claude-3.7-sonnet" in model:
+                fallbacks = [
+                    "anthropic/claude-3.7-sonnet",
+                    "anthropic/claude-3.5-sonnet:beta",
+                    "anthropic/claude-3.5-haiku:beta",
+                    "anthropic/claude-3.5-haiku"
+                ]
+            elif "claude-3.5-haiku" in model:
+                fallbacks = [
+                    "anthropic/claude-3.5-haiku",
+                    "anthropic/claude-3-haiku:beta"
+                ]
+            else:
+                fallbacks = []
+            models.extend([fb for fb in fallbacks if fb not in models])
         
         # Add general fallbacks
         general_fallbacks = [
@@ -2829,7 +3270,10 @@ class DiscordBot(commands.Bot):
             "google/gemini-2.0-flash-thinking-exp:free",
             "deepseek/deepseek-r1",
             "deepseek/deepseek-chat",
-            "google/gemini-2.0-pro-exp-02-05:free"
+            "google/gemini-2.0-pro-exp-02-05:free",
+            "nousresearch/hermes-3-llama-3.1-405b",
+            "anthropic/claude-3.5-haiku:beta",
+            "anthropic/claude-3.5-haiku"
         ]
         
         # Add general fallbacks that aren't already in the list
@@ -2956,7 +3400,7 @@ class DiscordBot(commands.Bot):
                     if model != current_model:
                         logger.info(f"Notice: Fallback model {current_model} was used instead of requested {model}")
                         
-                    return completion
+                    return completion, current_model  # Return both the completion and the model used
                     
             except Exception as e:
                 # Get the full traceback information
@@ -2966,7 +3410,7 @@ class DiscordBot(commands.Bot):
                 continue
         
         logger.error(f"All models failed to generate completion. Attempted models: {', '.join(models)}")
-        return None
+        return None, None  # Return None for both completion and model used
 
     async def on_message(self, message: discord.Message):
         """Handle incoming messages, ignoring banned users."""
@@ -3178,23 +3622,32 @@ class DiscordBot(commands.Bot):
                 default_model=self.config.LLM_MODEL
             )
 
-            # Get friendly model name
-            model_name = "DeepSeek-R1" if preferred_model == "deepseek/deepseek-r1" else "Gemini 2.0 Flash"
+            # Get friendly model name based on the model value
+            model_name = "Unknown Model"
+            if preferred_model.startswith("deepseek/"):
+                model_name = "DeepSeek-R1"
+            elif preferred_model.startswith("google/"):
+                model_name = "Gemini 2.0 Flash"
+            elif preferred_model.startswith("nousresearch/"):
+                model_name = "Nous: Hermes 405B Instruct"
+            elif "claude-3.5-haiku" in preferred_model:
+                model_name = "Claude 3.5 Haiku"
+            elif "claude-3.7-sonnet" in preferred_model:
+                model_name = "Claude 3.7 Sonnet"
 
-            # If we have images and the preferred model doesn't support vision, use Gemini
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
-                preferred_model = "google/gemini-2.0-pro-001"  # Use Gemini Pro for vision
-                model_name = "Gemini Pro (for image analysis)"
-                await thinking_msg.edit(content=f"*your preferred model doesn't support image analysis, switching to {model_name}...*")
+                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
+                # No model switching - continues with user's preferred model
+            else:
+                await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
 
             # Step 5: Get AI response using user's preferred model
-            await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
             
             # Add a note about fetched Google Docs if any were processed
             if google_doc_contents:
                 await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
             
-            completion = await self._try_ai_completion(
+            completion, actual_model = await self._try_ai_completion(  # Now unpack the tuple of (completion, actual_model)
                 preferred_model,
                 messages,
                 image_ids=image_ids,
@@ -3237,7 +3690,7 @@ class DiscordBot(commands.Bot):
                     response,
                     reference=message,
                     mention_author=False,
-                    model_used=model_name,
+                    model_used=actual_model,  # Pass the actual model used, not just the preferred model
                     user_id=str(message.author.id),
                     existing_message=thinking_msg
                 )
