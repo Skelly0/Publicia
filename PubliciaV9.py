@@ -403,7 +403,7 @@ class ImageManager:
 class DocumentManager:
     """Manages document storage, embeddings, and retrieval."""
     
-    def __init__(self, base_dir: str = "documents", top_k: int = 10):
+    def __init__(self, base_dir: str = "documents", top_k: int = 5):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         
@@ -846,7 +846,7 @@ class Config:
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         
-        self.TOP_K = int(os.getenv('TOP_K', '10'))
+        self.TOP_K = int(os.getenv('TOP_K', '5'))
         
         # Validate required environment variables
         self._validate_config()
@@ -1329,6 +1329,14 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-haiku",
             "anthropic/claude-3-haiku:beta"
         ]
+
+    def sanitize_discord_text(self, text: str) -> str:
+        """Sanitize text for Discord message display by escaping special characters."""
+        # Replace backticks with single quotes to avoid breaking code blocks
+        text = text.replace("`", "'")
+        # Replace backslashes to avoid escape sequence issues
+        text = text.replace("\\", "\\\\")
+        return text
 
     def load_banned_users(self):
         """Load banned users from JSON file."""
@@ -2752,22 +2760,24 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send("*neural error detected!* Please provide a search query.")
                     return
                     
-                results = self.document_manager.search(query, top_k=10)
+                results = self.document_manager.search(query, top_k=5)
                 if not results:
                     await interaction.followup.send("No relevant documents found.")
                     return
-                response = "Search results:\n```"
+                
+                # Create formatted response outside of code block for better handling
+                response = "Search results:\n"
                 for doc_name, chunk, similarity, image_id in results:
                     if image_id:
                         # This is an image search result
                         image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
-                        response += f"\nIMAGE: {image_name} (ID: {image_id}, similarity: {similarity:.2f}):\n"
-                        response += f"{chunk[:200]}...\n"
+                        response += f"\n**IMAGE: {image_name}** (ID: {image_id}, similarity: {similarity:.2f}):\n"
+                        response += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
                     else:
-                        response += f"\nFrom {doc_name} (similarity: {similarity:.2f}):\n"
-                        response += f"{chunk[:200]}...\n"
-                response += "```"
+                        response += f"\n**From {doc_name}** (similarity: {similarity:.2f}):\n"
+                        response += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
                 
+                # Split the message if needed
                 for chunk in split_message(response):
                     await interaction.followup.send(chunk)
             except Exception as e:

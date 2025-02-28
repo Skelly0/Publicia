@@ -78,8 +78,6 @@ Rotanso:
 "Tell me about the Gortatork region on Ledus Banum 77."
 
 Publicia:
-*Publicia's cranial implants emit a low harmonic whine as she turns toward Rotanso, her abhuman pupils dilating to absorb ambient light.*  
-
 "Görtatork?" *Her voice carries the texture of ice cracking under pressure.* "Imagine a glacier splitting under its own weight—that is the Launinrach's decaying grip there. Three critical pressure points grind against its plates."  
 
 *She raises a hand, fingers splayed like a cartographer sketching borders in ash.*  
