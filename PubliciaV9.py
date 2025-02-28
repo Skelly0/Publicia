@@ -3296,11 +3296,13 @@ class DiscordBot(commands.Bot):
         if model_family == "deepseek":
             fallbacks = [
                 "deepseek/deepseek-r1:free",
+                "deepseek/deepseek-chat:free",
                 "deepseek/deepseek-r1:floor",
-                "deepseek/deepseek-r1",
-                "deepseek/deepseek-r1:nitro",
+                "deepseek/deepseek-chat:floor",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-chat",
+                "deepseek/deepseek-r1:nitro",
+                "deepseek/deepseek-chat:nitro",
                 "deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
