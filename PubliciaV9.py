@@ -3087,14 +3087,44 @@ class DiscordBot(commands.Bot):
                 response += "• `/search_docs` - Search directly in my document knowledge base\n"
                 response += "• `/update_image_description` - Update the description for an image\n\n"
                 
-                # Conversation Management
-                response += "## **CONVERSATION MANAGEMENT**\n\n"
-                response += "**💬 Conversation History**\n"
-                response += "• `/history` - View your complete conversation history with me\n"
-                response += "• `/manage_history` - View recent messages with numbered indices for deletion\n"
-                response += "• `/delete_history_messages` - Remove specific messages by indices (use confirm:yes)\n"
-                response += "• Type \"LOBOTOMISE\" in a message to Publicia, or use the /lobotomise command to wipe your entire conversation history\n"
-                response += "• I remember our conversations to provide better context-aware responses\n\n"
+                # Conversation Management section
+                response += "## **CONVERSATION SYSTEM**\n\n"
+                response += "**💬 how conversations work**\n"
+                response += "• publicia remembers your chats to provide more relevant, contextual responses\n"
+                response += "• each user has their own conversation history stored separately\n"
+                response += "• when you ask something, publicia checks your previous interactions for context\n"
+                response += "• this lets her understand ongoing discussions, recurring topics, and your interests\n"
+                response += "• the history is stored in a secure JSON format that preserves timestamps and channels\n"
+                response += "• conversations are limited to the most recent 50 messages to maintain performance\n\n"
+
+                response += "**🧠 memory management**\n"
+                response += "• `/history [limit]` - see your recent conversation (default: shows last 10 messages)\n"
+                response += "• `/manage_history [limit]` - view messages with numbered indices for selective deletion\n"
+                response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - remove specific messages by their indices\n"
+                response += "• type \"LOBOTOMISE\" in any message to publicia or use `/lobotomise` command to completely wipe your history\n"
+                response += "• memory wiping is useful if you want to start fresh or remove outdated context\n\n"
+
+                response += "**🔍 practical benefits**\n"
+                response += "• contextual awareness means you don't need to repeat information\n"
+                response += "• publicia can reference your previous questions when answering new ones\n"
+                response += "• she'll recognize when you're continuing a previous topic\n"
+                response += "• more personalized responses based on your interaction history\n"
+                response += "• better lore recommendations based on your demonstrated interests\n"
+                response += "• image references from previous messages can be recalled\n\n"
+
+                response += "**✨ pro tips**\n"
+                response += "• periodically use `/lobotomise` if publicia seems \"stuck\" on old conversations\n"
+                response += "• before complex discussions, consider wiping history to establish fresh context\n"
+                response += "• channel names are preserved in history for better context tracking\n"
+                response += "• using `/manage_history` lets you selectively prune irrelevant messages\n"
+                response += "• conversation history helps most when discussing related topics over time\n"
+                response += "• if asking something completely new, explicitly say so to help publicia shift focus\n\n"
+
+                response += "**🔒 privacy note**\n"
+                response += "• your conversation history is only visible to you and publicia\n"
+                response += "• history is stored locally on the bot's server, not in external databases\n"
+                response += "• using ephemeral (private) responses when managing your history ensures privacy\n"
+                response += "• history can be completely deleted at any time with the lobotomise command\n\n"
                 
                 # Customization
                 response += "## **CUSTOMIZATION**\n\n"
