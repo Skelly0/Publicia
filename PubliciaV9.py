@@ -44,77 +44,85 @@ def is_image(attachment):
 
 
 def split_message(text, max_length=1750):
-    """
-    Split a text string into chunks under max_length characters,
-    preserving newlines where possible but avoiding unnecessary splits.
-    """
-    if not text:
-        return []
-        
-    # If the text is shorter than max_length, return it as a single chunk
-    if len(text) <= max_length:
-        return [text]
-        
+    """smarter message splitting that respects semantic boundaries"""
+    if not text or len(text) <= max_length:
+        return [text] if text else []
+    
     chunks = []
     current_chunk = ""
     
-    # Split by paragraphs first (double newlines)
+    # try paragraphs first
     paragraphs = text.split('\n\n')
     
-    for i, paragraph in enumerate(paragraphs):
-        # Check if adding this paragraph (with double newline if not the first paragraph)
-        # would exceed the max length
-        separator = '\n\n' if current_chunk and i > 0 else ''
-        if len(current_chunk + separator + paragraph) <= max_length:
-            # We can add this paragraph to the current chunk
-            current_chunk = current_chunk + separator + paragraph
+    for paragraph in paragraphs:
+        if len(current_chunk + ('\n\n' if current_chunk else '') + paragraph) <= max_length:
+            current_chunk += ('\n\n' if current_chunk else '') + paragraph
         else:
-            # Check if the current chunk has content
+            # store current chunk if it has content
             if current_chunk:
                 chunks.append(current_chunk)
             
-            # If the paragraph itself is longer than max_length, split it by lines
+            # if paragraph itself is too long
             if len(paragraph) > max_length:
+                # try line-by-line
                 lines = paragraph.split('\n')
                 current_chunk = ""
                 
                 for line in lines:
-                    if len(current_chunk + ('' if not current_chunk else '\n') + line) <= max_length:
-                        current_chunk = current_chunk + ('' if not current_chunk else '\n') + line
+                    if len(current_chunk + ('\n' if current_chunk else '') + line) <= max_length:
+                        current_chunk += ('\n' if current_chunk else '') + line
                     else:
-                        # If the line itself is too long
+                        # if line is too long
                         if current_chunk:
                             chunks.append(current_chunk)
                             current_chunk = ""
                         
-                        # Split the line into smaller chunks if needed
+                        # smart splitting for long lines
                         if len(line) > max_length:
-                            for j in range(0, len(line), max_length):
-                                line_chunk = line[j:j + max_length]
-                                if j + max_length >= len(line):
-                                    current_chunk = line_chunk
+                            # try splitting at these boundaries in order
+                            split_markers = ['. ', '? ', '! ', '; ', ', ', ' - ', ' ']
+                            
+                            start = 0
+                            while start < len(line):
+                                # find best split point
+                                end = start + max_length
+                                if end >= len(line):
+                                    chunk = line[start:]
+                                    if current_chunk and len(current_chunk + chunk) <= max_length:
+                                        current_chunk += chunk
+                                    else:
+                                        if current_chunk:
+                                            chunks.append(current_chunk)
+                                        current_chunk = chunk
+                                    break
+                                
+                                # try each split marker
+                                split_point = end
+                                for marker in split_markers:
+                                    pos = line[start:end].rfind(marker)
+                                    if pos > 0:  # found a good split point
+                                        split_point = start + pos + len(marker)
+                                        break
+                                
+                                chunk = line[start:split_point]
+                                if current_chunk and len(current_chunk + chunk) <= max_length:
+                                    current_chunk += chunk
                                 else:
-                                    chunks.append(line_chunk)
+                                    if current_chunk:
+                                        chunks.append(current_chunk)
+                                    current_chunk = chunk
+                                
+                                start = split_point
                         else:
                             current_chunk = line
             else:
                 current_chunk = paragraph
     
-    # Add the last chunk if it has content
+    # add final chunk
     if current_chunk:
         chunks.append(current_chunk)
     
-    # Final safety check: ensure no chunk exceeds max_length
-    final_chunks = []
-    for chunk in chunks:
-        if len(chunk) <= max_length:
-            final_chunks.append(chunk)
-        else:
-            # Split any chunk that somehow exceeds max_length
-            for j in range(0, len(chunk), max_length):
-                final_chunks.append(chunk[j:j + max_length])
-    
-    return final_chunks
+    return chunks
         
 def sanitize_for_logging(text: str) -> str:
     """Remove problematic characters like BOM from the string for safe logging."""
@@ -2531,7 +2539,7 @@ class DiscordBot(commands.Bot):
                     try:
                         # Check if URL appears to be a direct image link
                         if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
-                            status_message = await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=True)
+                            status_message = await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=False)
                             
                             # Download the image
                             async with aiohttp.ClientSession() as session:
@@ -2547,20 +2555,20 @@ class DiscordBot(commands.Bot):
                                             image_attachments.append(image_base64)
                                             logger.info(f"Processed image from URL: {image_url}")
                                         else:
-                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=True)
+                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=False)
                                             return
                                     else:
-                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=True)
+                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=False)
                                         return
                         else:
-                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=True)
+                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=False)
                             return
                     except Exception as e:
                         logger.error(f"Error processing image URL: {e}")
-                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=True)
+                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=False)
                         return
                 else:
-                    status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=True)
+                    status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=False)
                 
                 # Step 1: Analyze the query with Gemini
                 analysis = await self.analyze_query(question)
