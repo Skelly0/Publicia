@@ -3650,7 +3650,7 @@ class DiscordBot(commands.Bot):
             google_doc_context = []
             for doc_id, doc_url, content in google_doc_contents:
                 # Truncate content if it's too long (first 2000 chars)
-                truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
+                truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
                 google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
             
             # Get nickname or username
