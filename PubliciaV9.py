@@ -2355,7 +2355,7 @@ class DiscordBot(commands.Bot):
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond",
+                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors",
                     "**Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
                     "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
                     "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities",
@@ -2727,23 +2727,15 @@ class DiscordBot(commands.Bot):
                 if completion and completion.get('choices'):
                     response = completion['choices'][0]['message']['content']
                     
-                    # No longer updating conversation history for query command
-                    # This makes it a one-off interaction
-                    
-                    # Use the status message as the existing message for the first chunk
+                    # Pass the status message as the existing_message parameter
                     await self.send_split_message(
                         interaction.channel,
                         response,
-                        model_used=actual_model,  # Pass the actual model used, not just the preferred model
+                        model_used=actual_model,
                         user_id=str(interaction.user.id),
-                        existing_message=None  # Don't use the ephemeral status message
+                        existing_message=status_message  # Use status message instead of None
                     )
                     
-                    # Delete the status message since it's ephemeral and we've now sent the response
-                    try:
-                        await status_message.delete()
-                    except:
-                        pass
                 else:
                     await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
@@ -3138,7 +3130,7 @@ class DiscordBot(commands.Bot):
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "- **DeepSeek-R1**: Best for immersive roleplaying and creative responses, but is slower to respond\n"
+                response += "- **DeepSeek-R1**: Good for immersive roleplaying and creative responses, but is slower to respond and sometimes has errors\n"
                 response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis, and is very fast\n"
                 response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
                 response += "- **Claude 3.5 Haiku**: Fast responses, creative, and with image capabilities\n"
@@ -3303,8 +3295,6 @@ class DiscordBot(commands.Bot):
         # Add model-specific fallbacks first
         if model_family == "deepseek":
             fallbacks = [
-                "deepseek/deepseek-r1:free",
-                "deepseek/deepseek-chat:free",
                 "deepseek/deepseek-r1:floor",
                 "deepseek/deepseek-chat:floor",
                 "deepseek/deepseek-r1",
