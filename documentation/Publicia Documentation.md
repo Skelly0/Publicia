@@ -127,6 +127,7 @@ Users can choose their preferred AI model:
 - Gemini 2.0 Flash: Optimized for accuracy and image analysis
 - Nous: Hermes 405B: Balanced between creativity and precision
 - Claude 3.5 Haiku: Fast responses with image capabilities
+- Claude 3.5 Sonnet: Premium capabilities (admin restricted)
 - Claude 3.7 Sonnet: Premium capabilities (admin restricted)
 
 Each model has different strengths, fallback mechanisms ensure reliability.
@@ -167,7 +168,7 @@ pip install -r requirements.txt
 ```
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
-LLM_MODEL=dgoogle/gemini-2.0-flash-001  # Default model
+LLM_MODEL=deepseek/deepseek-r1  # Default model
 CLASSIFIER_MODEL=google/gemini-2.0-flash-001  # For query analysis
 TOP_K=10  # Number of search results to return
 API_TIMEOUT=150  # Seconds
@@ -295,6 +296,7 @@ Choose models based on your needs:
 - **Gemini 2.0 Flash**: Best for factual accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
+- **Claude 3.5 Sonnet**:  Advanced capabilities, and more creative than 3.7 Sonnet (admin-only)
 - **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
 
 The bot will automatically fall back to available models if your preferred model fails.
@@ -395,3 +397,4 @@ If data becomes corrupted:
 ---
 
 This documentation covers the main aspects of Publicia's functionality and setup. For more specific questions or advanced configurations, consult the source code or reach out for additional support.
+

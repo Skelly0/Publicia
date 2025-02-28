@@ -844,7 +844,7 @@ class Config:
         self._validate_config()
         
         # Add timeout settings
-        self.API_TIMEOUT = int(os.getenv('API_TIMEOUT', '150'))
+        self.API_TIMEOUT = int(os.getenv('API_TIMEOUT', '180'))
         self.MAX_RETRIES = int(os.getenv('MAX_RETRIES', '10'))
         
         
@@ -2262,10 +2262,11 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
-            app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses)", value="deepseek/deepseek-r1:free"),
-            app_commands.Choice(name="Gemini 2.0 Flash (best for accuracy, citations, and image analysis)", value="google/gemini-2.0-flash-001"),
+            app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses, but is slowe to respond)", value="deepseek/deepseek-r1:free"),
+            app_commands.Choice(name="Gemini 2.0 Flash (best for accuracy, citations, and image analysis, and is very fast)", value="google/gemini-2.0-flash-001"),
             app_commands.Choice(name="Nous: Hermes 405B (balanced between creativity and factual precision)", value="nousresearch/hermes-3-llama-3.1-405b"),
             app_commands.Choice(name="Claude 3.5 Haiku (fast responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
+            app_commands.Choice(name="Claude 3.5 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.7-sonnet:beta"),
         ])
         async def set_model(interaction: discord.Interaction, model: str):
@@ -2273,6 +2274,10 @@ class DiscordBot(commands.Bot):
             try:
                 # Check if user is allowed to use Claude 3.7 Sonnet
                 if model == "anthropic/claude-3.7-sonnet:beta" and str(interaction.user.id) != "203229662967627777" and not (interaction.guild and interaction.user.guild_permissions.administrator):
+                    await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
+                    return
+
+                if model == "anthropic/claude-3.5-sonnet:beta" and str(interaction.user.id) != "203229662967627777" and not (interaction.guild and interaction.user.guild_permissions.administrator):
                     await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                     return
                     
@@ -2288,6 +2293,8 @@ class DiscordBot(commands.Bot):
                     model_name = "Nous: Hermes 405B Instruct"
                 elif "claude-3.5-haiku" in model:
                     model_name = "Claude 3.5 Haiku"
+                elif "claude-3.5-sonnet" in model:
+                    model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in model:
                     model_name = "Claude 3.7 Sonnet"
                 
@@ -2298,7 +2305,8 @@ class DiscordBot(commands.Bot):
                         "**Gemini 2.0 Flash**: Superior citation formatting and document analysis. Provides well-structured information, faster responses, and supports image analysis. Ideal for research but less immersive than other models.",
                         "**Nous: Hermes 405B Instruct**: Good balance between creativity and facts with strong reasoning. Handles complex topics with nuance while maintaining character. Perfect middle ground but not specialized in either direction.",
                         "**Claude 3.5 Haiku**: Fast, creative responses balancing efficiency and character. Supports image analysis with concise delivery. Good for quick interactions but less elaborate than larger models.",
-                        "**Claude 3.7 Sonnet**: Most advanced capabilities combining creative excellence with precision. Excellent citations and image analysis. Restricted to admins due to cost and may be overkill for simple queries."
+                        "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
+                        "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -2332,15 +2340,18 @@ class DiscordBot(commands.Bot):
                     model_name = "Nous: Hermes 405B Instruct"
                 elif "claude-3.5-haiku" in preferred_model:
                     model_name = "Claude 3.5 Haiku"
+                elif "claude-3.5-sonnet" in preferred_model:
+                    model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion",
+                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond",
                     "**Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
                     "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
                     "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding, and has image viewing capabilities",
+                    "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
                     "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
                 ]
                 
@@ -2683,6 +2694,8 @@ class DiscordBot(commands.Bot):
                     model_name = "Nous: Hermes 405B Instruct"
                 elif "claude-3.5-haiku" in preferred_model:
                     model_name = "Claude 3.5 Haiku"
+                elif "claude-3.5-sonnet" in preferred_model:
+                    model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
 
@@ -2771,7 +2784,7 @@ class DiscordBot(commands.Bot):
                     
                 success = self.document_manager.delete_document(name)
                 if success:
-                    await interaction.followup.send(f"Removed document: {name}")
+                    await interaction.followup.send(f"Removed document: {name} \n*google docs will also need to be removed from the tracked list*")
                 else:
                     await interaction.followup.send(f"Document not found: {name}")
             except Exception as e:
@@ -3053,7 +3066,7 @@ class DiscordBot(commands.Bot):
                 response += "- I can search my image database for relevant visual information\n"
                 response += "• I can recognize content in images and integrate them into my responses\n"
                 response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
-                response += "• Vision-capable models: Gemini 2.0 Flash, Claude 3.5 Haiku, Claude 3.7 Sonnet\n\n"
+                response += "• Vision-capable models: Gemini 2.0 Flash, Claude 3.5 Haiku, Claude 3.5 Sonnet, Claude 3.7 Sonnet\n\n"
                 
                 # Document Management
                 response += "## **DOCUMENT & IMAGE MANAGEMENT**\n\n"
@@ -3087,10 +3100,11 @@ class DiscordBot(commands.Bot):
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "- **DeepSeek-R1**: Best for immersive roleplaying and creative responses\n"
-                response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis\n"
+                response += "- **DeepSeek-R1**: Best for immersive roleplaying and creative responses, but is slower to respond\n"
+                response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis, and is very fast\n"
                 response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
                 response += "- **Claude 3.5 Haiku**: Fast responses with image capabilities\n"
+                response += "- **Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)\n"
                 response += "- **Claude 3.7 Sonnet**: Admin only, premium all-around capabilities\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
@@ -3280,6 +3294,14 @@ class DiscordBot(commands.Bot):
                 fallbacks = [
                     "anthropic/claude-3.7-sonnet",
                     "anthropic/claude-3.5-sonnet:beta",
+                    "anthropic/claude-3.5-haiku:beta",
+                    "anthropic/claude-3.5-haiku"
+                ]
+            elif "claude-3.5-sonnet" in model:
+                fallbacks = [
+                    "anthropic/claude-3.5-sonnet",
+                    "anthropic/claude-3.7-sonnet:beta",
+                    "anthropic/claude-3.7-sonnet",
                     "anthropic/claude-3.5-haiku:beta",
                     "anthropic/claude-3.5-haiku"
                 ]
@@ -3665,6 +3687,8 @@ class DiscordBot(commands.Bot):
                 model_name = "Nous: Hermes 405B Instruct"
             elif "claude-3.5-haiku" in preferred_model:
                 model_name = "Claude 3.5 Haiku"
+            elif "claude-3.5-sonnet" in preferred_model:
+                model_name = "Claude 3.5 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
 
