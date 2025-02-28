@@ -2265,7 +2265,7 @@ class DiscordBot(commands.Bot):
             app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses, but is slowe to respond)", value="deepseek/deepseek-r1:free"),
             app_commands.Choice(name="Gemini 2.0 Flash (best for accuracy, citations, and image analysis, and is very fast)", value="google/gemini-2.0-flash-001"),
             app_commands.Choice(name="Nous: Hermes 405B (balanced between creativity and factual precision)", value="nousresearch/hermes-3-llama-3.1-405b"),
-            app_commands.Choice(name="Claude 3.5 Haiku (fast responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
+            app_commands.Choice(name="Claude 3.5 Haiku (fast creative responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.7-sonnet:beta"),
         ])
@@ -2350,7 +2350,7 @@ class DiscordBot(commands.Bot):
                     "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond",
                     "**Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
                     "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
-                    "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding, and has image viewing capabilities",
+                    "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities",
                     "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
                     "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
                 ]
@@ -3133,7 +3133,7 @@ class DiscordBot(commands.Bot):
                 response += "- **DeepSeek-R1**: Best for immersive roleplaying and creative responses, but is slower to respond\n"
                 response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis, and is very fast\n"
                 response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
-                response += "- **Claude 3.5 Haiku**: Fast responses with image capabilities\n"
+                response += "- **Claude 3.5 Haiku**: Fast responses, creative, and with image capabilities\n"
                 response += "- **Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)\n"
                 response += "- **Claude 3.7 Sonnet**: Admin only, premium all-around capabilities\n"
                 response += "• `/get_model` - Check which model you're currently using\n"
