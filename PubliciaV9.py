@@ -2271,7 +2271,7 @@ class DiscordBot(commands.Bot):
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
             app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses, but is slowe to respond)", value="deepseek/deepseek-r1:free"),
-            app_commands.Choice(name="Gemini 2.0 Flash (best for accuracy, citations, and image analysis, and is very fast)", value="google/gemini-2.0-flash-001"),
+            app_commands.Choice(name="Gemini 2.0 Flash (recommended, best for accuracy, citations, and image analysis, and is very fast)", value="google/gemini-2.0-flash-001"),
             app_commands.Choice(name="Nous: Hermes 405B (balanced between creativity and factual precision)", value="nousresearch/hermes-3-llama-3.1-405b"),
             app_commands.Choice(name="Claude 3.5 Haiku (fast creative responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet (admin only, premium all-around capabilities)", value="anthropic/claude-3.5-sonnet:beta"),
@@ -2309,8 +2309,8 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        "**DeepSeek-R1**: Exceptional for roleplaying with vivid descriptions and strong character voice. Creates memorable responses with excellent metaphors. Best for immersion but may prioritize style over strict factual precision.",
-                        "**Gemini 2.0 Flash**: Superior citation formatting and document analysis. Provides well-structured information, faster responses, and supports image analysis. Ideal for research but less immersive than other models.",
+                        "**DeepSeek-R1**: Good for roleplaying with vivid descriptions and strong character voice. Creates memorable responses with excellent metaphors. Best for immersion but may prioritize style over strict factual precision.",
+                        "**Gemini 2.0 Flash**: RECOMMENDED - Superior citation formatting and document analysis. Provides well-structured information, faster responses, and supports image analysis. Ideal for research but may be less immersive than other models.",
                         "**Nous: Hermes 405B Instruct**: Good balance between creativity and facts with strong reasoning. Handles complex topics with nuance while maintaining character. Perfect middle ground but not specialized in either direction.",
                         "**Claude 3.5 Haiku**: Fast, creative responses balancing efficiency and character. Supports image analysis with concise delivery. Good for quick interactions but less elaborate than larger models.",
                         "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
@@ -2356,7 +2356,7 @@ class DiscordBot(commands.Bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors",
-                    "**Gemini 2.0 Flash**: Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
+                    "**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
                     "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
                     "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities",
                     "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
@@ -3131,7 +3131,7 @@ class DiscordBot(commands.Bot):
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
                 response += "- **DeepSeek-R1**: Good for immersive roleplaying and creative responses, but is slower to respond and sometimes has errors\n"
-                response += "- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis, and is very fast\n"
+                response += "- **Gemini 2.0 Flash**: RECOMMENDED - Best for accuracy, citations, and image analysis, and is very fast\n"
                 response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
                 response += "- **Claude 3.5 Haiku**: Fast responses, creative, and with image capabilities\n"
                 response += "- **Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)\n"
