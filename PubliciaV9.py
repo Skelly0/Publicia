@@ -2558,12 +2558,12 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) for more focused responses.",
+                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) to save money.",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: High reasoning capabilities, balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
-                        f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) for focused responses.",
-                        f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) for focused responses."
+                        f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
+                        f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money."
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -2604,12 +2604,12 @@ class DiscordBot(commands.Bot):
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) for more focused responses.",
+                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) to save money.",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: High reasoning capabilities, balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
-                    f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) for focused responses.",
-                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) for focused responses."
+                    f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
+                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money."
                 ]
                 
                 response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
@@ -2822,6 +2822,12 @@ class DiscordBot(commands.Bot):
                 # Step 1: Analyze the query with Gemini
                 analysis = await self.analyze_query(question)
                 logger.info(f"Query analysis complete: {analysis}")
+                
+                # Get user's preferred model
+                preferred_model = self.user_preferences_manager.get_preferred_model(
+                    str(interaction.user.id), 
+                    default_model=self.config.LLM_MODEL
+                )
 
                 # Step 2: Perform enhanced search based on analysis
                 search_results = await self.enhanced_search(question, analysis, preferred_model)
@@ -2934,12 +2940,6 @@ class DiscordBot(commands.Bot):
                     "role": "user",
                     "content": f"{nickname}: {question}"
                 })
-
-                # Get user's preferred model
-                preferred_model = self.user_preferences_manager.get_preferred_model(
-                    str(interaction.user.id), 
-                    default_model=self.config.LLM_MODEL
-                )
 
                 # Get friendly model name based on the model value
                 model_name = "Unknown Model"
@@ -3858,9 +3858,16 @@ class DiscordBot(commands.Bot):
             # Get conversation history for context
             conversation_messages = self.conversation_manager.get_conversation_messages(message.author.name)
             
+            
             # Step 1: Analyze the query with Gemini
             analysis = await self.analyze_query(question)
             logger.info(f"Query analysis complete: {analysis}")
+
+            # Get user's preferred model
+            preferred_model = self.user_preferences_manager.get_preferred_model(
+                str(message.author.id),
+                default_model=self.config.LLM_MODEL
+            )
 
             # Update thinking message
             await thinking_msg.edit(content="*searching imperial databases... synthesizing information...*")
@@ -3966,12 +3973,6 @@ class DiscordBot(commands.Bot):
                 "role": "user",
                 "content": f"{nickname}: {question}"
             })
-
-            # Get user's preferred model
-            preferred_model = self.user_preferences_manager.get_preferred_model(
-                str(message.author.id), 
-                default_model=self.config.LLM_MODEL
-            )
 
             # Get friendly model name based on the model value
             model_name = "Unknown Model"
