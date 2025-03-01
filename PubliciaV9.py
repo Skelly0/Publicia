@@ -851,7 +851,7 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 3,
+            "deepseek/deepseek-r1": 5,
             "deepseek/deepseek-r1:floor": 5,
             "deepseek/deepseek-r1:nitro": 3,
             "deepseek/deepseek-chat": 7,
@@ -863,10 +863,10 @@ class Config:
             # Claude models
             "anthropic/claude-3.5-haiku:beta": 8,
             "anthropic/claude-3.5-haiku": 8,
-            "anthropic/claude-3.5-sonnet:beta": 7,
-            "anthropic/claude-3.5-sonnet": 7,
-            "anthropic/claude-3.7-sonnet:beta": 7,
-            "anthropic/claude-3.7-sonnet": 7,
+            "anthropic/claude-3.5-sonnet:beta": 5,
+            "anthropic/claude-3.5-sonnet": 5,
+            "anthropic/claude-3.7-sonnet:beta": 5,
+            "anthropic/claude-3.7-sonnet": 5,
         }
         
         # Validate required environment variables
