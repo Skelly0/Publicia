@@ -890,12 +890,15 @@ class Config:
         
     def get_top_k_for_model(self, model: str) -> int:
         """Get the top_k value for a specific model."""
-        # Extract the base model name if there are variations with different suffixes
+        # First try to match the exact model name (including any suffixes)
+        if model in self.MODEL_TOP_K:
+            return self.MODEL_TOP_K[model]
+        
+        # If not found, extract the base model name and try that
         base_model = model.split(':')[0] if ':' in model else model
         
-        # Try to get the model-specific top_k value
-        # If not found, use the default TOP_K
-        return self.MODEL_TOP_K.get(base_model, self.TOP_K)    
+        # Return the base model's top_k or the default if not found
+        return self.MODEL_TOP_K.get(base_model, self.TOP_K)
     
     def _validate_config(self):
         """Validate that all required environment variables are set."""
@@ -1795,7 +1798,7 @@ class DiscordBot(commands.Bot):
             # Add continuation marker for non-first chunks
             if i > 0 or not chunks[0].startswith("*continued"):
                 if not chunk.startswith("*continued") and not chunk.startswith("*code block"):
-                    chunk = f"*continued response (part {i+2})*\n\n{chunk}"
+                    chunk = f"-# *continued response (part {i+2})*\n\n{chunk}"
             
             # Try to send the chunk with retry logic
             max_retries = 3
@@ -2632,7 +2635,7 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
-            app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses, but is slowe to respond)", value="deepseek/deepseek-r1:free"),
+            app_commands.Choice(name="DeepSeek-R1 (best for immersive roleplaying and creative responses, but is slow to respond)", value="deepseek/deepseek-r1:free"),
             app_commands.Choice(name="Gemini 2.0 Flash (recommended, best for accuracy, citations, and image analysis, and is very fast)", value="google/gemini-2.0-flash-001"),
             app_commands.Choice(name="Nous: Hermes 405B (balanced between creativity and factual precision)", value="nousresearch/hermes-3-llama-3.1-405b"),
             app_commands.Choice(name="Claude 3.5 Haiku (fast creative responses with image capabilities)", value="anthropic/claude-3.5-haiku:beta"),
