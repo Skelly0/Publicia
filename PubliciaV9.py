@@ -847,6 +847,25 @@ class Config:
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
         
         self.TOP_K = int(os.getenv('TOP_K', '5'))
+
+        self.MODEL_TOP_K = {
+            # DeepSeek models - focused results (3)
+            "deepseek/deepseek-r1:free": 3,
+            "deepseek/deepseek-r1": 3,
+            "deepseek/deepseek-chat": 5,
+            # Gemini models - broad context (12)
+            "google/gemini-2.0-flash-001": 12,
+            "google/gemini-2.0-pro-exp-02-05:free": 12,
+            # Nous Hermes models - balanced (7)
+            "nousresearch/hermes-3-llama-3.1-405b": 7,
+            # Claude models
+            "anthropic/claude-3.5-haiku:beta": 7,
+            "anthropic/claude-3.5-haiku": 7,
+            "anthropic/claude-3.5-sonnet:beta": 3,
+            "anthropic/claude-3.5-sonnet": 3,
+            "anthropic/claude-3.7-sonnet:beta": 3,
+            "anthropic/claude-3.7-sonnet": 3,
+        }
         
         # Validate required environment variables
         self._validate_config()
@@ -854,8 +873,29 @@ class Config:
         # Add timeout settings
         self.API_TIMEOUT = int(os.getenv('API_TIMEOUT', '180'))
         self.MAX_RETRIES = int(os.getenv('MAX_RETRIES', '10'))
+
+        self.MODEL_PROVIDERS = {
+            "deepseek/deepseek-r1": {
+                "order": ["Nebius", "DeepInfra"]
+            }
+            # Add any other model variants that need custom provider ordering
+        }
+   
+    def get_provider_config(self, model: str):
+        # Extract base model without suffixes like :free or :nitro
+        base_model = model.split(':')[0] if ':' in model else model
         
+        # First try exact match, then try base model
+        return self.MODEL_PROVIDERS.get(model) or self.MODEL_PROVIDERS.get(base_model)
         
+    def get_top_k_for_model(self, model: str) -> int:
+        """Get the top_k value for a specific model."""
+        # Extract the base model name if there are variations with different suffixes
+        base_model = model.split(':')[0] if ':' in model else model
+        
+        # Try to get the model-specific top_k value
+        # If not found, use the default TOP_K
+        return self.MODEL_TOP_K.get(base_model, self.TOP_K)    
     
     def _validate_config(self):
         """Validate that all required environment variables are set."""
@@ -1190,7 +1230,7 @@ class UserPreferencesManager:
         """Generate sanitized file path for user preferences."""
         return os.path.join(self.preferences_dir, f"{user_id}.json")
     
-    def get_preferred_model(self, user_id: str, default_model: str = "deepseek/deepseek-r1") -> str:
+    def get_preferred_model(self, user_id: str, default_model: str = "google/gemini-2.0-flash-001") -> str:
         """Get the user's preferred model, or the default if not set."""
         file_path = self.get_file_path(user_id)
         
@@ -1510,7 +1550,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error analyzing query: {e}")
             return {"success": False}
 
-    async def enhanced_search(self, query: str, analysis: Dict) -> List[Tuple[str, str, float, Optional[str]]]:
+    async def enhanced_search(self, query: str, analysis: Dict, model: str = None) -> List[Tuple[str, str, float, Optional[str]]]:
         """Perform an enhanced search based on query analysis."""
         try:
             # Check if query is empty
@@ -1522,8 +1562,12 @@ class DiscordBot(commands.Bot):
             if not isinstance(analysis, dict) or not analysis.get("success", False):
                 # Fall back to basic search if analysis failed or is not a dict
                 logger.info("Analysis is not valid, falling back to basic search")
-                return self.document_manager.search(query)
-                
+                if model:
+                    top_k = self.config.get_top_k_for_model(model)
+                    return self.document_manager.search(query, top_k=top_k)
+                else:
+                    return self.document_manager.search(query)
+                    
             # Extract search keywords
             search_keywords = analysis.get("analysis", {}).get("search_keywords", [])
             if not search_keywords:
@@ -1537,8 +1581,14 @@ class DiscordBot(commands.Bot):
             # Log the enhanced query
             logger.info(f"Enhanced query: {enhanced_query}")
             
+            # Determine the top_k value based on the model
+            top_k = self.config.TOP_K  # Default
+            if model:
+                top_k = self.config.get_top_k_for_model(model)
+                logger.info(f"Using model-specific top_k value: {top_k} for model: {model}")
+            
             # Perform search with enhanced query
-            search_results = self.document_manager.search(enhanced_query)
+            search_results = self.document_manager.search(enhanced_query, top_k=top_k)
             
             # Log found image results
             image_count = sum(1 for _, _, _, img_id in search_results if img_id)
@@ -1549,7 +1599,11 @@ class DiscordBot(commands.Bot):
                 
         except Exception as e:
             logger.error(f"Error in enhanced search: {e}")
-            return self.document_manager.search(query)  # Fall back to basic search
+            if model:
+                top_k = self.config.get_top_k_for_model(model)
+                return self.document_manager.search(query, top_k=top_k)  # Fall back to basic search
+            else:
+                return self.document_manager.search(query)  # Fall back to basic search
 
     async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float, Optional[str]]], analysis: Dict) -> str:
         """Use the configured classifier model to synthesize search results into a coherent context."""
@@ -2122,6 +2176,193 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error deleting messages: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while deleting messages.")
+
+        @self.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
+        @app_commands.describe(
+            question="The question to generate a prompt for",
+            private="Whether to make the output visible only to you (default: True)"
+        )
+        async def export_prompt(interaction: discord.Interaction, question: str, private: bool = True):
+            """Export the complete prompt that would be sent to the AI model."""
+            await interaction.response.defer(ephemeral=private)
+            try:
+                # This command handles just like a regular query, but exports the prompt instead
+                # of sending it to the AI model
+                
+                status_message = await interaction.followup.send(
+                    "*neural pathways activating... processing query for prompt export...*",
+                    ephemeral=private
+                )
+                
+                # Get channel and user info
+                channel_name = interaction.channel.name if interaction.guild else "DM"
+                nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
+                
+                # Process exactly like a regular query until we have the messages
+                conversation_messages = self.conversation_manager.get_conversation_messages(interaction.user.name)
+                
+                await status_message.edit(content="*analyzing query...*")
+                analysis = await self.analyze_query(question)
+                
+                await status_message.edit(content="*searching imperial databases...*")
+                preferred_model = self.user_preferences_manager.get_preferred_model(
+                    str(interaction.user.id), 
+                    default_model=self.config.LLM_MODEL
+                )
+                search_results = await self.enhanced_search(question, analysis, preferred_model)
+                
+                await status_message.edit(content="*synthesizing information...*")
+                synthesis = await self.synthesize_results(question, search_results, analysis)
+                
+                # Now we have all the necessary information to create the prompt
+                
+                # Format the prompt for export
+                await status_message.edit(content="*formatting prompt for export...*")
+                
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                file_content = f"""
+        =========================================================
+        PUBLICIA PROMPT EXPORT
+        =========================================================
+        Generated at: {timestamp}
+        Query: {question}
+        User: {nickname}
+        Channel: {channel_name}
+        Preferred model: {preferred_model}
+
+        This file contains the complete prompt that would be sent to 
+        the AI model when processing your query. This provides insight
+        into how Publicia formulates responses by showing:
+
+        1. The system prompt that defines Publicia's character
+        2. Your conversation history for context
+        3. Search results from relevant documents
+        4. How your query was analyzed
+        5. The final message containing your question
+
+        NOTE: This export includes your conversation history, which
+        may contain personal information. If you're sharing this file,
+        please review the content first.
+        =========================================================
+
+        """
+                
+                # System prompt
+                file_content += f"""
+        SYSTEM PROMPT
+        ---------------------------------------------------------
+        This defines Publicia's character, abilities, and behavior.
+        ---------------------------------------------------------
+        {SYSTEM_PROMPT}
+        =========================================================
+
+        """
+                
+                # Conversation history
+                if conversation_messages:
+                    file_content += f"""
+        CONVERSATION HISTORY ({len(conversation_messages)} messages)
+        ---------------------------------------------------------
+        Previous messages provide context for your current query.
+        ---------------------------------------------------------
+        """
+                    for i, msg in enumerate(conversation_messages):
+                        role = msg.get("role", "unknown")
+                        content = msg.get("content", "")
+                        file_content += f"[{i+1}] {role.upper()}: {content}\n\n"
+                    
+                    file_content += "=========================================================\n\n"
+                
+                # Synthesized context
+                if synthesis:
+                    file_content += f"""
+        SYNTHESIZED DOCUMENT CONTEXT
+        ---------------------------------------------------------
+        This is an AI-generated summary of the search results.
+        ---------------------------------------------------------
+        {synthesis}
+        =========================================================
+
+        """
+                
+                # Raw search results
+                if search_results:
+                    file_content += f"""
+        RAW SEARCH RESULTS ({len(search_results)} results)
+        ---------------------------------------------------------
+        These are the actual document chunks found by semantic search.
+        ---------------------------------------------------------
+        """
+                    for i, (doc, chunk, score, image_id) in enumerate(search_results):
+                        if image_id:
+                            # Image result
+                            image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                            file_content += f"[{i+1}] IMAGE: {image_name} (ID: {image_id}, score: {score:.2f})\n"
+                            file_content += f"Description: {chunk}\n\n"
+                        else:
+                            # Document result
+                            file_content += f"[{i+1}] DOCUMENT: {doc} (score: {score:.2f})\n"
+                            file_content += f"Content: {chunk}\n\n"
+                    
+                    file_content += "=========================================================\n\n"
+                
+                # User query
+                file_content += f"""
+        USER QUERY
+        ---------------------------------------------------------
+        This is your actual question/message sent to Publicia.
+        ---------------------------------------------------------
+        {nickname}: {question}
+        =========================================================
+
+        """
+                
+                # Analysis data
+                if analysis and analysis.get("success"):
+                    file_content += f"""
+        QUERY ANALYSIS
+        ---------------------------------------------------------
+        This shows how your query was analyzed to improve search results.
+        ---------------------------------------------------------
+        {json.dumps(analysis, indent=2)}
+        =========================================================
+        """
+                
+                # Save to file
+                file_name = f"publicia_prompt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                with open(file_name, "w", encoding="utf-8") as f:
+                    f.write(file_content)
+                
+                # Check size and truncate if needed
+                file_size = os.path.getsize(file_name)
+                if file_size > 8 * 1024 * 1024:  # 8MB Discord limit
+                    truncated_file_name = f"publicia_prompt_truncated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    with open(file_name, "r", encoding="utf-8") as f_in:
+                        with open(truncated_file_name, "w", encoding="utf-8") as f_out:
+                            f_out.write(f"WARNING: Original prompt was {file_size / (1024*1024):.2f}MB, exceeding Discord's limit. Content has been truncated.\n\n")
+                            f_out.write(f_in.read(7 * 1024 * 1024))
+                            f_out.write("\n\n[... Content truncated due to file size limits ...]")
+                    
+                    os.remove(file_name)
+                    file_name = truncated_file_name
+                
+                # Upload file
+                await status_message.edit(content="*uploading prompt file...*")
+                await interaction.followup.send(
+                    file=discord.File(file_name), 
+                    content=f"*here's the full prompt that would be sent to the AI model for your query. this includes the system prompt, conversation history, and search results:*",
+                    ephemeral=private
+                )
+                
+                # Clean up
+                os.remove(file_name)
+                await status_message.edit(content="*prompt export complete!*")
+                
+            except Exception as e:
+                logger.error(f"Error exporting prompt: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await interaction.followup.send("*neural circuit overload!* failed to export prompt due to an error.")
         
         @self.tree.command(name="list_commands", description="List all available commands")
         async def list_commands(interaction: discord.Interaction):
@@ -2137,7 +2378,7 @@ class DiscordBot(commands.Bot):
                     "Lore Queries": ["query"],
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
                     "Image Management": ["list_images", "view_image", "remove_image", "update_image_description"],
-                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help"],
+                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt"],  # Added export_prompt here
                     "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
@@ -2301,7 +2542,7 @@ class DiscordBot(commands.Bot):
                 
                 # Get friendly model name based on the model value
                 model_name = "Unknown Model"
-                if model.startswith("deepseek/"):
+                if "deepseek/deepseek-r1" in model:
                     model_name = "DeepSeek-R1"
                 elif model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
@@ -2317,12 +2558,12 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        "**DeepSeek-R1**: Good for roleplaying with vivid descriptions and strong character voice. Creates memorable responses with excellent metaphors. Best for immersion but may prioritize style over strict factual precision.",
-                        "**Gemini 2.0 Flash**: RECOMMENDED - Superior citation formatting and document analysis. Provides well-structured information, faster responses, and supports image analysis. Ideal for research but may be less immersive than other models.",
-                        "**Nous: Hermes 405B Instruct**: Good balance between creativity and facts with strong reasoning. Handles complex topics with nuance while maintaining character. Perfect middle ground but not specialized in either direction.",
-                        "**Claude 3.5 Haiku**: Fast, creative responses balancing efficiency and character. Supports image analysis with concise delivery. Good for quick interactions but less elaborate than larger models.",
-                        "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
-                        "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
+                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) for more focused responses.",
+                        f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                        f"**Nous: Hermes 405B**: High reasoning capabilities, balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
+                        f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
+                        f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) for focused responses.",
+                        f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) for focused responses."
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -2337,7 +2578,7 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error setting preferred model: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while setting your preferred model.")
 
-        @self.tree.command(name="get_model", description="Show your currently selected AI model")
+        @self.tree.command(name="get_model", description="Show your currently selected AI model and available models")
         async def get_model(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
@@ -2348,7 +2589,7 @@ class DiscordBot(commands.Bot):
                 
                 # Get friendly model name based on the model value
                 model_name = "Unknown Model"
-                if preferred_model.startswith("deepseek/"):
+                if "deepseek/deepseek-r1" in preferred_model:
                     model_name = "DeepSeek-R1"
                 elif preferred_model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
@@ -2363,12 +2604,12 @@ class DiscordBot(commands.Bot):
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    "**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors",
-                    "**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times",
-                    "**Nous: Hermes 405B Instruct**: High reasoning capabilities, balanced between creativity and accuracy",
-                    "**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities",
-                    "**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only)",
-                    "**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only)"
+                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond and sometimes has errors. Uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) for more focused responses.",
+                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                    f"**Nous: Hermes 405B**: High reasoning capabilities, balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
+                    f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
+                    f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) for focused responses.",
+                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) for focused responses."
                 ]
                 
                 response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
@@ -2583,7 +2824,7 @@ class DiscordBot(commands.Bot):
                 logger.info(f"Query analysis complete: {analysis}")
 
                 # Step 2: Perform enhanced search based on analysis
-                search_results = await self.enhanced_search(question, analysis)
+                search_results = await self.enhanced_search(question, analysis, preferred_model)
                 logger.info(f"Found {len(search_results)} relevant document sections")
 
                 # Step 3: Synthesize search results with Gemini
@@ -2702,7 +2943,7 @@ class DiscordBot(commands.Bot):
 
                 # Get friendly model name based on the model value
                 model_name = "Unknown Model"
-                if preferred_model.startswith("deepseek/"):
+                if "deepseek/deepseek-r1" in preferred_model:
                     model_name = "DeepSeek-R1"
                 elif preferred_model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
@@ -3149,6 +3390,14 @@ class DiscordBot(commands.Bot):
                 response += "• `/get_model` - Check which model you're currently using\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
                 
+                # Add our new section here
+                response += "**🧪 Debugging Tools**\n"
+                response += "• `/export_prompt` - Export the complete prompt that would be sent to the AI for your query\n"
+                response += "  - Shows system prompt, conversation history, search results, and more\n"
+                response += "  - Helps understand exactly how Publicia processes your questions\n"
+                response += "  - Includes privacy option to make output only visible to you\n"
+                response += "  - Useful for troubleshooting issues or understanding response generation\n\n"
+                
                 # Technical Information
                 response += "## **TECHNICAL INFORMATION**\n\n"
                 response += "**⚙️ Technical Details**\n"
@@ -3305,12 +3554,13 @@ class DiscordBot(commands.Bot):
         # Add model-specific fallbacks first
         if model_family == "deepseek":
             fallbacks = [
+                "deepseek/deepseek-r1:free",
                 "deepseek/deepseek-r1:floor",
-                "deepseek/deepseek-chat:floor",
                 "deepseek/deepseek-r1",
-                "deepseek/deepseek-chat",
+                #"deepseek/deepseek-chat:floor",
+                #"deepseek/deepseek-chat",
                 "deepseek/deepseek-r1:nitro",
-                "deepseek/deepseek-chat:nitro",
+                #"deepseek/deepseek-chat:nitro",
                 "deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
@@ -3432,12 +3682,18 @@ class DiscordBot(commands.Bot):
                             image_count = len(content_array) - 1  # Subtract 1 for the text content
                             logger.info(f"Added {image_count} images to message for vision model")
                             break
+
+                provider_config = self.config.get_provider_config(current_model)
                 
                 payload = {
                     "model": current_model,
                     "messages": processed_messages,
                     **kwargs
                 }
+
+                if provider_config:
+                    payload["provider"] = provider_config
+                    logger.info(f"Using custom provider configuration for {current_model}: {provider_config}")
                 
                 # Log the sanitized messages (removing potential sensitive info)
                 sanitized_messages = []
@@ -3610,7 +3866,7 @@ class DiscordBot(commands.Bot):
             await thinking_msg.edit(content="*searching imperial databases... synthesizing information...*")
 
             # Step 2: Perform enhanced search based on analysis
-            search_results = await self.enhanced_search(question, analysis)
+            search_results = await self.enhanced_search(question, analysis, preferred_model)
             logger.info(f"Found {len(search_results)} relevant document sections")
 
             # Step 3: Synthesize search results with Gemini
