@@ -851,20 +851,20 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models - focused results (3)
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 3,
-            "deepseek/deepseek-chat": 5,
+            "deepseek/deepseek-r1": 5,
+            "deepseek/deepseek-chat": 7,
             # Gemini models - broad context (12)
             "google/gemini-2.0-flash-001": 12,
             "google/gemini-2.0-pro-exp-02-05:free": 12,
             # Nous Hermes models - balanced (7)
-            "nousresearch/hermes-3-llama-3.1-405b": 7,
+            "nousresearch/hermes-3-llama-3.1-405b": 8,
             # Claude models
-            "anthropic/claude-3.5-haiku:beta": 7,
-            "anthropic/claude-3.5-haiku": 7,
-            "anthropic/claude-3.5-sonnet:beta": 3,
-            "anthropic/claude-3.5-sonnet": 3,
-            "anthropic/claude-3.7-sonnet:beta": 3,
-            "anthropic/claude-3.7-sonnet": 3,
+            "anthropic/claude-3.5-haiku:beta": 8,
+            "anthropic/claude-3.5-haiku": 8,
+            "anthropic/claude-3.5-sonnet:beta": 7,
+            "anthropic/claude-3.5-sonnet": 7,
+            "anthropic/claude-3.7-sonnet:beta": 7,
+            "anthropic/claude-3.7-sonnet": 7,
         }
         
         # Validate required environment variables
@@ -1702,14 +1702,15 @@ class DiscordBot(commands.Bot):
             return ""  # Fall back to empty string
 
     async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None, existing_message=None):
-        """Send a message split into chunks if it's too long, with each chunk referencing the previous one."""
+        """Send a message split into chunks if it's too long, with each chunk referencing the previous one.
+        Includes improved error handling, rate limiting awareness, and recovery mechanisms."""
+        # Split the text into chunks
         chunks = split_message(text)
         
         if model_used and user_id:
             debug_mode = self.user_preferences_manager.get_debug_mode(user_id)
             if debug_mode:
                 # Format the debug info to show the actual model used
-                # Keep the full model identifier to be transparent about which exact model was used
                 debug_info = f"\n\n*[Debug: Response generated using {model_used}]*"
                 
                 # Check if adding debug info would exceed the character limit
@@ -1721,6 +1722,31 @@ class DiscordBot(commands.Bot):
         
         # Keep track of the last message sent to use as reference for the next chunk
         last_message = None
+        failed_chunks = []
+        
+        # File fallback for very long responses
+        if len(chunks) > 4:  # If response would be more than 4 messages
+            try:
+                # Create a temporary file with the full response
+                file_content = text
+                if model_used and user_id and debug_mode:
+                    file_content += f"\n\n[Debug: Response generated using {model_used}]"
+                    
+                file_obj = io.StringIO(file_content)
+                file = discord.File(file_obj, filename="publicia_response.txt")
+                    
+                # Send the file with a brief explanation
+                await channel.send(
+                    content="*neural pathways extended!* My response is quite long, so I've attached it as a file for easier reading.",
+                    file=file,
+                    reference=reference,
+                    mention_author=mention_author
+                )
+                file_obj.close()
+                return  # Exit early if file was sent successfully
+            except Exception as e:
+                logger.error(f"Error sending response as file, falling back to chunks: {e}")
+                # Continue with normal chunk sending if file upload fails
         
         # Update existing message with first chunk if provided
         if existing_message and chunks:
@@ -1738,32 +1764,119 @@ class DiscordBot(commands.Bot):
         
         # For the first chunk (if no existing_message was provided or editing failed), use the original reference
         if chunks and last_message is None:
-            try:
-                first_message = await channel.send(
-                    content=chunks[0],
-                    reference=reference,
-                    mention_author=mention_author
-                )
-                last_message = first_message
-                chunks = chunks[1:]  # Remove the first chunk since it's already sent
-            except Exception as e:
-                logger.error(f"Error sending first message chunk: {e}")
-                return
+            max_retries = 3
+            for retry in range(max_retries):
+                try:
+                    first_message = await channel.send(
+                        content=chunks[0],
+                        reference=reference,
+                        mention_author=mention_author
+                    )
+                    last_message = first_message
+                    chunks = chunks[1:]  # Remove the first chunk since it's already sent
+                    break
+                except Exception as e:
+                    logger.error(f"Error sending first message chunk (attempt {retry+1}/{max_retries}): {e}")
+                    await asyncio.sleep(1)  # Wait before retrying
+            
+            if last_message is None and chunks:
+                # If we still couldn't send the first chunk after retries
+                try:
+                    await channel.send(
+                        content="*neural circuit error* I'm having trouble sending my full response. Please try again later.",
+                        reference=reference,
+                        mention_author=mention_author
+                    )
+                except:
+                    pass  # If even the error notification fails, just continue
         
-        # Send remaining chunks sequentially, each referencing the previous one
-        for chunk in chunks:
+        # Send remaining chunks sequentially, with retries and rate limit handling
+        for i, chunk in enumerate(chunks):
+            # Add continuation marker for non-first chunks
+            if i > 0 or not chunks[0].startswith("*continued"):
+                if not chunk.startswith("*continued") and not chunk.startswith("*code block"):
+                    chunk = f"*continued response (part {i+2})*\n\n{chunk}"
+            
+            # Try to send the chunk with retry logic
+            max_retries = 3
+            retry_delay = 1.0  # Start with 1 second delay
+            success = False
+            
+            for retry in range(max_retries):
+                try:
+                    # Add a small delay before sending to avoid rate limits
+                    await asyncio.sleep(retry_delay)
+                    
+                    # Each new chunk references the previous one to maintain the chain
+                    if last_message:
+                        new_message = await channel.send(
+                            content=chunk,
+                            reference=last_message,  # Reference the previous message in the chain
+                            mention_author=False  # Don't mention for follow-up chunks
+                        )
+                    else:
+                        # Fallback if we don't have a previous message to reference
+                        new_message = await channel.send(
+                            content=chunk,
+                            reference=reference,
+                            mention_author=False
+                        )
+                    
+                    # Update reference for the next chunk
+                    last_message = new_message
+                    success = True
+                    break  # Success, exit retry loop
+                    
+                except discord.errors.HTTPException as e:
+                    # Check if it's a rate limit error
+                    if e.status == 429:  # Rate limited
+                        retry_after = float(e.response.headers.get('X-RateLimit-Reset-After', retry_delay * 2))
+                        logger.warning(f"Rate limited. Retrying after {retry_after} seconds.")
+                        await asyncio.sleep(retry_after)
+                        retry_delay = min(retry_delay * 2, 5)  # Exponential backoff with 5s cap
+                    else:
+                        # Other HTTP error, retry with backoff
+                        logger.error(f"HTTP error sending chunk {i+2}: {e}")
+                        retry_delay = min(retry_delay * 2, 5)
+                        await asyncio.sleep(retry_delay)
+                except Exception as e:
+                    # General error, retry with backoff
+                    logger.error(f"Error sending chunk {i+2}: {e}")
+                    retry_delay = min(retry_delay * 2, 5)
+                    await asyncio.sleep(retry_delay)
+            
+            if not success:
+                # If all retries failed, add to failed chunks
+                failed_chunks.append(chunk)
+                logger.error(f"Failed to send chunk {i+2} after {max_retries} retries")
+        
+        # If any chunks failed to send, notify the user
+        if failed_chunks:
             try:
-                # Each new chunk references the previous one to maintain the chain
-                new_message = await channel.send(
-                    content=chunk,
-                    reference=last_message,  # Reference the previous message in the chain
-                    mention_author=False  # Don't mention for follow-up chunks
+                # Try to send failed chunks as a file
+                missing_content = "\n\n".join(failed_chunks)
+                file_obj = io.StringIO(missing_content)
+                file = discord.File(file_obj, filename="missing_response.txt")
+                
+                await channel.send(
+                    content=f"*neural circuit partially restored!* {len(failed_chunks)} parts of my response failed to send. I've attached the missing content as a file.",
+                    file=file,
+                    reference=last_message or reference,
+                    mention_author=False
                 )
-                # Update reference for the next chunk
-                last_message = new_message
+                file_obj.close()
             except Exception as e:
-                logger.error(f"Error sending message chunk: {e}")
-                # Continue with the next chunk anyway
+                logger.error(f"Error sending missing chunks as file: {e}")
+                
+                # If file upload fails, try to send a simple notification
+                try:
+                    await channel.send(
+                        content=f"*neural circuit overload!* {len(failed_chunks)} parts of my response failed to send. Please try asking again later.",
+                        reference=last_message or reference,
+                        mention_author=False
+                    )
+                except:
+                    pass  # If even this fails, give up
 
     async def refresh_google_docs(self):
         """Refresh all tracked Google Docs."""
