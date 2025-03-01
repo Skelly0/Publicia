@@ -3656,8 +3656,11 @@ class DiscordBot(commands.Bot):
             return None
     
     async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
-        """Get AI completion with dynamic fallback options based on the requested model."""
+        """Get AI completion with dynamic fallback options based on the requested model.
         
+        Returns:
+            Tuple[Optional[Dict], Optional[str]]: (completion result, actual model used)
+        """
         # Get primary model family (deepseek, google, etc.)
         model_family = model.split('/')[0] if '/' in model else None
         
@@ -3673,10 +3676,7 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1:free",
                 "deepseek/deepseek-r1:floor",
                 "deepseek/deepseek-r1",
-                #"deepseek/deepseek-chat:floor",
-                #"deepseek/deepseek-chat",
                 "deepseek/deepseek-r1:nitro",
-                #"deepseek/deepseek-chat:nitro",
                 "deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
@@ -3720,7 +3720,7 @@ class DiscordBot(commands.Bot):
                 fallbacks = []
             models.extend([fb for fb in fallbacks if fb not in models])
         
-        # Add general fallbacks
+        # Add general fallbacks that aren't already in the list
         general_fallbacks = [
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-flash-thinking-exp:free",
@@ -3731,12 +3731,8 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku"
         ]
-        
-        # Add general fallbacks that aren't already in the list
-        for fb in general_fallbacks:
-            if fb not in models:
-                models.append(fb)
-        
+        models.extend([fb for fb in general_fallbacks if fb not in models])
+
         # Headers for API calls
         headers = {
             "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
