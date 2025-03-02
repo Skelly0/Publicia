@@ -848,15 +848,13 @@ class Config:
         
         self.TOP_K = int(os.getenv('TOP_K', '5'))
 
-        max_model_top_k = max(self.MODEL_TOP_K.values(), default=self.TOP_K)
-        if self.MAX_TOP_K < max_model_top_k:
-            logger.warning(f"MAX_TOP_K ({self.MAX_TOP_K}) is less than largest model-specific top_k ({max_model_top_k}). Adjusting MAX_TOP_K.")
-            self.MAX_TOP_K = max_model_top_k
+        self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 5,
+            "deepseek/deepseek-r1-distill-llama-70b": 15,
             "deepseek/deepseek-r1:floor": 5,
             "deepseek/deepseek-r1:nitro": 3,
             "deepseek/deepseek-chat": 7,
@@ -2691,7 +2689,7 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a paid version. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}), otherwise uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) to save money.",
+                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
@@ -2737,7 +2735,7 @@ class DiscordBot(commands.Bot):
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a paid version. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}), otherwise uses fewer search results ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}) to save money.",
+                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
@@ -3514,7 +3512,7 @@ class DiscordBot(commands.Bot):
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "- **DeepSeek-R1**: Good for immersive roleplaying and creative responses, but is slower to respond, sometimes has errors, and may make things up\n"
+                response += "- **DeepSeek-R1**: Good for immersive roleplaying and creative responses, but is slower to respond, sometimes has errors, and likes to go off the rails\n"
                 response += "- **Gemini 2.0 Flash**: RECOMMENDED - Best for accuracy, citations, and image analysis, and is very fast\n"
                 response += "- **Nous: Hermes 405B**: Balanced between creativity and factual precision\n"
                 response += "- **Claude 3.5 Haiku**: Fast responses, creative, and with image capabilities\n"
