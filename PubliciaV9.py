@@ -853,7 +853,7 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 5,
+            "deepseek/deepseek-r1": 6,
             "deepseek/deepseek-r1-distill-llama-70b": 15,
             "deepseek/deepseek-r1:floor": 5,
             "deepseek/deepseek-r1:nitro": 3,
@@ -3689,7 +3689,7 @@ class DiscordBot(commands.Bot):
         if model_family == "deepseek":
             fallbacks = [
                 "deepseek/deepseek-r1:free",
-                "deepseek/deepseek-r1-distill-llama-70b",
+                #"deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1:floor",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-r1:nitro",
