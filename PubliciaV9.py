@@ -848,6 +848,11 @@ class Config:
         
         self.TOP_K = int(os.getenv('TOP_K', '5'))
 
+        max_model_top_k = max(self.MODEL_TOP_K.values(), default=self.TOP_K)
+        if self.MAX_TOP_K < max_model_top_k:
+            logger.warning(f"MAX_TOP_K ({self.MAX_TOP_K}) is less than largest model-specific top_k ({max_model_top_k}). Adjusting MAX_TOP_K.")
+            self.MAX_TOP_K = max_model_top_k
+
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
@@ -1586,19 +1591,29 @@ class DiscordBot(commands.Bot):
             # Log the enhanced query
             logger.info(f"Enhanced query: {enhanced_query}")
             
-            # Determine the top_k value based on the model
-            top_k = self.config.TOP_K  # Default
-            if model:
-                top_k = self.config.get_top_k_for_model(model)
-                logger.info(f"Using model-specific top_k value: {top_k} for model: {model}")
+            # Always use a larger top_k for the initial search
+            max_top_k = self.config.MAX_TOP_K
             
-            # Perform search with enhanced query
-            search_results = self.document_manager.search(enhanced_query, top_k=top_k)
+            # Perform search with enhanced query using max_top_k
+            all_search_results = self.document_manager.search(enhanced_query, top_k=max_top_k)
+            
+            # Determine the top_k value based on the model for filtering
+            model_top_k = self.config.TOP_K  # Default
+            if model:
+                model_top_k = self.config.get_top_k_for_model(model)
+                logger.info(f"Filtering to model-specific top_k: {model_top_k} for model: {model}")
+            
+            # Filter to only include the top model_top_k results
+            search_results = all_search_results[:model_top_k]
+            
+            # Log number of results after filtering
+            logger.info(f"Found {len(all_search_results)} total results, filtered to {len(search_results)} for model {model}")
             
             # Log found image results
             image_count = sum(1 for _, _, _, img_id in search_results if img_id)
-            if image_count > 0:
-                logger.info(f"Search found {image_count} relevant image results")
+            total_image_count = sum(1 for _, _, _, img_id in all_search_results if img_id)
+            if image_count > 0 or total_image_count > 0:
+                logger.info(f"Search found {image_count}/{total_image_count} relevant image results after filtering")
             
             return search_results
                 
