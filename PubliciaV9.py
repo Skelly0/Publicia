@@ -2776,15 +2776,24 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send("No documents found in the knowledge base.")
                     return
                     
-                response = "Available documents:\n```"
+                # Get all documents first
+                doc_items = []
                 for doc_name, meta in self.document_manager.metadata.items():
                     chunks = meta['chunk_count']
                     added = meta['added']
-                    response += f"\n{doc_name} - {chunks} chunks (Added: {added})"
-                response += "```"
+                    doc_items.append(f"{doc_name} - {chunks} chunks (Added: {added})")
                 
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                # Create header
+                header = "Available documents:"
+                
+                # Split into chunks, allowing room for code block formatting
+                doc_chunks = split_message("\n".join(doc_items), max_length=1900)  # Leave room for formatting
+                
+                for i, chunk in enumerate(doc_chunks):
+                    # Format each chunk as a separate code block
+                    formatted_chunk = f"{header if i == 0 else 'Documents (continued):'}\n```\n{chunk}\n```"
+                    await interaction.followup.send(formatted_chunk)
+                    
             except Exception as e:
                 await interaction.followup.send(f"Error listing documents: {str(e)}")
 
@@ -3137,21 +3146,36 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send("No relevant documents found.")
                     return
                 
-                # Create formatted response outside of code block for better handling
-                response = "Search results:\n"
+                # Create batches of results that fit within Discord's message limit
+                batches = []
+                current_batch = "Search results:\n"
+                
                 for doc_name, chunk, similarity, image_id in results:
+                    # Format this result
                     if image_id:
                         # This is an image search result
                         image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
-                        response += f"\n**IMAGE: {image_name}** (ID: {image_id}, similarity: {similarity:.2f}):\n"
-                        response += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
+                        result_text = f"\n**IMAGE: {image_name}** (ID: {image_id}, similarity: {similarity:.2f}):\n"
+                        result_text += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
                     else:
-                        response += f"\n**From {doc_name}** (similarity: {similarity:.2f}):\n"
-                        response += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
+                        result_text = f"\n**From {doc_name}** (similarity: {similarity:.2f}):\n"
+                        result_text += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
+                    
+                    # Check if adding this result would exceed Discord's message limit
+                    if len(current_batch) + len(result_text) > 1900:  # Leave room for Discord's limit
+                        batches.append(current_batch)
+                        current_batch = "Search results (continued):\n" + result_text
+                    else:
+                        current_batch += result_text
                 
-                # Split the message if needed
-                for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                # Add the last batch if it has content
+                if current_batch and current_batch != "Search results (continued):\n":
+                    batches.append(current_batch)
+                
+                # Send each batch as a separate message
+                for batch in batches:
+                    await interaction.followup.send(batch)
+                    
             except Exception as e:
                 await interaction.followup.send(f"Error searching documents: {str(e)}")
 
