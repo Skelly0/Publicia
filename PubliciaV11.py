@@ -170,7 +170,7 @@ def configure_logging():
     return logging.getLogger(__name__)
 
 def display_startup_banner():
-    """Display super cool ASCII art banner on startup."""
+    """Display super cool ASCII art banner on startup with simple search indicator."""
     banner = """
     ╔═══════════════════════════════════════════════════════════════════╗
     ║                                                                   ║
@@ -188,6 +188,8 @@ def display_startup_banner():
     ║                                                                   ║
     ║       [NEURAL PATHWAY INITIALIZATION SEQUENCE]                    ║
     ║                                                                   ║
+    ║       ** SIMPLE SEARCH MODE ACTIVE - ENHANCED SEARCH DISABLED **  ║
+    ║                                                                   ║
     ╚═══════════════════════════════════════════════════════════════════╝
     """
     
@@ -197,13 +199,13 @@ def display_startup_banner():
     print(f"{cyan}{banner}{reset}")
 
     # Display simulation of "neural pathway initialization"
-    print(f"{cyan}[INITIATING NEURAL PATHWAYS]{reset}")
+    print(f"{cyan}[INITIATING NEURAL PATHWAYS - SIMPLE SEARCH MODE]{reset}")
     for i in range(10):
         dots = "." * random.randint(3, 10)
         spaces = " " * random.randint(0, 5)
         print(f"{cyan}{spaces}{'>' * (i+1)}{dots} Neural Link {random.randint(1000, 9999)} established{reset}")
         time.sleep(0.2)
-    print(f"{cyan}[ALL NEURAL PATHWAYS ACTIVE]{reset}")
+    print(f"{cyan}[ALL NEURAL PATHWAYS ACTIVE - ENHANCED SEARCH DISABLED]{reset}")
     print(f"{cyan}[MENTAT INTERFACE READY FOR SERVICE TO THE INFINITE EMPIRE]{reset}\n")
     
     
@@ -853,11 +855,11 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 7,
+            "deepseek/deepseek-r1": 10,
             "deepseek/deepseek-r1-distill-llama-70b": 12,
-            "deepseek/deepseek-r1:floor": 7,
+            "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 5,
-            "deepseek/deepseek-chat": 7,
+            "deepseek/deepseek-chat": 10,
             # Gemini models 
             "google/gemini-2.0-flash-001": 15,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
@@ -1477,455 +1479,57 @@ class DiscordBot(commands.Bot):
             return "Error generating description."
 
     async def analyze_query(self, query: str) -> Dict:
-        """Use the configured classifier model to analyze the query and extract keywords/topics."""
-        try:
-            # Check if query is empty
-            if not query or not query.strip():
-                logger.warning("Empty query provided to analyze_query")
-                return {"success": False}
-                
-            analyzer_prompt = [
-                {
-                    "role": "system",
-                    "content": """You are a query analyzer for a Ledus Banum 77 and Imperial lore knowledge base.
-                    Analyze the user's query and generate a search strategy.
-                    Respond with JSON containing:
-                    {
-                        "main_topic": "The main topic of the query",
-                        "search_keywords": ["list", "of", "important", "search", "terms"],
-                        "entity_types": ["types", "of", "entities", "mentioned"],
-                        "expected_document_types": ["types", "of", "documents", "likely", "to", "contain", "answer"],
-                        "search_strategy": "A brief description of how to search for the answer"
-                    }
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"Analyze this query about Ledus Banum 77 and Imperial lore: '{query}'"
-                }
-            ]
-            
-            # Make API call using the configured classifier model
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com",
-                "X-Title": "Publicia - Query Analyzer",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.config.CLASSIFIER_MODEL,  # Use configured classifier model
-                "messages": analyzer_prompt,
-                "temperature": 0.1,
-                "response_format": {"type": "json_object"}
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_duration
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Analyzer API error: {error_text}")
-                        return {"success": False}
-                        
-                    completion = await response.json()
-            
-            if not completion or not completion.get('choices'):
-                return {"success": False}
-                
-            # Parse the analysis result
-            analysis_text = completion['choices'][0]['message']['content']
-            
-            try:
-                # Try to parse as JSON
-                import json
-                analysis_data = json.loads(analysis_text)
-                return {
-                    "success": True,
-                    "analysis": analysis_data
-                }
-            except json.JSONDecodeError:
-                # If not proper JSON, extract what we can
-                logger.warn(f"Failed to parse analysis as JSON: {analysis_text}")
-                return {
-                    "success": True,
-                    "analysis": {
-                        "search_keywords": [query],
-                        "raw_analysis": analysis_text
-                    }
-                }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing query: {e}")
-            return {"success": False}
+        """Simplified version that skips the classifier model analysis."""
+        logger.info(f"[SIMPLE SEARCH] Skipping enhanced query analysis for: {shorten(query, width=100, placeholder='...')}")
+        return {"success": False}  # Return a simple failure result to trigger fallback
 
     async def enhanced_search(self, query: str, analysis: Dict, model: str = None) -> List[Tuple[str, str, float, Optional[str]]]:
-        """Perform an enhanced search based on query analysis."""
-        try:
-            # Check if query is empty
-            if not query or not query.strip():
-                logger.warning("Empty query provided to enhanced_search")
-                return []
+        """Simplified version that directly uses document_manager.search."""
+        logger.info(f"[SIMPLE SEARCH] Using basic search for: {shorten(query, width=100, placeholder='...')}")
+        
+        # Determine top_k based on model
+        if model:
+            top_k = self.config.get_top_k_for_model(model)
+        else:
+            top_k = self.config.TOP_K
+            
+        # Use document_manager.search directly
+        return self.document_manager.search(query, top_k=top_k)
                 
-            # Check if analysis is a dictionary and has the success key
-            if not isinstance(analysis, dict) or not analysis.get("success", False):
-                # Fall back to basic search if analysis failed or is not a dict
-                logger.info("Analysis is not valid, falling back to basic search")
-                if model:
-                    top_k = self.config.get_top_k_for_model(model)
-                    return self.document_manager.search(query, top_k=top_k)
-                else:
-                    return self.document_manager.search(query)
-                    
-            # Extract search keywords
-            search_keywords = analysis.get("analysis", {}).get("search_keywords", [])
-            if not search_keywords:
-                search_keywords = [query]
-                
-            # Combine original query with keywords for better search
-            enhanced_query = query
-            if search_keywords:
-                enhanced_query += " " + " ".join(str(kw) for kw in search_keywords if kw)
-            
-            # Log the enhanced query
-            logger.info(f"Enhanced query: {enhanced_query}")
-            
-            # Always use a larger top_k for the initial search
-            max_top_k = self.config.MAX_TOP_K
-            
-            # Perform search with enhanced query using max_top_k
-            all_search_results = self.document_manager.search(enhanced_query, top_k=max_top_k)
-            
-            # Determine the top_k value based on the model for filtering
-            model_top_k = self.config.TOP_K  # Default
-            if model:
-                model_top_k = self.config.get_top_k_for_model(model)
-                logger.info(f"Filtering to model-specific top_k: {model_top_k} for model: {model}")
-            
-            # Filter to only include the top model_top_k results
-            search_results = all_search_results[:model_top_k]
-            
-            # Log number of results after filtering
-            logger.info(f"Found {len(all_search_results)} total results, filtered to {len(search_results)} for model {model}")
-            
-            # Log found image results
-            image_count = sum(1 for _, _, _, img_id in search_results if img_id)
-            total_image_count = sum(1 for _, _, _, img_id in all_search_results if img_id)
-            if image_count > 0 or total_image_count > 0:
-                logger.info(f"Search found {image_count}/{total_image_count} relevant image results after filtering")
-            
-            return search_results
-                
-        except Exception as e:
-            logger.error(f"Error in enhanced search: {e}")
-            if model:
-                top_k = self.config.get_top_k_for_model(model)
-                return self.document_manager.search(query, top_k=top_k)  # Fall back to basic search
-            else:
-                return self.document_manager.search(query)  # Fall back to basic search
-            
     async def split_query_into_sections(self, query: str) -> List[str]:
-        """Split a query into logical sections for individual processing.
-        
-        This uses the classifier model to identify distinct topics or components
-        within the query.
-        
-        Args:
-            query: The original user query
-            
-        Returns:
-            List of query sections
-        """
-        try:
-            # Check if query is empty
-            if not query or not query.strip():
-                logger.warning("Empty query provided to split_query_into_sections")
-                return [query]  # Return the original query as a single section
-                
-            # Use the classifier model to split the query
-            splitter_prompt = [
-                {
-                    "role": "system",
-                    "content": """You are a query section splitter for a Ledus Banum 77 and Imperial lore knowledge base.
-                    Break down a complex query into logical sections that should be searched separately. Identify distinct:
-                    1. Character references or dialogue
-                    2. Location references
-                    3. Specific questions or requests
-                    4. Item or object references
-                    5. Event or historical references
-                    
-                    Return a JSON array of sections, each containing the exact text from the original query.
-                    Example: ["first section", "second section", "third section"]
-                    
-                    Do not create artificial sections - only split when there are natural divisions in the query.
-                    For short, simple queries, just return the entire query as a single element.
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"Split this query into logical sections for separate searching: '{query}'"
-                }
-            ]
-            
-            # Make API call using the configured classifier model
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com",
-                "X-Title": "Publicia - Query Splitter",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.config.CLASSIFIER_MODEL,  # Use configured classifier model
-                "messages": splitter_prompt,
-                "temperature": 0.1,
-                "response_format": {"type": "json_object"}
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_duration
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Query splitter API error: {error_text}")
-                        return [query]  # Fall back to original query
-                        
-                    completion = await response.json()
-            
-            if not completion or not completion.get('choices'):
-                return [query]  # Fall back to original query
-                
-            # Parse the sections from the response
-            sections_text = completion['choices'][0]['message']['content']
-            
-            try:
-                # Try to parse as JSON
-                import json
-                sections_data = json.loads(sections_text)
-                
-                # Extract the sections array - handle both direct array or object with sections key
-                if isinstance(sections_data, list):
-                    sections = sections_data
-                elif isinstance(sections_data, dict) and 'sections' in sections_data:
-                    sections = sections_data['sections']
-                else:
-                    sections = [query]  # Fall back if unexpected format
-                
-                # Validate it's a list with content
-                if isinstance(sections, list) and len(sections) > 0:
-                    logger.info(f"Split query into {len(sections)} sections: {sections}")
-                    return sections
-                else:
-                    return [query]  # Fall back if not a valid list
-                    
-            except json.JSONDecodeError:
-                # If not proper JSON, extract what we can
-                logger.warn(f"Failed to parse sections as JSON: {sections_text}")
-                return [query]  # Fall back to original query
-            
-        except Exception as e:
-            logger.error(f"Error splitting query into sections: {e}")
-            return [query]  # Fall back to original query
+        """Simplified version that doesn't split the query."""
+        logger.info(f"[SIMPLE SEARCH] Not splitting query into sections")
+        return [query]  # Return the query as a single section
 
     async def process_multi_section_query(self, query: str, preferred_model: str = None) -> Dict:
-        """Process a query by splitting it into sections and searching each section.
+        """Simplified version that skips section splitting and uses simple search."""
+        logger.info(f"[SIMPLE SEARCH] Using simplified query processing for: {shorten(query, width=100, placeholder='...')}")
         
-        Args:
-            query: The original user query
-            preferred_model: Optional model to use for search
+        # Simple analysis (will trigger fallback to simple search)
+        analysis = {"success": False}
+        
+        # Simple search
+        if preferred_model:
+            top_k = self.config.get_top_k_for_model(preferred_model)
+        else:
+            top_k = self.config.TOP_K
             
-        Returns:
-            Dict containing aggregated search results and synthesized context
-        """
-        try:
-            # Split the query into sections
-            sections = await self.split_query_into_sections(query)
-            
-            # If there's only one section, process normally
-            if len(sections) <= 1:
-                analysis = await self.analyze_query(query)
-                search_results = await self.enhanced_search(query, analysis, preferred_model)
-                synthesis = await self.synthesize_results(query, search_results, analysis)
-                return {
-                    "search_results": search_results,
-                    "synthesis": synthesis,
-                    "analysis": analysis,
-                    "sections": [query]
-                }
-            
-            # Process each section
-            all_search_results = []
-            section_analyses = []
-            
-            # Initial analysis of full query for context
-            full_query_analysis = await self.analyze_query(query)
-            
-            for section in sections:
-                logger.info(f"Processing query section: {section}")
-                
-                # Analyze this section
-                section_analysis = await self.analyze_query(section)
-                section_analyses.append(section_analysis)
-                
-                # Search for this section using the preferred model
-                section_results = await self.enhanced_search(section, section_analysis, preferred_model)
-                
-                # Add to aggregated results
-                for result in section_results:
-                    doc_name, chunk, score, image_id = result
-                    
-                    # Check if this chunk is already in all_search_results
-                    is_duplicate = False
-                    for existing_idx, existing_result in enumerate(all_search_results):
-                        if existing_result[0] == doc_name and existing_result[1] == chunk:
-                            is_duplicate = True
-                            # Keep the higher scoring result
-                            if score > existing_result[2]:
-                                all_search_results[existing_idx] = result
-                            break
-                    
-                    if not is_duplicate:
-                        all_search_results.append(result)
-            
-            # Sort by similarity score
-            all_search_results.sort(key=lambda x: x[2], reverse=True)
-            
-            # Limit to a reasonable number based on model
-            max_results = self.config.MAX_TOP_K
-            if preferred_model:
-                max_results = min(max_results, self.config.get_top_k_for_model(preferred_model))
-                
-            all_search_results = all_search_results[:max_results]
-            
-            # Get an overall synthesis using the full query and combined results
-            overall_synthesis = await self.synthesize_results(query, all_search_results, full_query_analysis)
-            
-            return {
-                "search_results": all_search_results,
-                "synthesis": overall_synthesis,
-                "analysis": full_query_analysis,
-                "section_analyses": section_analyses,
-                "sections": sections
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in multi-section query processing: {e}")
-            
-            # Fall back to regular processing
-            analysis = await self.analyze_query(query)
-            search_results = await self.enhanced_search(query, analysis, preferred_model)
-            synthesis = await self.synthesize_results(query, search_results, analysis)
-            
-            return {
-                "search_results": search_results,
-                "synthesis": synthesis,
-                "analysis": analysis,
-                "sections": [query]
-            }
+        search_results = self.document_manager.search(query, top_k=top_k)
+        
+        # No synthesis
+        synthesis = ""
+        
+        return {
+            "search_results": search_results,
+            "synthesis": synthesis,
+            "analysis": analysis,
+            "sections": [query]  # Just the original query
+        }
 
     async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float, Optional[str]]], analysis: Dict) -> str:
-        """Use the configured classifier model to synthesize search results into a coherent context."""
-        try:
-            # Check if query is empty
-            if not query or not query.strip():
-                logger.warning("Empty query provided to synthesize_results")
-                return ""
-                
-            # Format search results into a string, handling image descriptions
-            result_text = ""
-            for doc, chunk, score, image_id in search_results[:10]:  # Limit to top 10 results
-                if image_id:
-                    # This is an image description
-                    try:
-                        image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
-                        result_text += f"\nImage: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
-                    except KeyError:
-                        # Handle missing image metadata
-                        result_text += f"\nImage: Unknown (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}\n"
-                else:
-                    # Regular document
-                    result_text += f"\nDocument: {doc}\nContent: {chunk}\nRelevance: {score:.2f}\n"
-            
-            # Include the analysis if available
-            analysis_text = ""
-            if analysis.get("success", False):
-                raw_analysis = analysis.get("analysis", {})
-                if isinstance(raw_analysis, dict):
-                    import json
-                    analysis_text = json.dumps(raw_analysis, indent=2)
-                else:
-                    analysis_text = str(raw_analysis)
-            
-            synthesizer_prompt = [
-                {
-                    "role": "system",
-                    "content": """You are a document synthesizer for a question-answering system about Ledus Banum 77 and Imperial lore.
-                    Your task is to:
-                    1. Review the query, query analysis, and search results
-                    2. Identify the most relevant information for answering the query
-                    3. Organize the information in a structured way
-                    4. Highlight connections between different pieces of information
-                    5. Note any contradictions or gaps in the information
-                    6. Identify any images that appear in the search results and incorporate them in your synthesis
-                    
-                    Synthesize this information into a coherent context that can be used to answer the query.
-                    Focus on extracting and organizing the facts, not on answering the query directly.
-                    Include any citation information found in the document sections.
-                    If there are relevant images, indicate where they should be referenced in responses.
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"Query: {query}\n\nQuery Analysis: {analysis_text}\n\nSearch Results:\n{result_text}"
-                }
-            ]
-            
-            # Make API call using the configured classifier model
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com",
-                "X-Title": "Publicia - Result Synthesizer",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.config.CLASSIFIER_MODEL,  # Use configured classifier model
-                "messages": synthesizer_prompt,
-                "temperature": 0.1
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_duration
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Synthesizer API error: {error_text}")
-                        return ""
-                        
-                    completion = await response.json()
-            
-            if not completion or not completion.get('choices'):
-                return ""
-                
-            # Get the synthesized context
-            synthesis = completion['choices'][0]['message']['content']
-            return synthesis
-            
-        except Exception as e:
-            logger.error(f"Error synthesizing results: {e}")
-            return ""  # Fall back to empty string
+        """Simplified version that returns an empty synthesis."""
+        logger.info(f"[SIMPLE SEARCH] Skipping result synthesis for: {shorten(query, width=100, placeholder='...')}")
+        return ""  # Return empty synthesis
 
     async def send_split_message(self, channel, text, reference=None, mention_author=False, model_used=None, user_id=None, existing_message=None):
         """Send a message split into chunks if it's too long, with each chunk referencing the previous one.
@@ -2903,10 +2507,10 @@ class DiscordBot(commands.Bot):
                 if success:
                     # Create a description of all model strengths
                     model_descriptions = [
-                        f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
+                        f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                        f"**Qwen QwQ 32B**: RECOMMENDED - Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -2949,16 +2553,16 @@ class DiscordBot(commands.Bot):
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
                 elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
-                    model_name = "Qwen QWQ 32B"
+                    model_name = "Qwen QwQ 32B"
                 elif "unslopnemo" in preferred_model:  # Handle Testing Model
                     model_name = "Testing Model"
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
+                    f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                    f"**Qwen QwQ 32B**: RECOMMENDED - Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                    f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -3319,7 +2923,7 @@ class DiscordBot(commands.Bot):
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
                 elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
-                    model_name = "Qwen QWQ 32B"
+                    model_name = "Qwen QwQ 32B"
                 elif preferred_model == "thedrummer/unslopnemo-12b":  # Handle Testing Model
                     model_name = "Testing Model"
 
