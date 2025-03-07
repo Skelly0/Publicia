@@ -854,7 +854,7 @@ class Config:
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 7,
-            "deepseek/deepseek-r1-distill-llama-70b": 15,
+            "deepseek/deepseek-r1-distill-llama-70b": 12,
             "deepseek/deepseek-r1:floor": 7,
             "deepseek/deepseek-r1:nitro": 5,
             "deepseek/deepseek-chat": 7,
@@ -872,7 +872,7 @@ class Config:
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
             "qwen/qwq-32b:free": 15,
-            "qwen/qwq-32b": 15, 
+            "qwen/qwq-32b": 12, 
             # Testing models
             "thedrummer/unslopnemo-12b": 12,  # Add unslopnemo model
         }
@@ -2865,7 +2865,7 @@ class DiscordBot(commands.Bot):
             app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
-            app_commands.Choice(name="Testing Model", value="qwen/qwq-32b:free"),  # Add the new Testing Model option
+            app_commands.Choice(name="Testing Model", value="thedrummer/unslopnemo-12b"),  # Add the new Testing Model option
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
@@ -2883,21 +2883,21 @@ class DiscordBot(commands.Bot):
                 
                 # Get friendly model name based on the model value
                 model_name = "Unknown Model"
-                if "deepseek/deepseek-r1" in preferred_model:
+                if "deepseek/deepseek-r1" in model:
                     model_name = "DeepSeek-R1"
-                elif preferred_model.startswith("google/"):
+                elif model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
-                elif preferred_model.startswith("nousresearch/"):
+                elif model.startswith("nousresearch/"):
                     model_name = "Nous: Hermes 405B Instruct"
-                elif "claude-3.5-haiku" in preferred_model:
+                elif "claude-3.5-haiku" in model:
                     model_name = "Claude 3.5 Haiku"
-                elif "claude-3.5-sonnet" in preferred_model:
+                elif "claude-3.5-sonnet" in model:
                     model_name = "Claude 3.5 Sonnet"
-                elif "claude-3.7-sonnet" in preferred_model:
+                elif "claude-3.7-sonnet" in model:
                     model_name = "Claude 3.7 Sonnet"
-                elif "qwen/qwq-32b" in preferred_model:  # Handle QWQ model
+                elif "qwen/qwq-32b" in model:  # Handle QWQ model
                     model_name = "Qwen QwQ 32B"
-                elif preferred_model == "thedrummer/unslopnemo-12b":  # Handle Testing Model
+                elif "unslopnemo" in model:  # Handle Testing Model
                     model_name = "Testing Model"
                 
                 if success:
@@ -2906,10 +2906,10 @@ class DiscordBot(commands.Bot):
                         f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                        f"**Qwen QwQ 32B**: Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                        f"**Qwen QwQ 32B**: RECOMMENDED - Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
-                        f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money."
+                        f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                         f"**Testing Model**: Currently using Unslopnemo 12B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('thedrummer/unslopnemo-12b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     ]
                     
@@ -2948,16 +2948,20 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
+                elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
+                    model_name = "Qwen QWQ 32B"
+                elif "unslopnemo" in preferred_model:  # Handle Testing Model
+                    model_name = "Testing Model"
                 
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**DeepSeek-R1**: Better for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. Tries to use a free version of the model, but if that fails, it will use a cheap distill of R1. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses a smaller distill with ({self.config.get_top_k_for_model('deepseek/deepseek-r1-distill-llama-70b')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                    f"**Qwen QwQ 32B**: Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                    f"**Qwen QwQ 32B**: RECOMMENDED - Excellent for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
-                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money."
+                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Testing Model**: Currently using Unslopnemo 12B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('thedrummer/unslopnemo-12b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                 ]
                 
@@ -3314,6 +3318,10 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
+                elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
+                    model_name = "Qwen QWQ 32B"
+                elif preferred_model == "thedrummer/unslopnemo-12b":  # Handle Testing Model
+                    model_name = "Testing Model"
 
                 if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
                     await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
