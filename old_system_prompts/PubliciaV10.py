@@ -860,7 +860,7 @@ class Config:
             "deepseek/deepseek-chat": 7,
             # Gemini models 
             "google/gemini-2.0-flash-001": 15,
-            "google/gemini-2.0-pro-exp-02-05:free": 20,
+            "google/gemini-2.0-pro-exp-02-05:free": 12,
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 8,
             # Claude models
@@ -1385,6 +1385,28 @@ class DiscordBot(commands.Bot):
         # Replace backslashes to avoid escape sequence issues
         text = text.replace("\\", "\\\\")
         return text
+    
+    async def _format_documents_for_prompt(self, search_results):
+        """Format document content for inclusion in the system prompt."""
+        formatted_docs = []
+        
+        # Process search results to extract document content
+        if search_results:
+            for doc_name, chunk, score, image_id in search_results:
+                if image_id:
+                    # This is an image description
+                    image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                    formatted_docs.append(f"<document>\n<title>Image: {image_name}</title>\n<content>\n{chunk}\n</content>\n</document>")
+                else:
+                    # Regular document
+                    formatted_docs.append(f"<document>\n<title>{doc_name}</title>\n<content>\n{chunk}\n</content>\n</document>")
+        
+        # If no documents were found, add a placeholder message
+        if not formatted_docs:
+            formatted_docs.append("<document>\n<title>No relevant documents found</title>\n<content>\nNo documents in the knowledge base were found to match this query.\n</content>\n</document>")
+        
+        # Join all formatted documents
+        return "\n".join(formatted_docs)
 
     def load_banned_users(self):
         """Load banned users from JSON file."""
@@ -1622,209 +1644,6 @@ class DiscordBot(commands.Bot):
                 return self.document_manager.search(query, top_k=top_k)  # Fall back to basic search
             else:
                 return self.document_manager.search(query)  # Fall back to basic search
-            
-    async def split_query_into_sections(self, query: str) -> List[str]:
-        """Split a query into logical sections for individual processing.
-        
-        This uses the classifier model to identify distinct topics or components
-        within the query.
-        
-        Args:
-            query: The original user query
-            
-        Returns:
-            List of query sections
-        """
-        try:
-            # Check if query is empty
-            if not query or not query.strip():
-                logger.warning("Empty query provided to split_query_into_sections")
-                return [query]  # Return the original query as a single section
-                
-            # Use the classifier model to split the query
-            splitter_prompt = [
-                {
-                    "role": "system",
-                    "content": """You are a query section splitter for a Ledus Banum 77 and Imperial lore knowledge base.
-                    Break down a complex query into logical sections that should be searched separately. Identify distinct:
-                    1. Character references or dialogue
-                    2. Location references
-                    3. Specific questions or requests
-                    4. Item or object references
-                    5. Event or historical references
-                    
-                    Return a JSON array of sections, each containing the exact text from the original query.
-                    Example: ["first section", "second section", "third section"]
-                    
-                    Do not create artificial sections - only split when there are natural divisions in the query.
-                    For short, simple queries, just return the entire query as a single element.
-                    """
-                },
-                {
-                    "role": "user",
-                    "content": f"Split this query into logical sections for separate searching: '{query}'"
-                }
-            ]
-            
-            # Make API call using the configured classifier model
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com",
-                "X-Title": "Publicia - Query Splitter",
-                "Content-Type": "application/json"
-            }
-            
-            payload = {
-                "model": self.config.CLASSIFIER_MODEL,  # Use configured classifier model
-                "messages": splitter_prompt,
-                "temperature": 0.1,
-                "response_format": {"type": "json_object"}
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=self.timeout_duration
-                ) as response:
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"Query splitter API error: {error_text}")
-                        return [query]  # Fall back to original query
-                        
-                    completion = await response.json()
-            
-            if not completion or not completion.get('choices'):
-                return [query]  # Fall back to original query
-                
-            # Parse the sections from the response
-            sections_text = completion['choices'][0]['message']['content']
-            
-            try:
-                # Try to parse as JSON
-                import json
-                sections_data = json.loads(sections_text)
-                
-                # Extract the sections array - handle both direct array or object with sections key
-                if isinstance(sections_data, list):
-                    sections = sections_data
-                elif isinstance(sections_data, dict) and 'sections' in sections_data:
-                    sections = sections_data['sections']
-                else:
-                    sections = [query]  # Fall back if unexpected format
-                
-                # Validate it's a list with content
-                if isinstance(sections, list) and len(sections) > 0:
-                    logger.info(f"Split query into {len(sections)} sections: {sections}")
-                    return sections
-                else:
-                    return [query]  # Fall back if not a valid list
-                    
-            except json.JSONDecodeError:
-                # If not proper JSON, extract what we can
-                logger.warn(f"Failed to parse sections as JSON: {sections_text}")
-                return [query]  # Fall back to original query
-            
-        except Exception as e:
-            logger.error(f"Error splitting query into sections: {e}")
-            return [query]  # Fall back to original query
-
-    async def process_multi_section_query(self, query: str, preferred_model: str = None) -> Dict:
-        """Process a query by splitting it into sections and searching each section.
-        
-        Args:
-            query: The original user query
-            preferred_model: Optional model to use for search
-            
-        Returns:
-            Dict containing aggregated search results and synthesized context
-        """
-        try:
-            # Split the query into sections
-            sections = await self.split_query_into_sections(query)
-            
-            # If there's only one section, process normally
-            if len(sections) <= 1:
-                analysis = await self.analyze_query(query)
-                search_results = await self.enhanced_search(query, analysis, preferred_model)
-                synthesis = await self.synthesize_results(query, search_results, analysis)
-                return {
-                    "search_results": search_results,
-                    "synthesis": synthesis,
-                    "analysis": analysis,
-                    "sections": [query]
-                }
-            
-            # Process each section
-            all_search_results = []
-            section_analyses = []
-            
-            # Initial analysis of full query for context
-            full_query_analysis = await self.analyze_query(query)
-            
-            for section in sections:
-                logger.info(f"Processing query section: {section}")
-                
-                # Analyze this section
-                section_analysis = await self.analyze_query(section)
-                section_analyses.append(section_analysis)
-                
-                # Search for this section using the preferred model
-                section_results = await self.enhanced_search(section, section_analysis, preferred_model)
-                
-                # Add to aggregated results
-                for result in section_results:
-                    doc_name, chunk, score, image_id = result
-                    
-                    # Check if this chunk is already in all_search_results
-                    is_duplicate = False
-                    for existing_idx, existing_result in enumerate(all_search_results):
-                        if existing_result[0] == doc_name and existing_result[1] == chunk:
-                            is_duplicate = True
-                            # Keep the higher scoring result
-                            if score > existing_result[2]:
-                                all_search_results[existing_idx] = result
-                            break
-                    
-                    if not is_duplicate:
-                        all_search_results.append(result)
-            
-            # Sort by similarity score
-            all_search_results.sort(key=lambda x: x[2], reverse=True)
-            
-            # Limit to a reasonable number based on model
-            max_results = self.config.MAX_TOP_K
-            if preferred_model:
-                max_results = min(max_results, self.config.get_top_k_for_model(preferred_model))
-                
-            all_search_results = all_search_results[:max_results]
-            
-            # Get an overall synthesis using the full query and combined results
-            overall_synthesis = await self.synthesize_results(query, all_search_results, full_query_analysis)
-            
-            return {
-                "search_results": all_search_results,
-                "synthesis": overall_synthesis,
-                "analysis": full_query_analysis,
-                "section_analyses": section_analyses,
-                "sections": sections
-            }
-            
-        except Exception as e:
-            logger.error(f"Error in multi-section query processing: {e}")
-            
-            # Fall back to regular processing
-            analysis = await self.analyze_query(query)
-            search_results = await self.enhanced_search(query, analysis, preferred_model)
-            synthesis = await self.synthesize_results(query, search_results, analysis)
-            
-            return {
-                "search_results": search_results,
-                "synthesis": synthesis,
-                "analysis": analysis,
-                "sections": [query]
-            }
 
     async def synthesize_results(self, query: str, search_results: List[Tuple[str, str, float, Optional[str]]], analysis: Dict) -> str:
         """Use the configured classifier model to synthesize search results into a coherent context."""
@@ -2582,15 +2401,26 @@ class DiscordBot(commands.Bot):
         """
                 
                 # System prompt
-                file_content += f"""
-        SYSTEM PROMPT
-        ---------------------------------------------------------
-        This defines Publicia's character, abilities, and behavior.
-        ---------------------------------------------------------
-        {SYSTEM_PROMPT}
-        =========================================================
+                formatted_documents = await self._format_documents_for_prompt(search_results)
 
-        """
+                # Add Google Doc content to formatted documents if available
+                if google_doc_contents:
+                    for doc_id, doc_url, content in google_doc_contents:
+                        # Truncate content if it's too long
+                        truncated_content = content[:5000] + ("..." if len(content) > 5000 else "")
+                        doc_title = f"Google Doc: {doc_url}"
+                        formatted_documents += f"\n<document>\n<title>{doc_title}</title>\n<content>\n{truncated_content}\n</content>\n</document>"
+
+                # System prompt
+                file_content += f"""
+                SYSTEM PROMPT
+                ---------------------------------------------------------
+                This defines Publicia's character, abilities, and behavior.
+                ---------------------------------------------------------
+                {SYSTEM_PROMPT.format(provided_documents=formatted_documents)}
+                =========================================================
+
+                """
                 
                 # Conversation history
                 if conversation_messages:
@@ -3162,31 +2992,31 @@ class DiscordBot(commands.Bot):
                 else:
                     status_message = await interaction.followup.send("*neural pathways activating... analyzing query...*", ephemeral=False)
                 
+                # Step 1: Analyze the query with Gemini
+                analysis = await self.analyze_query(question)
+                logger.info(f"Query analysis complete: {analysis}")
+                
                 # Get user's preferred model
                 preferred_model = self.user_preferences_manager.get_preferred_model(
                     str(interaction.user.id), 
                     default_model=self.config.LLM_MODEL
                 )
 
-                # Use the new multi-section processing approach
-                await status_message.edit(content="*analyzing query and searching imperial databases...*")
-                multi_results = await self.process_multi_section_query(question, preferred_model)
-                
-                # Extract results from multi-section processing
-                search_results = multi_results["search_results"]
-                synthesis = multi_results["synthesis"]
-                analysis = multi_results["analysis"]
-                sections = multi_results["sections"]
-                
-                # Log the results
-                logger.info(f"Multi-section query processing complete. Query was split into {len(sections)} sections.")
+                # Step 2: Perform enhanced search based on analysis
+                search_results = await self.enhanced_search(question, analysis, preferred_model)
                 logger.info(f"Found {len(search_results)} relevant document sections")
 
-                await status_message.edit(content="*synthesizing information...*")
+                # Step 3: Synthesize search results with Gemini
+                await status_message.edit(content="*searching imperial databases... synthesizing information...*")
+                synthesis = await self.synthesize_results(question, search_results, analysis)
+                logger.info(f"Document synthesis complete")
                 
                 # Load Google Doc ID mapping for citation links
                 googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
 
+                # Initialize google_doc_contents
+                google_doc_contents = []
+                
                 # Extract image IDs from search results
                 image_ids = []
                 for doc, chunk, score, image_id in search_results:
@@ -3196,7 +3026,6 @@ class DiscordBot(commands.Bot):
                 
                 # Check if the question contains any Google Doc links
                 doc_ids = await self._extract_google_doc_ids(question)
-                google_doc_contents = []
                 if doc_ids:
                     await status_message.edit(content="*detected Google Doc links in your query... fetching content...*")
                     for doc_id, doc_url in doc_ids:
@@ -3231,10 +3060,21 @@ class DiscordBot(commands.Bot):
                     google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
                 
                 # Step 4: Prepare messages for model
+                formatted_documents = await self._format_documents_for_prompt(search_results)
+
+                # Add Google Doc content to formatted documents if available
+                if google_doc_contents:
+                    for doc_id, doc_url, content in google_doc_contents:
+                        # Truncate content if it's too long (first 10000 chars)
+                        truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
+                        doc_title = f"Google Doc: {doc_url}"
+                        formatted_documents += f"\n<document>\n<title>{doc_title}</title>\n<content>\n{truncated_content}\n</content>\n</document>"
+
+                # Step 4: Prepare messages for model with formatted documents
                 messages = [
                     {
                         "role": "system",
-                        "content": SYSTEM_PROMPT
+                        "content": SYSTEM_PROMPT.format(provided_documents=formatted_documents)
                     },
                     *conversation_messages
                 ]
@@ -3307,6 +3147,8 @@ class DiscordBot(commands.Bot):
                     await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
 
                 # Step 5: Get AI response using user's preferred model
+                
+
                 completion, actual_model = await self._try_ai_completion(  # Now unpack the tuple of (completion, actual_model)
                     preferred_model,
                     messages,
@@ -4181,6 +4023,14 @@ class DiscordBot(commands.Bot):
             google_doc_ids = await self._extract_google_doc_ids(question)
             google_doc_contents = []
             
+            if google_doc_ids:
+                # Fetch content for each Google Doc
+                for doc_id, doc_url in google_doc_ids:
+                    content = await self._fetch_google_doc_content(doc_id)
+                    if content:
+                        logger.info(f"Fetched content from Google Doc {doc_id}")
+                        google_doc_contents.append((doc_id, doc_url, content))
+            
             # Check for image attachments
             image_attachments = []
             if message.attachments:
@@ -4211,6 +4061,11 @@ class DiscordBot(commands.Bot):
             # Get conversation history for context
             conversation_messages = self.conversation_manager.get_conversation_messages(message.author.name)
             
+            
+            # Step 1: Analyze the query with Gemini
+            analysis = await self.analyze_query(question)
+            logger.info(f"Query analysis complete: {analysis}")
+
             # Get user's preferred model
             preferred_model = self.user_preferences_manager.get_preferred_model(
                 str(message.author.id),
@@ -4218,21 +4073,16 @@ class DiscordBot(commands.Bot):
             )
 
             # Update thinking message
-            await thinking_msg.edit(content="*analyzing query and searching imperial databases...*")
+            await thinking_msg.edit(content="*searching imperial databases... synthesizing information...*")
 
-            # Use the new multi-section processing approach
-            multi_results = await self.process_multi_section_query(question, preferred_model)
-            
-            # Extract results
-            search_results = multi_results["search_results"]
-            synthesis = multi_results["synthesis"]
-            analysis = multi_results["analysis"]
-            sections = multi_results["sections"]
-            
-            # Log the results
-            logger.info(f"Multi-section query processing complete. Query was split into {len(sections)} sections.")
+            # Step 2: Perform enhanced search based on analysis
+            search_results = await self.enhanced_search(question, analysis, preferred_model)
             logger.info(f"Found {len(search_results)} relevant document sections")
 
+            # Step 3: Synthesize search results with Gemini
+            synthesis = await self.synthesize_results(question, search_results, analysis)
+            logger.info(f"Document synthesis complete")
+            
             # Load Google Doc ID mapping for citation links
             googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
 
@@ -4242,16 +4092,6 @@ class DiscordBot(commands.Bot):
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
                     logger.info(f"Found relevant image: {image_id}")
-
-            # Fetch content for Google Doc links
-            if google_doc_ids:
-                # Fetch content for each Google Doc
-                await thinking_msg.edit(content="*detected Google Doc links in your query... fetching content...*")
-                for doc_id, doc_url in google_doc_ids:
-                    content = await self._fetch_google_doc_content(doc_id)
-                    if content:
-                        logger.info(f"Fetched content from Google Doc {doc_id}")
-                        google_doc_contents.append((doc_id, doc_url, content))
 
             # Format raw results with citation info
             import urllib.parse
@@ -4275,18 +4115,29 @@ class DiscordBot(commands.Bot):
             # Add fetched Google Doc content to context
             google_doc_context = []
             for doc_id, doc_url, content in google_doc_contents:
-                # Truncate content if it's too long (first 10000 chars)
+                # Truncate content if it's too long (first 2000 chars)
                 truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
                 google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
             
             # Get nickname or username
             nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
             
-            # Prepare messages for model
+            # Step 4: Prepare messages for model
+            formatted_documents = await self._format_documents_for_prompt(search_results)
+
+            # Add Google Doc content to formatted documents if available
+            if google_doc_contents:
+                for doc_id, doc_url, content in google_doc_contents:
+                    # Truncate content if it's too long (first 10000 chars)
+                    truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
+                    doc_title = f"Google Doc: {doc_url}"
+                    formatted_documents += f"\n<document>\n<title>{doc_title}</title>\n<content>\n{truncated_content}\n</content>\n</document>"
+
+            # Step 4: Prepare messages for model with formatted documents
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT
+                    "content": SYSTEM_PROMPT.format(provided_documents=formatted_documents)
                 },
                 *conversation_messages
             ]
@@ -4355,7 +4206,6 @@ class DiscordBot(commands.Bot):
             # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
                 await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed)*")
-                # No model switching - continues with user's preferred model
             else:
                 # Add a note about fetched Google Docs if any were processed
                 if google_doc_contents:
@@ -4363,7 +4213,7 @@ class DiscordBot(commands.Bot):
                 else:
                     await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
             
-            # Get AI response using user's preferred model
+            # Step 5: Get AI response using user's preferred model
             completion, actual_model = await self._try_ai_completion(
                 preferred_model,
                 messages,
@@ -4374,6 +4224,16 @@ class DiscordBot(commands.Bot):
 
             if completion and completion.get('choices'):
                 response = completion['choices'][0]['message']['content']
+                
+                # Add a note about fetched Google Docs if any were processed
+                #if google_doc_contents:
+                #    doc_note = f"\n\n*Note: I've included content from {len(google_doc_contents)} Google Doc{'s' if len(google_doc_contents) > 1 else ''} linked in your message.*"
+                #    response += doc_note
+                
+                # Add a note about found images if any were found in search results
+                #if image_ids:
+                #    img_note = f"\n\n*Note: I found {len(image_ids)} relevant image{'s' if len(image_ids) > 1 else ''} in my knowledge base related to your query.*"
+                #    response += img_note
                 
                 # Update conversation history
                 self.conversation_manager.write_conversation(
