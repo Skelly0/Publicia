@@ -27,6 +27,7 @@ from image_prompt import IMAGE_DESCRIPTION_PROMPT
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
+print(torch.cuda.is_available())  # Should return True if GPU is available
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
@@ -413,7 +414,10 @@ class DocumentManager:
         self.top_k = top_k
         
         # Initialize embedding model
-        self.model = SentenceTransformer('all-mpnet-base-v2')
+        #self.model = SentenceTransformer('all-mpnet-base-v2')
+        self.model = SentenceTransformer('nvidia/NV-Embed-v2', trust_remote_code=True)
+        self.model.max_seq_length = 32768  # Set maximum sequence length
+        self.model.tokenizer.padding_side = "right"  # Set padding to right
         
         # Storage for documents and embeddings
         self.chunks: Dict[str, List[str]] = {}
@@ -423,7 +427,7 @@ class DocumentManager:
         # Load existing documents
         self._load_documents()
     
-    def _chunk_text(self, text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int = 750, overlap: int = 50) -> List[str]:
         """Split text into overlapping chunks."""
         # Handle empty text
         if not text or not text.strip():
@@ -483,8 +487,9 @@ class DocumentManager:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
                 return
             
-            # Generate embeddings
+            # Generate and normalize embeddings
             embeddings = self.model.encode(chunks)
+            embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
             
             # Store document data
             self.chunks[name] = chunks
@@ -524,10 +529,10 @@ class DocumentManager:
         
         return mapping
     
-    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str]]]:
+    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
         """
         Search for relevant document chunks.
-        Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable)
+        Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
         """
         try:
             # Use instance top_k if none provided
@@ -539,8 +544,13 @@ class DocumentManager:
                 logger.warning("Empty query provided to search")
                 return []
                 
-            # Generate query embedding
-            query_embedding = self.model.encode(query)
+            # Generate query embedding with instruction
+            query_embedding = self.model.encode(
+                query,
+                instruction="Retrieve relevant information",
+                max_length=32768
+            )
+            query_embedding = query_embedding / np.linalg.norm(query_embedding)
             
             results = []
             logger.info(f"Searching documents for query: {shorten(query, width=100, placeholder='...')}")
@@ -552,57 +562,44 @@ class DocumentManager:
                     logger.warning(f"Skipping document {doc_name} with empty embeddings")
                     continue
                     
-                # Calculate similarities
-                try:
-                    similarities = np.dot(doc_embeddings, query_embedding) / (
-                        np.linalg.norm(doc_embeddings, axis=1) * np.linalg.norm(query_embedding)
-                    )
+                # Calculate similarities (dot product since embeddings are normalized)
+                similarities = np.dot(doc_embeddings, query_embedding)
+                
+                # Get top chunks
+                if len(similarities) > 0:
+                    top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
                     
-                    # Get top chunks - make sure to handle edge cases
-                    if len(similarities) > 0:
-                        top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
+                    for idx in top_indices:
+                        # Check if this is an image description
+                        image_id = None
+                        if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                            image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
+                        elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                            image_id = self.metadata[doc_name]['image_id']
                         
-                        for idx in top_indices:
-                            # Check if this is an image description
-                            image_id = None
-                            if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                                # Extract image ID from document name
-                                image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
-                            
-                            # Check if metadata has image_id set explicitly
-                            elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                                image_id = self.metadata[doc_name]['image_id']
-                            
-                            # Make sure chunk index is valid
-                            if idx < len(self.chunks[doc_name]):
-                                results.append((
-                                    doc_name,
-                                    self.chunks[doc_name][idx],
-                                    float(similarities[idx]),
-                                    image_id
-                                ))
-                except Exception as e:
-                    logger.error(f"Error calculating similarities for document {doc_name}: {e}")
-                    continue
+                        # Ensure chunk index is valid
+                        if idx < len(self.chunks[doc_name]):
+                            results.append((
+                                doc_name,
+                                self.chunks[doc_name][idx],
+                                float(similarities[idx]),
+                                image_id,
+                                idx + 1,  # chunk index (1-based for display)
+                                len(self.chunks[doc_name])  # total chunks
+                            ))
             
             # Sort by similarity
             results.sort(key=lambda x: x[2], reverse=True)
             
             # Log search results
-            for doc_name, chunk, similarity, image_id in results[:top_k]:
-                logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f})")
+            for doc_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
+                logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
                 if image_id:
                     logger.info(f"This is an image description for image ID: {image_id}")
                 logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
             
             return results[:top_k]
             
-        except KeyError as e:
-            logger.error(f"Document or chunk not found in search: {e}")
-            return []
-        except ValueError as e:
-            logger.error(f"Value error in document search: {e}")
-            return []
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
             return []
@@ -626,11 +623,11 @@ class DocumentManager:
             logger.error(f"Error saving to disk: {e}")
             raise
     
-    def _load_documents(self):
+    def _load_documents(self, force_reload: bool = False):
         """Load document data from disk and add any new .txt files."""
         try:
-            # Load existing processed data if it exists
-            if (self.base_dir / 'chunks.pkl').exists():
+            if not force_reload and (self.base_dir / 'chunks.pkl').exists():
+                # Load existing processed data
                 with open(self.base_dir / 'chunks.pkl', 'rb') as f:
                     self.chunks = pickle.load(f)
                 with open(self.base_dir / 'embeddings.pkl', 'rb') as f:
@@ -639,32 +636,40 @@ class DocumentManager:
                     self.metadata = json.load(f)
                 logger.info(f"Loaded {len(self.chunks)} documents from processed data")
             else:
+                # Start fresh if force_reload is True or no processed data exists
                 self.chunks = {}
                 self.embeddings = {}
                 self.metadata = {}
-                logger.info("No processed data found, starting fresh")
+                logger.info("Starting fresh or force reloading documents")
 
-            # Find .txt files that are not already loaded
+            # Find .txt files not already loaded
             existing_names = set(self.chunks.keys())
             txt_files = [f for f in self.base_dir.glob('*.txt') if f.name not in existing_names]
-            
+
             if txt_files:
                 logger.info(f"Found {len(txt_files)} new .txt files to load")
                 for txt_file in txt_files:
                     try:
                         with open(txt_file, 'r', encoding='utf-8-sig') as f:
                             content = f.read()
-                        self.add_document(txt_file.name, content)
+                        self.add_document(txt_file.name, content, save_to_disk=False)
                         logger.info(f"Loaded and processed {txt_file.name}")
                     except Exception as e:
                         logger.error(f"Error processing {txt_file.name}: {e}")
             else:
                 logger.info("No new .txt files to load")
+
+            # Save the updated state to disk
+            self._save_to_disk()
         except Exception as e:
             logger.error(f"Error loading documents: {e}")
             self.chunks = {}
             self.embeddings = {}
             self.metadata = {}
+
+    def reload_documents(self):
+        """Reload all documents from disk, regenerating embeddings."""
+        self._load_documents(force_reload=True)
             
     def get_lorebooks_path(self):
         """Get or create lorebooks directory path."""
@@ -855,28 +860,29 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 10,
-            "deepseek/deepseek-r1-distill-llama-70b": 12,
-            "deepseek/deepseek-r1:floor": 10,
+            "deepseek/deepseek-r1": 8,
+            "deepseek/deepseek-r1-distill-llama-70b": 10,
+            "deepseek/deepseek-r1:floor": 8,
             "deepseek/deepseek-r1:nitro": 5,
-            "deepseek/deepseek-chat": 10,
+            "deepseek/deepseek-chat": 8,
             # Gemini models 
-            "google/gemini-2.0-flash-001": 15,
+            "google/gemini-2.0-flash-001": 12,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
             # Nous Hermes models
-            "nousresearch/hermes-3-llama-3.1-405b": 8,
+            "nousresearch/hermes-3-llama-3.1-405b": 7,
             # Claude models
-            "anthropic/claude-3.5-haiku:beta": 8,
-            "anthropic/claude-3.5-haiku": 8,
+            "anthropic/claude-3.5-haiku:beta": 7,
+            "anthropic/claude-3.5-haiku": 7,
             "anthropic/claude-3.5-sonnet:beta": 5,
             "anthropic/claude-3.5-sonnet": 5,
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
             "qwen/qwq-32b:free": 15,
-            "qwen/qwq-32b": 12, 
+            "qwen/qwq-32b": 10, 
             # Testing models
-            "thedrummer/unslopnemo-12b": 12,  # Add unslopnemo model
+            "thedrummer/unslopnemo-12b": 10,  # Add unslopnemo model
+            "eva-unit-01/eva-qwen-2.5-72b": 7,
         }
         
         # Validate required environment variables
@@ -889,7 +895,10 @@ class Config:
         self.MODEL_PROVIDERS = {
             "deepseek/deepseek-r1": {
                 "order": ["Minimax", "Nebius", "DeepInfra"]
-            }
+            },
+            "eva-unit-01/eva-qwen-2.5-72b": {
+                "order": ["Parasail"]
+            },
             # Add any other model variants that need custom provider ordering
         }
    
@@ -1388,7 +1397,7 @@ class DiscordBot(commands.Bot):
     def sanitize_discord_text(self, text: str) -> str:
         """Sanitize text for Discord message display by escaping special characters."""
         # Replace backticks with single quotes to avoid breaking code blocks
-        text = text.replace("`", "'")
+        #text = text.replace("`", "'")
         # Replace backslashes to avoid escape sequence issues
         text = text.replace("\\", "\\\\")
         return text
@@ -1483,7 +1492,7 @@ class DiscordBot(commands.Bot):
         logger.info(f"[SIMPLE SEARCH] Skipping enhanced query analysis for: {shorten(query, width=100, placeholder='...')}")
         return {"success": False}  # Return a simple failure result to trigger fallback
 
-    async def enhanced_search(self, query: str, analysis: Dict, model: str = None) -> List[Tuple[str, str, float, Optional[str]]]:
+    async def enhanced_search(self, query: str, analysis: Dict, model: str = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
         """Simplified version that directly uses document_manager.search."""
         logger.info(f"[SIMPLE SEARCH] Using basic search for: {shorten(query, width=100, placeholder='...')}")
         
@@ -2002,6 +2011,16 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error adding document: {e}")
                 await interaction.followup.send(f"Error adding document: {str(e)}")
 
+        @self.tree.command(name="reload_docs", description="Reload all documents from disk (admin only)")
+        @app_commands.check(check_permissions)
+        async def reload_docs(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                self.document_manager.reload_documents()
+                await interaction.followup.send("Documents reloaded successfully.")
+            except Exception as e:
+                await interaction.followup.send(f"Error reloading documents: {str(e)}")
+
         @self.tree.command(name="manage_history", description="View and manage your conversation history")
         @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
         async def manage_history(interaction: discord.Interaction, limit: int = 10):
@@ -2236,7 +2255,7 @@ class DiscordBot(commands.Bot):
         These are the actual document chunks found by semantic search.
         ---------------------------------------------------------
         """
-                    for i, (doc, chunk, score, image_id) in enumerate(search_results):
+                    for i, (doc, chunk, score, image_id, chunk_index, total_chunks) in enumerate(search_results):                        
                         if image_id:
                             # Image result
                             image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
@@ -2320,8 +2339,8 @@ class DiscordBot(commands.Bot):
                 categories = {
                     "Lore Queries": ["query"],
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
-                    "Image Management": ["list_images", "view_image", "remove_image", "update_image_description"],
-                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt"],  # Added export_prompt here
+                    "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
+                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],  # Added export_prompt here
                     "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
@@ -2469,7 +2488,7 @@ class DiscordBot(commands.Bot):
             app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
-            app_commands.Choice(name="Testing Model", value="thedrummer/unslopnemo-12b"),  # Add the new Testing Model option
+            app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),  # Add the new Testing Model option
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
@@ -2501,7 +2520,7 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.7 Sonnet"
                 elif "qwen/qwq-32b" in model:  # Handle QWQ model
                     model_name = "Qwen QwQ 32B"
-                elif "unslopnemo" in model:  # Handle Testing Model
+                elif "unslopnemo" in model or "eva-unit-01/eva-qwen-2.5-72b" in model:  # Handle Testing Model
                     model_name = "Testing Model"
                 
                 if success:
@@ -2510,11 +2529,11 @@ class DiscordBot(commands.Bot):
                         f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
-                        f"**Testing Model**: Currently using Unslopnemo 12B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('thedrummer/unslopnemo-12b')}) search results. This model can be easily swapped to test different OpenRouter models.",
+                        f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -2554,7 +2573,7 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.7 Sonnet"
                 elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
                     model_name = "Qwen QwQ 32B"
-                elif "unslopnemo" in preferred_model:  # Handle Testing Model
+                elif "unslopnemo" or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:  # Handle Testing Model
                     model_name = "Testing Model"
                 
                 # Create a description of all model strengths
@@ -2566,7 +2585,7 @@ class DiscordBot(commands.Bot):
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
-                    f"**Testing Model**: Currently using Unslopnemo 12B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('thedrummer/unslopnemo-12b')}) search results. This model can be easily swapped to test different OpenRouter models.",
+                    f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                 ]
                 
                 response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
@@ -2681,6 +2700,65 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error viewing image: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving the image.")
+
+        @self.command(name="edit_image", brief="View and edit an image description. Usage: Publicia! edit_image [image_id]")
+        async def edit_image_prefix(ctx, image_id: str):
+            """View and edit an image description with a conversational flow."""
+            try:
+                # Check if image exists
+                if image_id not in self.image_manager.metadata:
+                    await ctx.send(f"*neural error detected!* Could not find image with ID: {image_id}")
+                    return
+                
+                # Get image metadata
+                image_meta = self.image_manager.metadata[image_id]
+                image_name = image_meta['name']
+                image_desc = image_meta.get('description', 'No description available')
+                image_path = Path(image_meta['path'])
+                
+                if not image_path.exists():
+                    await ctx.send(f"*neural error detected!* Image file not found for ID: {image_id}")
+                    return
+                
+                # Send description
+                description = f"**Image**: {image_name} (ID: {image_id})\n\n**Current Description**:\n{image_desc}\n\n*To edit this description, reply with a new description within 60 seconds. Type 'cancel' to keep the current description.*"
+                
+                # Split if needed and send
+                for chunk in split_message(description):
+                    await ctx.send(chunk)
+                
+                # Send image file
+                with open(image_path, 'rb') as f:
+                    file = discord.File(f, filename=f"{image_name}.png")
+                    await ctx.send(file=file)
+                
+                # Wait for the user's response to edit the description
+                def check(m):
+                    return m.author == ctx.author and m.channel == ctx.channel
+                
+                try:
+                    message = await self.wait_for('message', timeout=60.0, check=check)
+                    
+                    # Check if user wants to cancel
+                    if message.content.lower() == 'cancel':
+                        await ctx.send(f"*neural pathway unchanged!* Keeping the current description for image '{image_name}'.")
+                        return
+                    
+                    # Update the description
+                    new_description = message.content
+                    success = self.image_manager.update_description(image_id, new_description)
+                    
+                    if success:
+                        await ctx.send(f"*neural pathways reconfigured!* Updated description for image '{image_name}'.")
+                    else:
+                        await ctx.send(f"*neural error detected!* Failed to update description for image '{image_name}'.")
+                
+                except asyncio.TimeoutError:
+                    await ctx.send("*neural pathway timeout!* No description provided within the time limit.")
+                    
+            except Exception as e:
+                logger.error(f"Error editing image description: {e}")
+                await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
 
         @self.tree.command(name="remove_image", description="Remove an image from Publicia's knowledge base")
         @app_commands.describe(image_id="ID of the image to remove")
@@ -2812,7 +2890,7 @@ class DiscordBot(commands.Bot):
 
                 # Extract image IDs from search results
                 image_ids = []
-                for doc, chunk, score, image_id in search_results:
+                for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                     if image_id and image_id not in image_ids:
                         image_ids.append(image_id)
                         logger.info(f"Found relevant image: {image_id}")
@@ -2830,7 +2908,7 @@ class DiscordBot(commands.Bot):
                 # Format raw results with citation info
                 import urllib.parse
                 raw_doc_contexts = []
-                for doc, chunk, score, image_id in search_results:
+                for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                     if image_id:
                         # This is an image description
                         image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
@@ -2842,9 +2920,9 @@ class DiscordBot(commands.Bot):
                         search_text = ' '.join(words[:min(10, len(words))])
                         encoded_search = urllib.parse.quote(search_text)
                         doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
-                        raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
+                        raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                     else:
-                        raw_doc_contexts.append(f"From document '{doc}' (similarity: {score:.2f}):\n{chunk}")
+                        raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
                 # Add fetched Google Doc content to context
                 google_doc_context = []
@@ -2859,7 +2937,7 @@ class DiscordBot(commands.Bot):
                         "role": "system",
                         "content": SYSTEM_PROMPT
                     },
-                    *conversation_messages
+                    #*conversation_messages
                 ]
 
                 # Add synthesized context if available
@@ -2904,6 +2982,11 @@ class DiscordBot(commands.Bot):
                     })
                 
                 messages.append({
+                    "role": "system",
+                    "content": "Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
+                })
+
+                messages.append({
                     "role": "user",
                     "content": f"{nickname}: {question}"
                 })
@@ -2924,7 +3007,7 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.7 Sonnet"
                 elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
                     model_name = "Qwen QwQ 32B"
-                elif preferred_model == "thedrummer/unslopnemo-12b":  # Handle Testing Model
+                elif preferred_model == "thedrummer/unslopnemo-12b" or preferred_model == "eva-unit-01/eva-qwen-2.5-72b":  # Handle Testing Model
                     model_name = "Testing Model"
 
                 if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
@@ -2939,7 +3022,7 @@ class DiscordBot(commands.Bot):
                     messages,
                     image_ids=image_ids,
                     image_attachments=image_attachments,
-                    temperature=0.05
+                    temperature=0.1
                 )
 
                 if completion and completion.get('choices'):
@@ -2979,7 +3062,7 @@ class DiscordBot(commands.Bot):
                 batches = []
                 current_batch = "Search results:\n"
                 
-                for doc_name, chunk, similarity, image_id in results:
+                for doc_name, chunk, similarity, image_id, chunk_index, total_chunks in results:
                     # Format this result
                     if image_id:
                         # This is an image search result
@@ -2987,7 +3070,7 @@ class DiscordBot(commands.Bot):
                         result_text = f"\n**IMAGE: {image_name}** (ID: {image_id}, similarity: {similarity:.2f}):\n"
                         result_text += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
                     else:
-                        result_text = f"\n**From {doc_name}** (similarity: {similarity:.2f}):\n"
+                        result_text = f"\n**From {doc_name}** (Chunk {chunk_index}/{total_chunks}) (similarity: {similarity:.2f}):\n"
                         result_text += f"```{self.sanitize_discord_text(chunk[:300])}...```\n"
                     
                     # Check if adding this result would exceed Discord's message limit
@@ -3321,6 +3404,7 @@ class DiscordBot(commands.Bot):
                 response += "• `/rename_document` - Rename a document in my database\n"
                 response += "• `/search_docs` - Search directly in my document knowledge base\n"
                 response += "• `/update_image_description` - Update the description for an image\n\n"
+                response += "• `/reload_docs` - Reload all documents from disk (admin only)\n\n"
                 
                 # Conversation Management section
                 response += "## **CONVERSATION SYSTEM**\n\n"
@@ -3565,6 +3649,14 @@ class DiscordBot(commands.Bot):
                 "thedrummer/rocinante-12b",
                 "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
             ]
+        elif model_family == "eva-unit-01":
+            fallbacks = [
+                "eva-unit-01/eva-qwen-2.5-72b:floor",
+                "eva-unit-01/eva-qwen-2.5-72b",
+                "qwen/qwq-32b:free",
+                "qwen/qwq-32b",
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
         elif model_family == "nousresearch":
             fallbacks = [
                 "nousresearch/hermes-3-llama-3.1-70b",
@@ -3601,6 +3693,8 @@ class DiscordBot(commands.Bot):
         general_fallbacks = [
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-flash-thinking-exp:free",
+            "deepseek/deepseek-r1:free",
+            "qwen/qwq-32b:free",
             "deepseek/deepseek-r1",
             "deepseek/deepseek-chat",
             "google/gemini-2.0-pro-exp-02-05:free",
@@ -3873,7 +3967,7 @@ class DiscordBot(commands.Bot):
 
             # Extract image IDs from search results
             image_ids = []
-            for doc, chunk, score, image_id in search_results:
+            for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
                     logger.info(f"Found relevant image: {image_id}")
@@ -3891,7 +3985,7 @@ class DiscordBot(commands.Bot):
             # Format raw results with citation info
             import urllib.parse
             raw_doc_contexts = []
-            for doc, chunk, score, image_id in search_results:
+            for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id:
                     # This is an image description
                     image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
@@ -3903,9 +3997,9 @@ class DiscordBot(commands.Bot):
                     search_text = ' '.join(words[:min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
-                    raw_doc_contexts.append(f"From document '{doc}' [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                 else:
-                    raw_doc_contexts.append(f"From document '{doc}' (similarity: {score:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
             # Add fetched Google Doc content to context
             google_doc_context = []
@@ -3966,6 +4060,11 @@ class DiscordBot(commands.Bot):
                     "role": "system",
                     "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
                 })
+
+            messages.append({
+                "role": "system",
+                "content": "Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
+            })
             
             messages.append({
                 "role": "user",
@@ -3986,6 +4085,10 @@ class DiscordBot(commands.Bot):
                 model_name = "Claude 3.5 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
+            elif "qwen/qwq-32b" in preferred_model:
+                model_name = "QwQ 32B"
+            elif preferred_model == "thedrummer/unslopnemo-12b" or preferred_model == "eva-unit-01/eva-qwen-2.5-72b":  # Handle Testing Model
+                model_name = "Testing Model"
 
             # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
@@ -4004,7 +4107,7 @@ class DiscordBot(commands.Bot):
                 messages,
                 image_ids=image_ids,
                 image_attachments=image_attachments,
-                temperature=0.05
+                temperature=0.1
             )
 
             if completion and completion.get('choices'):
