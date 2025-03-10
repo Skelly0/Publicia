@@ -27,13 +27,38 @@ from image_prompt import IMAGE_DESCRIPTION_PROMPT
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
-print(torch.cuda.is_available())  # Should return True if GPU is available
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
 if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
+async def check_permissions(interaction: discord.Interaction):
+    # First check for special user ID (this doesn't require guild permissions)
+    if interaction.user.id == 203229662967627777:
+        return True
+        
+    # Check if we're in a guild
+    if not interaction.guild:
+        raise app_commands.CheckFailure("This command can only be used in a server")
+    
+    # Try to get permissions directly from interaction.user
+    try:
+        return interaction.user.guild_permissions.administrator
+    except AttributeError:
+        # If that fails, try getting the member object
+        try:
+            member = interaction.guild.get_member(interaction.user.id)
+            
+            # Member might be None if not in cache
+            if member is None:
+                # Fetch fresh from API
+                member = await interaction.guild.fetch_member(interaction.user.id)
+                
+            return member.guild_permissions.administrator
+        except Exception as e:
+            print(f"Permission check error: {e}")
+            return False
 
 def is_image(attachment):
     """Check if an attachment is an image based on content type or file extension."""
@@ -406,18 +431,40 @@ class ImageManager:
 class DocumentManager:
     """Manages document storage, embeddings, and retrieval."""
     
-    def __init__(self, base_dir: str = "documents", top_k: int = 5):
+    def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
         
         # Store top_k as instance variable
         self.top_k = top_k
+        self.config = config
         
-        # Initialize embedding model
-        #self.model = SentenceTransformer('all-mpnet-base-v2')
-        self.model = SentenceTransformer('nvidia/NV-Embed-v2', trust_remote_code=True)
-        self.model.max_seq_length = 32768  # Set maximum sequence length
-        self.model.tokenizer.padding_side = "right"  # Set padding to right
+        # Initialize Google Generative AI embedding model
+        try:
+            logger.info("Initializing Google Generative AI embedding model")
+            # Check if API key is available
+            if not config or not config.GOOGLE_API_KEY:
+                logger.error("GOOGLE_API_KEY environment variable not set")
+                raise ValueError("GOOGLE_API_KEY environment variable not set")
+                
+            import google.generativeai as genai
+            genai.configure(api_key=config.GOOGLE_API_KEY)
+            
+            # Set embedding model
+            self.embedding_model = config.EMBEDDING_MODEL if config else 'models/text-embedding-004'
+            self.embedding_dimensions = config.EMBEDDING_DIMENSIONS if config and config.EMBEDDING_DIMENSIONS > 0 else None
+            
+            logger.info(f"Using Google embedding model: {self.embedding_model}")
+            if self.embedding_dimensions:
+                logger.info(f"Truncating embeddings to {self.embedding_dimensions} dimensions")
+            else:
+                logger.info("Using full 3072 dimensions. Consider setting EMBEDDING_DIMENSIONS to 1024 or 512 for better storage efficiency.")
+            
+            logger.info(f"Gemini embedding model initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing Google Generative AI: {e}")
+            raise
         
         # Storage for documents and embeddings
         self.chunks: Dict[str, List[str]] = {}
@@ -425,17 +472,71 @@ class DocumentManager:
         self.metadata: Dict[str, Dict] = {}
         
         # Load existing documents
+        logger.info("Starting document loading")
         self._load_documents()
+        logger.info("Document loading completed")
+
+    def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
+        """Generate embeddings for a list of text chunks using Google's Generative AI."""
+        try:
+            import google.generativeai as genai
+            
+            embeddings = []
+            task_type = "retrieval_query" if is_query else "retrieval_document"
+            
+            for i, text in enumerate(texts):
+                if not text or not text.strip():
+                    # If we've generated at least one embedding, use zeros with same dimension
+                    if embeddings:
+                        zero_embedding = np.zeros_like(embeddings[0])
+                        embeddings.append(zero_embedding)
+                        continue
+                    else:
+                        # Otherwise, skip this empty text
+                        logger.warning("Skipping empty text for embedding")
+                        continue
+                
+                # Prepare embedding request
+                params = {
+                    "model": self.embedding_model,
+                    "content": text,
+                    "task_type": task_type
+                }
+                
+                # Add title if available and it's a document (not a query)
+                if not is_query and titles and i < len(titles):
+                    params["title"] = titles[i]
+                
+                result = genai.embed_content(**params)
+                
+                # Extract the embedding from the result
+                embedding_vector = np.array(result["embedding"])
+                
+                # Truncate if dimensions is specified (MRL allows efficient truncation)
+                if self.embedding_dimensions and self.embedding_dimensions < len(embedding_vector):
+                    embedding_vector = embedding_vector[:self.embedding_dimensions]
+                
+                embeddings.append(embedding_vector)
+                
+            return np.array(embeddings)
+                
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            raise
     
-    def _chunk_text(self, text: str, chunk_size: int = 750, overlap: int = 50) -> List[str]:
+    def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """Split text into overlapping chunks."""
+        # Use config values if available, otherwise use defaults
+        if chunk_size is None:
+            chunk_size = self.config.CHUNK_SIZE if self.config else 750
+        if overlap is None:
+            overlap = self.config.CHUNK_OVERLAP if self.config else 125
+        
         # Handle empty text
         if not text or not text.strip():
             return []
             
         words = text.split()
-        
-        # Handle text with too few words
         if not words:
             return []
         
@@ -444,11 +545,11 @@ class DocumentManager:
         
         chunks = []
         for i in range(0, len(words), chunk_size - overlap):
-            # Ensure we don't go out of bounds
             end_idx = min(i + chunk_size, len(words))
             chunk = ' '.join(words[i:end_idx])
             chunks.append(chunk)
             
+        logger.info(f"Chunked text into {len(chunks)} chunks (size: {chunk_size}, overlap: {overlap})")
         return chunks
     
     def cleanup_empty_documents(self):
@@ -474,22 +575,20 @@ class DocumentManager:
     def add_document(self, name: str, content: str, save_to_disk: bool = True):
         """Add a new document to the system."""
         try:
-            # Check if content is empty
             if not content or not content.strip():
                 logger.warning(f"Document {name} has no content. Skipping.")
                 return
                 
             # Create chunks
             chunks = self._chunk_text(content)
-            
-            # Check if we have any chunks
             if not chunks:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
                 return
             
-            # Generate and normalize embeddings
-            embeddings = self.model.encode(chunks)
-            embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+            # Generate embeddings using Google's Generative AI
+            # Use document name as title for all chunks to improve embedding quality
+            titles = [name] * len(chunks)
+            embeddings = self.generate_embeddings(chunks, is_query=False, titles=titles)
             
             # Store document data
             self.chunks[name] = chunks
@@ -535,29 +634,20 @@ class DocumentManager:
         Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
         """
         try:
-            # Use instance top_k if none provided
             if top_k is None:
                 top_k = self.top_k
             
-            # Check if query is empty
             if not query or not query.strip():
                 logger.warning("Empty query provided to search")
                 return []
                 
-            # Generate query embedding with instruction
-            query_embedding = self.model.encode(
-                query,
-                instruction="Retrieve relevant information",
-                max_length=32768
-            )
-            query_embedding = query_embedding / np.linalg.norm(query_embedding)
+            # Generate query embedding using Google's Generative AI with retrieval_query task type
+            query_embedding = self.generate_embeddings([query], is_query=True)[0]
             
             results = []
             logger.info(f"Searching documents for query: {shorten(query, width=100, placeholder='...')}")
             
-            # Search each document
             for doc_name, doc_embeddings in self.embeddings.items():
-                # Skip empty embeddings
                 if len(doc_embeddings) == 0:
                     logger.warning(f"Skipping document {doc_name} with empty embeddings")
                     continue
@@ -565,27 +655,24 @@ class DocumentManager:
                 # Calculate similarities (dot product since embeddings are normalized)
                 similarities = np.dot(doc_embeddings, query_embedding)
                 
-                # Get top chunks
                 if len(similarities) > 0:
                     top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
                     
                     for idx in top_indices:
-                        # Check if this is an image description
                         image_id = None
                         if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                            image_id = doc_name[6:-4]  # Remove "image_" prefix and ".txt" suffix
+                            image_id = doc_name[6:-4]
                         elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
                             image_id = self.metadata[doc_name]['image_id']
                         
-                        # Ensure chunk index is valid
                         if idx < len(self.chunks[doc_name]):
                             results.append((
                                 doc_name,
                                 self.chunks[doc_name][idx],
                                 float(similarities[idx]),
                                 image_id,
-                                idx + 1,  # chunk index (1-based for display)
-                                len(self.chunks[doc_name])  # total chunks
+                                idx + 1,
+                                len(self.chunks[doc_name])
                             ))
             
             # Sort by similarity
@@ -619,21 +706,81 @@ class DocumentManager:
             with open(self.base_dir / 'metadata.json', 'w') as f:
                 json.dump(self.metadata, f)
                 
+            # Save embedding provider info
+            with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
+                f.write("gemini")
+                
         except Exception as e:
             logger.error(f"Error saving to disk: {e}")
             raise
+
+    def regenerate_all_embeddings(self):
+        """Regenerate all embeddings using the current embedding model."""
+        try:
+            logger.info("Starting regeneration of all embeddings")
+            
+            # Iterate through all documents
+            for doc_name, chunks in self.chunks.items():
+                logger.info(f"Regenerating embeddings for document: {doc_name}")
+                
+                # Generate new embeddings
+                titles = [doc_name] * len(chunks)
+                new_embeddings = self.generate_embeddings(chunks, titles=titles)
+                
+                # Update stored embeddings
+                self.embeddings[doc_name] = new_embeddings
+            
+            # Save to disk
+            self._save_to_disk()
+            
+            logger.info("Completed regeneration of all embeddings")
+            return True
+        except Exception as e:
+            logger.error(f"Error regenerating embeddings: {e}")
+            return False
     
     def _load_documents(self, force_reload: bool = False):
         """Load document data from disk and add any new .txt files."""
         try:
-            if not force_reload and (self.base_dir / 'chunks.pkl').exists():
+            # Check if embeddings provider has changed
+            embeddings_provider_file = self.base_dir / 'embeddings_provider.txt'
+            provider_changed = False
+            
+            if embeddings_provider_file.exists():
+                with open(embeddings_provider_file, 'r') as f:
+                    stored_provider = f.read().strip()
+                    if stored_provider != "gemini":
+                        logger.warning(f"Embedding provider changed from {stored_provider} to gemini")
+                        logger.warning("All embeddings will be regenerated to ensure compatibility")
+                        provider_changed = True
+            
+            if not force_reload and not provider_changed and (self.base_dir / 'chunks.pkl').exists():
                 # Load existing processed data
                 with open(self.base_dir / 'chunks.pkl', 'rb') as f:
                     self.chunks = pickle.load(f)
-                with open(self.base_dir / 'embeddings.pkl', 'rb') as f:
-                    self.embeddings = pickle.load(f)
-                with open(self.base_dir / 'metadata.json', 'r') as f:
-                    self.metadata = json.load(f)
+                
+                if provider_changed:
+                    # If provider changed, only load chunks and regenerate embeddings
+                    logger.info("Provider changed, regenerating embeddings for all documents")
+                    self.embeddings = {}
+                    self.metadata = {}
+                    
+                    # Regenerate embeddings for all documents
+                    for doc_name, chunks in self.chunks.items():
+                        logger.info(f"Regenerating embeddings for document: {doc_name}")
+                        titles = [doc_name] * len(chunks)
+                        self.embeddings[doc_name] = self.generate_embeddings(chunks, is_query=False, titles=titles)
+                        self.metadata[doc_name] = {
+                            'added': datetime.now().isoformat(),
+                            'chunk_count': len(chunks)
+                        }
+                else:
+                    # Normal load if provider hasn't changed
+                    with open(self.base_dir / 'embeddings.pkl', 'rb') as f:
+                        self.embeddings = pickle.load(f)
+                    with open(self.base_dir / 'metadata.json', 'r') as f:
+                        self.metadata = json.load(f)
+                    
                 logger.info(f"Loaded {len(self.chunks)} documents from processed data")
             else:
                 # Start fresh if force_reload is True or no processed data exists
@@ -641,6 +788,10 @@ class DocumentManager:
                 self.embeddings = {}
                 self.metadata = {}
                 logger.info("Starting fresh or force reloading documents")
+
+            # Save current provider info
+            with open(embeddings_provider_file, 'w') as f:
+                f.write("gemini")
 
             # Find .txt files not already loaded
             existing_names = set(self.chunks.keys())
@@ -848,41 +999,53 @@ class Config:
         load_dotenv()
         self.DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
         self.OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+        self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
         
         # Configure models with defaults
-        self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
-        self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')  # Default to Gemini
+        self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.0-flash-001')
+        self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')
         
+        # New embedding configuration
+        self.EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'models/text-embedding-004')
+        self.EMBEDDING_DIMENSIONS = int(os.getenv('EMBEDDING_DIMENSIONS', '0'))
+        
+        # Chunk size configuration
+        self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '750'))  # Default to 750 words per chunk
+        self.CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '125'))  # Default to 125 words overlap
+        
+        # TOP_K configuration with multiplier
         self.TOP_K = int(os.getenv('TOP_K', '5'))
-
         self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
+        self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '0.5'))  # Default to no change
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-r1:free": 20,
-            "deepseek/deepseek-r1": 8,
-            "deepseek/deepseek-r1-distill-llama-70b": 10,
-            "deepseek/deepseek-r1:floor": 8,
-            "deepseek/deepseek-r1:nitro": 5,
-            "deepseek/deepseek-chat": 8,
+            "deepseek/deepseek-r1": 10,
+            "deepseek/deepseek-r1-distill-llama-70b": 14,
+            "deepseek/deepseek-r1:floor": 10,
+            "deepseek/deepseek-r1:nitro": 7,
+            "deepseek/deepseek-chat": 10,
             # Gemini models 
-            "google/gemini-2.0-flash-001": 12,
+            "google/gemini-2.0-flash-001": 15,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
             # Nous Hermes models
-            "nousresearch/hermes-3-llama-3.1-405b": 7,
+            "nousresearch/hermes-3-llama-3.1-405b": 9,
             # Claude models
-            "anthropic/claude-3.5-haiku:beta": 7,
-            "anthropic/claude-3.5-haiku": 7,
+            "anthropic/claude-3.5-haiku:beta": 9,
+            "anthropic/claude-3.5-haiku": 9,
             "anthropic/claude-3.5-sonnet:beta": 5,
             "anthropic/claude-3.5-sonnet": 5,
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
             "qwen/qwq-32b:free": 15,
-            "qwen/qwq-32b": 10, 
+            "qwen/qwq-32b": 13, 
             # Testing models
-            "thedrummer/unslopnemo-12b": 10,  # Add unslopnemo model
-            "eva-unit-01/eva-qwen-2.5-72b": 7,
+            "thedrummer/unslopnemo-12b": 12,
+            "eva-unit-01/eva-qwen-2.5-72b": 9,
+            # Gemini embedding model
+            "models/text-embedding-004": 20,  # Optimized for larger chunks
         }
         
         # Validate required environment variables
@@ -910,16 +1073,24 @@ class Config:
         return self.MODEL_PROVIDERS.get(model) or self.MODEL_PROVIDERS.get(base_model)
         
     def get_top_k_for_model(self, model: str) -> int:
-        """Get the top_k value for a specific model."""
+        """Get the top_k value for a specific model, applying the configured multiplier."""
         # First try to match the exact model name (including any suffixes)
         if model in self.MODEL_TOP_K:
-            return self.MODEL_TOP_K[model]
+            base_top_k = self.MODEL_TOP_K[model]
+        else:
+            # If not found, extract the base model name and try that
+            base_model = model.split(':')[0] if ':' in model else model
+            base_top_k = self.MODEL_TOP_K.get(base_model, self.TOP_K)
         
-        # If not found, extract the base model name and try that
-        base_model = model.split(':')[0] if ':' in model else model
+        # Apply the multiplier and round to the nearest integer
+        # Ensure we always return at least 1 result
+        adjusted_top_k = max(1, round(base_top_k * self.TOP_K_MULTIPLIER))
         
-        # Return the base model's top_k or the default if not found
-        return self.MODEL_TOP_K.get(base_model, self.TOP_K)
+        # Log the adjustment if multiplier isn't 1.0
+        if self.TOP_K_MULTIPLIER != 1.0:
+            logger.info(f"Adjusted top_k for {model} from {base_top_k} to {adjusted_top_k} (multiplier: {self.TOP_K_MULTIPLIER})")
+    
+        return adjusted_top_k
     
     def _validate_config(self):
         """Validate that all required environment variables are set."""
@@ -1359,7 +1530,7 @@ class DiscordBot(commands.Bot):
         self.conversation_manager = ConversationManager()
         
         # Pass the TOP_K value to DocumentManager
-        self.document_manager = DocumentManager(top_k=self.config.TOP_K)
+        self.document_manager = DocumentManager(top_k=self.config.TOP_K, config=self.config)
 
         # Clean up any empty documents - THIS IS THE NEW CODE
         empty_docs = self.document_manager.cleanup_empty_documents()
@@ -2010,16 +2181,6 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error adding document: {e}")
                 await interaction.followup.send(f"Error adding document: {str(e)}")
-
-        @self.tree.command(name="reload_docs", description="Reload all documents from disk (admin only)")
-        @app_commands.check(check_permissions)
-        async def reload_docs(interaction: discord.Interaction):
-            await interaction.response.defer()
-            try:
-                self.document_manager.reload_documents()
-                await interaction.followup.send("Documents reloaded successfully.")
-            except Exception as e:
-                await interaction.followup.send(f"Error reloading documents: {str(e)}")
 
         @self.tree.command(name="manage_history", description="View and manage your conversation history")
         @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
@@ -3288,13 +3449,6 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error removing Google Doc: {e}")
                 await interaction.followup.send(f"*my enhanced brain experienced an error!* couldn't remove document: {str(e)}")
 
-        async def check_permissions(interaction: discord.Interaction):
-            if not interaction.guild:
-                raise app_commands.CheckFailure("This command can only be used in a server")
-            member = interaction.guild.get_member(interaction.user.id)
-            return (member.guild_permissions.administrator or 
-                    interaction.user.id == 203229662967627777)
-
         @self.tree.command(name="ban_user", description="Ban a user from using the bot (admin only)")
         @app_commands.describe(user="User to ban")
         @app_commands.check(check_permissions)
@@ -3320,6 +3474,31 @@ class DiscordBot(commands.Bot):
                 self.save_banned_users()
                 await interaction.followup.send(f"Unbanned {user.name}.")
                 logger.info(f"User {user.name} (ID: {user.id}) unbanned by {interaction.user.name}")
+
+        @self.tree.command(name="reload_docs", description="Reload all documents from disk (admin only)")
+        @app_commands.check(check_permissions)
+        async def reload_docs(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                self.document_manager.reload_documents()
+                await interaction.followup.send("Documents reloaded successfully.")
+            except Exception as e:
+                await interaction.followup.send(f"Error reloading documents: {str(e)}")
+
+        @self.tree.command(name="regenerate_embeddings", description="Regenerate all document embeddings (admin only)")
+        @app_commands.check(check_permissions)
+        async def regenerate_embeddings(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                status_message = await interaction.followup.send("*starting neural pathway recalibration...*")
+                success = self.document_manager.regenerate_all_embeddings()
+                if success:
+                    await status_message.edit(content="*neural pathways successfully recalibrated!* All document embeddings have been regenerated.")
+                else:
+                    await status_message.edit(content="*neural pathway failure!* Failed to regenerate embeddings.")
+            except Exception as e:
+                logger.error(f"Error regenerating embeddings: {e}")
+                await interaction.followup.send(f"*neural circuit overload!* Error regenerating embeddings: {str(e)}")
 
         @self.tree.command(name="toggle_debug", description="Toggle debug mode to show model information in responses")
         async def toggle_debug(interaction: discord.Interaction):
