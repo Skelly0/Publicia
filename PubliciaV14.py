@@ -27,7 +27,17 @@ from image_prompt import IMAGE_DESCRIPTION_PROMPT
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
+import warnings
+import numpy as np
+import torch
 
+# Check for sentence-transformers
+try:
+    from sentence_transformers import CrossEncoder
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
+except ImportError:
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    warnings.warn("sentence-transformers not installed. Re-ranking disabled. Install with: pip install sentence-transformers")
 
 # Reconfigure stdout to use UTF-8 with error replacement
 if sys.stdout.encoding != 'utf-8':
@@ -476,6 +486,222 @@ class DocumentManager:
         self._load_documents()
         logger.info("Document loading completed")
 
+        # Re-ranking configuration
+        self.use_reranking = config.USE_RERANKING if config and hasattr(config, 'USE_RERANKING') else True
+        self.reranking_model = config.RERANKING_MODEL if config and hasattr(config, 'RERANKING_MODEL') else 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+        self.max_rerank_candidates = config.MAX_RERANK_CANDIDATES if config and hasattr(config, 'MAX_RERANK_CANDIDATES') else 50
+        self.min_rerank_threshold = config.MIN_RERANK_THRESHOLD if config and hasattr(config, 'MIN_RERANK_THRESHOLD') else 0.5
+        self.min_relevance_score = config.MIN_RELEVANCE_SCORE if config and hasattr(config, 'MIN_RELEVANCE_SCORE') else 0.5
+        self.reranking_batch_size = config.RERANKING_BATCH_SIZE if config and hasattr(config, 'RERANKING_BATCH_SIZE') else 32
+        self.reranking_device = config.RERANKING_DEVICE if config and hasattr(config, 'RERANKING_DEVICE') else 'auto'
+        self.use_mmr = config.USE_MMR if config and hasattr(config, 'USE_MMR') else True
+        self.mmr_lambda = config.MMR_LAMBDA if config and hasattr(config, 'MMR_LAMBDA') else 0.7
+        self.adaptive_percentile = config.ADAPTIVE_PERCENTILE if config and hasattr(config, 'ADAPTIVE_PERCENTILE') else 75
+
+    def get_cross_encoder(self, model_name=None, device=None):
+        """
+        Get or initialize a cross-encoder model with device control.
+        
+        Args:
+            model_name: Name of the cross-encoder model to use
+            device: Device to use ('cpu', 'cuda', or 'auto')
+            
+        Returns:
+            Initialized cross-encoder model or None if not available
+        """
+        if not SENTENCE_TRANSFORMERS_AVAILABLE:
+            logger.warning("sentence-transformers not installed. Cannot use re-ranking.")
+            return None
+            
+        if model_name is None:
+            model_name = self.reranking_model
+            
+        # Determine device
+        if device is None:
+            device = self.reranking_device
+            
+        if device == 'auto':
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        
+        # Check if we already have this model loaded
+        if not hasattr(self, '_cross_encoders'):
+            self._cross_encoders = {}
+            
+        model_key = f"{model_name}_{device}"
+        if model_key not in self._cross_encoders:
+            try:
+                logger.info(f"Initializing cross-encoder model: {model_name} on {device}")
+                self._cross_encoders[model_key] = CrossEncoder(model_name, device=device)
+                logger.info(f"Successfully loaded cross-encoder model: {model_name}")
+            except Exception as e:
+                logger.error(f"Error loading cross-encoder model {model_name}: {e}")
+                return None
+        
+        return self._cross_encoders.get(model_key)
+    
+    def apply_mmr(self, candidate_results, top_k, lambda_param=None):
+        """
+        Apply Maximum Marginal Relevance to ensure diversity in results.
+        This implementation works directly with chunks' content for diversity comparison.
+        
+        Args:
+            candidate_results: List of result tuples
+            top_k: Number of results to select
+            lambda_param: Balance between relevance and diversity (0-1)
+            
+        Returns:
+            Diverse set of results
+        """
+        if lambda_param is None:
+            lambda_param = self.mmr_lambda
+        
+        if not candidate_results or len(candidate_results) <= top_k:
+            return candidate_results
+        
+        logger.info(f"Applying MMR to select {top_k} diverse results (lambda={lambda_param})")
+        
+        # Helper function to compute similarity between documents using Jaccard similarity
+        def compute_similarity(idx1, idx2):
+            # Get the document chunks
+            _, chunk1, _, _, _, _ = candidate_results[idx1]
+            _, chunk2, _, _, _, _ = candidate_results[idx2]
+            
+            # Simple approach: count overlapping words (Jaccard similarity)
+            words1 = set(chunk1.lower().split())
+            words2 = set(chunk2.lower().split())
+            
+            if not words1 or not words2:
+                return 0.0
+                
+            overlap = len(words1.intersection(words2))
+            total = len(words1.union(words2))
+            
+            return overlap / total if total > 0 else 0.0
+        
+        selected_indices = []
+        remaining_indices = list(range(len(candidate_results)))
+        
+        # Start with highest scoring document
+        best_idx = max(remaining_indices, key=lambda i: candidate_results[i][2])
+        selected_indices.append(best_idx)
+        remaining_indices.remove(best_idx)
+        
+        # Select rest using MMR
+        while len(selected_indices) < top_k and remaining_indices:
+            # For each remaining document, calculate:
+            # MMR = λ * sim(doc, query) - (1-λ) * max sim(doc, selected_docs)
+            mmr_scores = []
+            for idx in remaining_indices:
+                # Relevance score from re-ranking or embedding
+                relevance_score = candidate_results[idx][2]
+                
+                # Diversity score (negative max similarity to already selected docs)
+                max_sim_to_selected = 0
+                if selected_indices:
+                    similarities = [compute_similarity(idx, sel_idx) for sel_idx in selected_indices]
+                    max_sim_to_selected = max(similarities) if similarities else 0
+                
+                # MMR score combines relevance and diversity
+                mmr_score = lambda_param * relevance_score - (1-lambda_param) * max_sim_to_selected
+                mmr_scores.append((idx, mmr_score))
+            
+            # Select document with highest MMR
+            if mmr_scores:
+                best_idx, _ = max(mmr_scores, key=lambda x: x[1])
+                selected_indices.append(best_idx)
+                remaining_indices.remove(best_idx)
+            else:
+                break
+        
+        # Return results in selected order
+        return [candidate_results[idx] for idx in selected_indices]
+
+    def rerank_search_results(self, query: str, initial_results: List[Tuple], top_k: int) -> List[Tuple]:
+        """
+        Re-rank search results using a cross-encoder model with batch processing.
+        
+        Args:
+            query: The search query
+            initial_results: Initial search results from embedding search
+            top_k: Number of results to return after re-ranking
+            
+        Returns:
+            Re-ranked search results
+        """
+        try:
+            # Get the cross-encoder model
+            cross_encoder = self.get_cross_encoder()
+            if cross_encoder is None:
+                logger.warning("Failed to load cross-encoder model, falling back to original ranking")
+                return initial_results[:top_k]
+            
+            # Limit number of candidates to re-rank to save memory
+            candidates = initial_results[:self.max_rerank_candidates]
+            if not candidates:
+                return []
+                
+            logger.info(f"Re-ranking {len(candidates)} document chunks (capped at {self.max_rerank_candidates})")
+            
+            # Extract document chunks and prepare pairs for cross-encoder
+            pairs = []
+            for doc, chunk, score, image_id, chunk_index, total_chunks in candidates:
+                pairs.append((query, chunk))
+            
+            # Get cross-encoder scores in batches to prevent memory issues
+            cross_scores = []
+            batch_size = self.reranking_batch_size
+            
+            for i in range(0, len(pairs), batch_size):
+                batch = pairs[i:i+batch_size]
+                logger.debug(f"Processing re-ranking batch {i//batch_size + 1}/{(len(pairs) + batch_size - 1)//batch_size}")
+                try:
+                    batch_scores = cross_encoder.predict(batch)
+                    
+                    # Convert to list if it's a numpy array
+                    if isinstance(batch_scores, np.ndarray):
+                        batch_scores = batch_scores.tolist()
+                        
+                    cross_scores.extend(batch_scores)
+                except Exception as e:
+                    logger.error(f"Error processing batch {i//batch_size + 1}: {e}")
+                    # Continue with remaining batches
+            
+            # Safety check if we didn't get scores for all pairs
+            if len(cross_scores) < len(pairs):
+                logger.warning(f"Only got {len(cross_scores)} scores for {len(pairs)} pairs")
+                # Pad with original scores if needed
+                while len(cross_scores) < len(pairs):
+                    idx = len(cross_scores)
+                    if idx < len(candidates):
+                        cross_scores.append(candidates[idx][2])  # Use original score
+            
+            # Combine results with new scores
+            reranked_results = []
+            for i, (doc, chunk, _, image_id, chunk_index, total_chunks) in enumerate(candidates):
+                if i < len(cross_scores):  # Safety check
+                    reranked_results.append((doc, chunk, float(cross_scores[i]), image_id, chunk_index, total_chunks))
+            
+            # Sort by new scores
+            reranked_results.sort(key=lambda x: x[2], reverse=True)
+            
+            # Apply MMR if enabled
+            if self.use_mmr and len(reranked_results) > top_k:
+                final_results = self.apply_mmr(reranked_results, top_k)
+            else:
+                # Just take the top-k without MMR
+                final_results = reranked_results[:top_k]
+            
+            logger.info(f"Re-ranking complete: selected top {len(final_results)} results")
+            return final_results
+            
+        except Exception as e:
+            logger.error(f"Error in re-ranking: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Fallback to original results
+            logger.info("Falling back to original ranking due to re-ranking error")
+            return initial_results[:top_k]
+
     def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
         """Generate embeddings for a list of text chunks using Google's Generative AI."""
         try:
@@ -628,10 +854,17 @@ class DocumentManager:
         
         return mapping
     
-    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
+    def search(self, query: str, top_k: int = None, use_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
         """
-        Search for relevant document chunks.
-        Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
+        Search for relevant document chunks with optional re-ranking.
+        
+        Args:
+            query: The search query
+            top_k: Maximum number of results to return
+            use_reranking: Whether to use cross-encoder re-ranking (defaults to config setting)
+            
+        Returns:
+            A list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
         """
         try:
             if top_k is None:
@@ -640,15 +873,109 @@ class DocumentManager:
             if not query or not query.strip():
                 logger.warning("Empty query provided to search")
                 return []
+            
+            # Default to configured setting if not specified
+            if use_reranking is None:
+                use_reranking = self.use_reranking and SENTENCE_TRANSFORMERS_AVAILABLE
                 
             # Generate query embedding using Google's Generative AI with retrieval_query task type
+            logger.info(f"Generating embedding for query: {query[:100]}{'...' if len(query) > 100 else ''}")
             query_embedding = self.generate_embeddings([query], is_query=True)[0]
             
-            return self.custom_search_with_embedding(query_embedding, top_k)
-            
+            if use_reranking:
+                # For re-ranking, get more initial candidates
+                initial_top_k = min(top_k * 3, self.max_rerank_candidates)
+                logger.info(f"Using re-ranking: retrieving initial {initial_top_k} results for refinement")
+                
+                # Get initial results
+                initial_results = self.custom_search_with_embedding(query_embedding, initial_top_k)
+                
+                if not initial_results:
+                    logger.info("No initial results found for re-ranking")
+                    return []
+                    
+                # Skip re-ranking if the top result is already very confident
+                if len(initial_results) >= 2 and initial_results[0][2] > 0.8 and initial_results[0][2] > initial_results[1][2] * 1.5:
+                    logger.info(f"Skipping re-ranking: top result has high confidence score {initial_results[0][2]:.4f} (significantly higher than next result)")
+                    return initial_results[:top_k]
+                    
+                # Only re-rank if we have enough results to make it worthwhile
+                if len(initial_results) <= 1:
+                    logger.info(f"Only {len(initial_results)} results found, skipping re-ranking")
+                    return initial_results
+                    
+                # Re-rank results
+                return self.rerank_search_results(query, initial_results, top_k)
+            else:
+                # Use regular search without re-ranking
+                logger.info(f"Using standard search without re-ranking, retrieving top {top_k} results")
+                return self.custom_search_with_embedding(query_embedding, top_k)
+                
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
+    
+    def adaptive_search(self, query: str, percentile: float = None, min_score: float = None, max_results: int = None, use_reranking: bool = None) -> List[Tuple]:
+        """
+        Search for relevant document chunks and adaptively determine how many to return based on relevance scores.
+        
+        Args:
+            query: The search query
+            percentile: Percentile threshold for adaptive filtering (0-100)
+            min_score: Minimum absolute similarity score to include a result
+            max_results: Maximum number of results to return
+            use_reranking: Whether to use cross-encoder re-ranking
+            
+        Returns:
+            A list of relevant document chunks with appropriate filtering
+        """
+        if percentile is None:
+            percentile = self.adaptive_percentile
+            
+        if min_score is None:
+            min_score = self.min_relevance_score
+            
+        if max_results is None:
+            max_results = self.top_k
+            
+        # Get initial results (potentially more than we need)
+        initial_max = max(max_results * 3, 30)  # Get at least 30 results to have enough to filter
+        results = self.search(query, top_k=initial_max, use_reranking=use_reranking)
+        
+        if not results:
+            return []
+            
+        # Extract scores
+        scores = np.array([r[2] for r in results])
+        
+        # Calculate adaptive threshold based on percentile
+        adaptive_threshold = min_score  # Default to min_score
+        
+        if len(scores) >= 5:  # Only use percentile with sufficient data points
+            try:
+                percentile_threshold = np.percentile(scores, 100 - percentile)
+                # Take the higher of percentile threshold or min_score
+                adaptive_threshold = max(percentile_threshold, min_score)
+                logger.info(f"Adaptive threshold: {adaptive_threshold:.4f} (percentile: {percentile_threshold:.4f}, min_score: {min_score:.4f})")
+            except Exception as e:
+                logger.error(f"Error calculating percentile threshold: {e}")
+        else:
+            logger.info(f"Using minimum threshold {min_score} (insufficient results for percentile)")
+        
+        # Filter by minimum score
+        filtered_results = [r for r in results if r[2] >= adaptive_threshold]
+        logger.info(f"Adaptive search: filtered from {len(results)} to {len(filtered_results)} results using threshold={adaptive_threshold:.4f}")
+        
+        # Apply MMR for diversity if enabled
+        if self.use_mmr and len(filtered_results) > max_results:
+            final_results = self.apply_mmr(filtered_results, max_results)
+        else:
+            # Just take the top-k without MMR
+            final_results = filtered_results[:max_results]
+        
+        return final_results
 
     def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
         """Search using a pre-generated embedding instead of creating one from text."""
@@ -1019,11 +1346,24 @@ class Config:
         # Chunk size configuration
         self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '750'))  # Default to 750 words per chunk
         self.CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '125'))  # Default to 125 words overlap
+
+        # Re-ranking configuration
+        self.USE_RERANKING = os.getenv('USE_RERANKING', 'true').lower() == 'true'
+        self.RERANKING_MODEL = os.getenv('RERANKING_MODEL', 'cross-encoder/ms-marco-MiniLM-L-6-v2')
+        self.MAX_RERANK_CANDIDATES = int(os.getenv('MAX_RERANK_CANDIDATES', '50'))
+        self.MIN_RERANK_THRESHOLD = float(os.getenv('MIN_RERANK_THRESHOLD', '0.5'))
+        self.MIN_RELEVANCE_SCORE = float(os.getenv('MIN_RELEVANCE_SCORE', '0.5'))
+        self.RERANKING_BATCH_SIZE = int(os.getenv('RERANKING_BATCH_SIZE', '32'))
+        self.RERANKING_DEVICE = os.getenv('RERANKING_DEVICE', 'auto')  # 'auto', 'cpu', or 'cuda'
+        self.USE_MMR = os.getenv('USE_MMR', 'true').lower() == 'true'
+        self.MMR_LAMBDA = float(os.getenv('MMR_LAMBDA', '0.7'))  # Balance between relevance and diversity
+        self.ADAPTIVE_PERCENTILE = float(os.getenv('ADAPTIVE_PERCENTILE', '75'))  # Percentile for adaptive threshold
         
         # TOP_K configuration with multiplier
         self.TOP_K = int(os.getenv('TOP_K', '5'))
         self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
         self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '0.7'))  # Default to no change
+        
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
@@ -4524,16 +4864,20 @@ class DiscordBot(commands.Bot):
             
         return weighted_embedding
 
-    def process_hybrid_query(self, question: str, username: str, max_results: int = 5):
-        """Process queries using a hybrid of caching and context-aware embeddings."""
+    def process_hybrid_query(self, question: str, username: str, max_results: int = 5, min_score: float = None):
+        """Process queries using adaptive search with re-ranking and diversity."""
         # 1. Detect if this is a context-dependent query
         is_followup = self.is_context_dependent_query(question)
-        original_question = question
         
         # For standard non-follow-up queries
         if not is_followup:
-            # Do regular search
-            search_results = self.document_manager.search(question, top_k=max_results)
+            # Do adaptive search with re-ranking
+            search_results = self.document_manager.adaptive_search(
+                question, 
+                min_score=min_score,
+                max_results=max_results,
+                use_reranking=True
+            )
             # Cache for future follow-ups
             self.cache_search_results(username, question, search_results)
             return search_results
@@ -4553,18 +4897,41 @@ class DiscordBot(commands.Bot):
         logger.info("No cached results, performing context-aware search")
         
         # Get conversation context
-        context = self.get_conversation_context(username)
+        context = self.get_conversation_context(username, question)
         
         if context:
             logger.info(f"Using context from conversation: '{context}'")
             # Generate context-aware embedding
             embedding = self.generate_context_aware_embedding(question, context)
-            # Search with this embedding
-            results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
+            # Search with this embedding and apply adaptive filtering
+            initial_results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results * 3)
+            
+            if initial_results:
+                # Apply adaptive filtering
+                scores = np.array([r[2] for r in initial_results])
+                if len(scores) >= 5:
+                    percentile_threshold = np.percentile(scores, 25)  # Use 75th percentile (keep top 75%)
+                    filtered_results = [r for r in initial_results if r[2] >= percentile_threshold]
+                    logger.info(f"Filtered context-aware results from {len(initial_results)} to {len(filtered_results)} using threshold {percentile_threshold:.4f}")
+                    
+                    # Apply MMR for diversity
+                    if len(filtered_results) > max_results and self.document_manager.use_mmr:
+                        return self.document_manager.apply_mmr(filtered_results, max_results)
+                    else:
+                        return filtered_results[:max_results]
+                else:
+                    return initial_results[:max_results]
+            else:
+                return []
         else:
-            # Fallback to normal search
-            logger.info("No context found, using standard search")
-            results = self.document_manager.search(question, top_k=max_results)
+            # Fallback to normal search with re-ranking
+            logger.info("No context found, using adaptive search with re-ranking")
+            results = self.document_manager.adaptive_search(
+                question,
+                min_score=min_score,
+                max_results=max_results,
+                use_reranking=True
+            )
         
         return results
 
