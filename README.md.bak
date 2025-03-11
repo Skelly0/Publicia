@@ -21,7 +21,6 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Python 3.8 or higher
 - Discord bot token (from Discord Developer Portal)
 - OpenRouter API key (for access to multiple AI models)
-- Google API key (for embeddings generation)
 - Access to language models via OpenRouter
 
 ### Installation Steps
@@ -42,28 +41,24 @@ pip install -r requirements.txt
 # Required
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
-GOOGLE_API_KEY=your_google_api_key
 
 # Optional (defaults shown)
-LLM_MODEL=google/gemini-2.0-flash-001
+LLM_MODEL=deepseek/deepseek-r1
 CLASSIFIER_MODEL=google/gemini-2.0-flash-001
-EMBEDDING_MODEL=models/text-embedding-004
-EMBEDDING_DIMENSIONS=1024
 TOP_K=10
-TOP_K_MULTIPLIER=0.5
 API_TIMEOUT=150
 MAX_RETRIES=10
 ```
 
 4. Run the bot:
 ```bash
-python PubliciaV13.py
+python PubliciaV8.py
 ```
 
 ## Features
 
 ### Image Analysis
-Publicia can process, store, and analyze images related to your lore:
+Publicia can now process, store, and analyze images related to your lore:
 - Add images to the knowledge base with automatic or manual descriptions
 - Include images in search results when relevant to queries
 - Process images attached directly to messages
@@ -74,12 +69,11 @@ Users can select their preferred AI model for responses:
 - **DeepSeek-R1**: Best for immersive roleplaying and creative responses
 - **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Balanced between creativity and factual precision
-- **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5/3.7 Sonnet**: Admin-only premium capabilities
+- **Claude 3.7 Sonnet**: Admin-only premium capabilities
 
 ### Semantic Document Search
-Publicia uses Google's Generative AI embeddings to understand the meaning behind user questions, not just keywords! This allows for more natural queries and better answers with proper citations.
+Publicia uses embeddings to understand the meaning behind user questions, not just keywords! This allows for more natural queries and better answers with proper citations.
 
 ### Conversation Memory
 The bot remembers interactions with each user, providing continuity across conversations. Each user has their own conversation history that provides context for the AI, and can view or manage their history.
@@ -92,11 +86,10 @@ Automatically fetch and update content from Google Docs to keep your lore fresh 
 - Create citations linking back to source documents
 
 ### Debugging and Logging
-Comprehensive tools to help troubleshoot issues:
+Comprehensive logging system with debug mode to help troubleshoot issues:
 - Toggle debug mode to show which model generated responses
 - Detailed logs for tracking operations and errors
 - Performance monitoring and optimization
-- Export prompts to see exactly what's being sent to the models
 
 ## Commands
 
@@ -105,7 +98,6 @@ Comprehensive tools to help troubleshoot issues:
 |---------|-------------|
 | `Publicia! add_doc "Document Name"` | Add a document with optional attachment |
 | `Publicia! add_image "Image Name" [yes/no]` | Add an image with optional auto-description |
-| `Publicia! edit_image [image_id]` | View and edit an image description |
 
 ### Slash Commands
 
@@ -146,39 +138,12 @@ Comprehensive tools to help troubleshoot issues:
 | `/toggle_debug` | Toggle showing model info in responses |
 | `/list_commands` | Show all available commands |
 | `/help` | Display detailed help information |
-| `/export_prompt` | Export the complete prompt for a query |
 
 #### Admin Commands
 | Command | Description |
 |---------|-------------|
 | `/ban_user` | Ban a user from using the bot |
 | `/unban_user` | Unban a user |
-| `/reload_docs` | Reload all documents from disk |
-| `/regenerate_embeddings` | Regenerate all document embeddings |
-
-## Recent Updates
-
-### Version 13
-- Updated to use Google's Generative AI for embeddings
-- Added `/export_prompt` command for debugging
-- Improved error handling and recovery mechanisms
-- Added more fallback options for models
-- Simplified search system for better reliability
-- Added support for Qwen QwQ 32B model
-- Added new testing model options
-- Enhanced message splitting for better Discord compatibility
-
-### Version 12
-- Added support for Claude 3.5 and 3.7 models
-- Improved conversation history management
-- Enhanced image description capabilities
-- Better Google Doc integration
-- More robust error handling
-- Comprehensive logging system
-
-## Documentation
-
-For detailed documentation, please see the [Publicia Documentation](documentation/Publicia%20Documentation.md) file.
 
 ## License
 

@@ -64,3 +64,6 @@ bot_detailed.log
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Project specific
+old_system_prompts/

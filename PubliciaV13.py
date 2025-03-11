@@ -644,53 +644,60 @@ class DocumentManager:
             # Generate query embedding using Google's Generative AI with retrieval_query task type
             query_embedding = self.generate_embeddings([query], is_query=True)[0]
             
-            results = []
-            logger.info(f"Searching documents for query: {shorten(query, width=100, placeholder='...')}")
-            
-            for doc_name, doc_embeddings in self.embeddings.items():
-                if len(doc_embeddings) == 0:
-                    logger.warning(f"Skipping document {doc_name} with empty embeddings")
-                    continue
-                    
-                # Calculate similarities (dot product since embeddings are normalized)
-                similarities = np.dot(doc_embeddings, query_embedding)
-                
-                if len(similarities) > 0:
-                    top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
-                    
-                    for idx in top_indices:
-                        image_id = None
-                        if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                            image_id = doc_name[6:-4]
-                        elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                            image_id = self.metadata[doc_name]['image_id']
-                        
-                        if idx < len(self.chunks[doc_name]):
-                            results.append((
-                                doc_name,
-                                self.chunks[doc_name][idx],
-                                float(similarities[idx]),
-                                image_id,
-                                idx + 1,
-                                len(self.chunks[doc_name])
-                            ))
-            
-            # Sort by similarity
-            results.sort(key=lambda x: x[2], reverse=True)
-            
-            # Log search results
-            for doc_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
-                logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
-                if image_id:
-                    logger.info(f"This is an image description for image ID: {image_id}")
-                logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
-            
-            return results[:top_k]
+            return self.custom_search_with_embedding(query_embedding, top_k)
             
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
             return []
+
+    def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
+        """Search using a pre-generated embedding instead of creating one from text."""
+        if top_k is None:
+            top_k = self.top_k
         
+        results = []
+        logger.info("Performing custom search with pre-generated embedding")
+        
+        for doc_name, doc_embeddings in self.embeddings.items():
+            if len(doc_embeddings) == 0:
+                logger.warning(f"Skipping document {doc_name} with empty embeddings")
+                continue
+                
+            # Calculate similarities (dot product since embeddings are normalized)
+            similarities = np.dot(doc_embeddings, query_embedding)
+            
+            if len(similarities) > 0:
+                top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
+                
+                for idx in top_indices:
+                    image_id = None
+                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                        image_id = doc_name[6:-4]
+                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                        image_id = self.metadata[doc_name]['image_id']
+                    
+                    if idx < len(self.chunks[doc_name]):
+                        results.append((
+                            doc_name,
+                            self.chunks[doc_name][idx],
+                            float(similarities[idx]),
+                            image_id,
+                            idx + 1,
+                            len(self.chunks[doc_name])
+                        ))
+        
+        # Sort by similarity
+        results.sort(key=lambda x: x[2], reverse=True)
+        
+        # Log search results
+        for doc_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
+            logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
+            if image_id:
+                logger.info(f"This is an image description for image ID: {image_id}")
+            logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
+        
+        return results[:top_k]
+    
     def _save_to_disk(self):
         """Save document data to disk."""
         try:
@@ -1016,7 +1023,7 @@ class Config:
         # TOP_K configuration with multiplier
         self.TOP_K = int(os.getenv('TOP_K', '5'))
         self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
-        self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '0.5'))  # Default to no change
+        self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '0.7'))  # Default to no change
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
@@ -1039,7 +1046,7 @@ class Config:
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
-            "qwen/qwq-32b:free": 15,
+            "qwen/qwq-32b:free": 20,
             "qwen/qwq-32b": 13, 
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
@@ -1528,6 +1535,9 @@ class DiscordBot(commands.Bot):
 
         self.config = Config()
         self.conversation_manager = ConversationManager()
+        
+        # Add search caching
+        self.search_cache = {}  # Store previous search results by user
         
         # Pass the TOP_K value to DocumentManager
         self.document_manager = DocumentManager(top_k=self.config.TOP_K, config=self.config)
@@ -2690,7 +2700,7 @@ class DiscordBot(commands.Bot):
                         f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -2742,7 +2752,7 @@ class DiscordBot(commands.Bot):
                     f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                    f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                    f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -2980,11 +2990,6 @@ class DiscordBot(commands.Bot):
                 channel_name = interaction.channel.name if interaction.guild else "DM"
                 nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
                 
-                # Get conversation history for context but don't add this interaction to it
-                conversation_messages = self.conversation_manager.get_conversation_messages(interaction.user.name)
-                
-                logger.info(f"Processing one-off query from {interaction.user.name}: {shorten(question, width=100, placeholder='...')}")
-                
                 # Process image URL if provided
                 image_attachments = []
                 status_message = None
@@ -3092,13 +3097,12 @@ class DiscordBot(commands.Bot):
                     truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
                     google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
                 
-                # Step 4: Prepare messages for model
+                # Prepare messages for model
                 messages = [
                     {
                         "role": "system",
                         "content": SYSTEM_PROMPT
-                    },
-                    #*conversation_messages
+                    }
                 ]
 
                 # Add synthesized context if available
@@ -3144,7 +3148,7 @@ class DiscordBot(commands.Bot):
                 
                 messages.append({
                     "role": "system",
-                    "content": "Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
+                    "content": "IMPORTANT: Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
                 })
 
                 messages.append({
@@ -4085,6 +4089,18 @@ class DiscordBot(commands.Bot):
                 question = "Hello"
                 logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
             
+            # Add context-aware query enhancement
+            original_question = question
+            # Check if this query might need context
+            if self.is_context_dependent_query(question):
+                # Get context from conversation history
+                context = self.get_conversation_context(message.author.name, question)
+                
+                if context:
+                    # Enhance the query with context
+                    question = self.enhance_context_dependent_query(question, context)
+                    logger.info(f"Enhanced query: '{original_question}' -> '{question}'")
+            
             # Check for Google Doc links in the message
             google_doc_ids = await self._extract_google_doc_ids(question)
             google_doc_contents = []
@@ -4128,17 +4144,17 @@ class DiscordBot(commands.Bot):
             # Update thinking message
             await thinking_msg.edit(content="*analyzing query and searching imperial databases...*")
 
-            # Use the new multi-section processing approach
-            multi_results = await self.process_multi_section_query(question, preferred_model)
+            # Use the new hybrid search system
+            search_results = self.process_hybrid_query(
+                question,
+                message.author.name,
+                max_results=self.config.get_top_k_for_model(preferred_model)
+            )
             
             # Extract results
-            search_results = multi_results["search_results"]
-            synthesis = multi_results["synthesis"]
-            analysis = multi_results["analysis"]
-            sections = multi_results["sections"]
+            synthesis = ""  # No synthesis in hybrid search
             
             # Log the results
-            logger.info(f"Multi-section query processing complete. Query was split into {len(sections)} sections.")
             logger.info(f"Found {len(search_results)} relevant document sections")
 
             # Load Google Doc ID mapping for citation links
@@ -4242,7 +4258,7 @@ class DiscordBot(commands.Bot):
 
             messages.append({
                 "role": "system",
-                "content": "Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
+                "content": "IMPORTANT: Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
             })
             
             messages.append({
@@ -4329,6 +4345,231 @@ class DiscordBot(commands.Bot):
                 )
             except:
                 pass  # If even sending the error message fails, just log and move on
+
+    def is_context_dependent_query(self, query: str) -> bool:
+        """Determine if a query likely depends on conversation context."""
+        query = query.lower().strip()
+        
+        # 1. Very short queries are suspicious (2-3 words)
+        if 1 <= len(query.split()) <= 3:
+            return True
+            
+        # 2. Queries with pronouns suggesting reference to previous content
+        pronouns = ["they", "them", "these", "those", "this", "that", "it", "he", "she",
+                    "their", "its", "his", "her"]
+        if any(f" {p} " in f" {query} " for p in pronouns):
+            return True
+            
+        # 3. Queries explicitly asking for more/additional information
+        continuation_phrases = ["more", "another", "additional", "else", "other", 
+                               "elaborate", "continue", "expand", "also", "further",
+                               "example", "examples", "specifically", "details"]
+        if any(phrase in query.split() for phrase in continuation_phrases):
+            return True
+            
+        # 4. Queries starting with comparison words
+        if re.match(r"^(what about|how about|compared to|similarly|unlike|like)", query):
+            return True
+            
+        # 5. Incomplete-seeming questions
+        if re.match(r"^(and|but|so|or|then|why not|why|how)\b", query):
+            return True
+        
+        return False
+
+    def get_conversation_context(self, username: str, current_query: str) -> str:
+        """Extract relevant context from conversation history."""
+        # Get recent messages
+        conversation = self.conversation_manager.get_conversation_messages(username, limit=6)
+        
+        if len(conversation) <= 1:
+            return ""
+        
+        # Extract the last substantive user query before this one
+        prev_user_query = ""
+        for msg in reversed(conversation[:-1]):  # Skip the current query
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                # A substantive query is reasonably long and not itself context-dependent
+                if len(content.split()) > 3 and not self.is_context_dependent_query(content):
+                    prev_user_query = content
+                    break
+        
+        # Extract important entities/topics from the last assistant response
+        last_assistant_response = ""
+        for msg in reversed(conversation):
+            if msg.get("role") == "assistant":
+                last_assistant_response = msg.get("content", "")
+                break
+                
+        # If we have a previous query, use that as primary context
+        if prev_user_query:
+            # Extract the main subject by removing question words and common articles
+            query_words = prev_user_query.lower().split()
+            question_words = ["what", "who", "where", "when", "why", "how", "is", "are", 
+                             "was", "were", "will", "would", "can", "could", "do", "does",
+                             "did", "has", "have", "had", "tell", "me", "about", "please"]
+            
+            # Keep only the first 6-8 content words
+            content_words = [w for w in query_words if w not in question_words][:8]
+            context = " ".join(content_words) if content_words else prev_user_query
+            
+            return context
+            
+        # Fallback: if no good previous query, try to extract nouns/subjects from last response
+        if last_assistant_response:
+            # Very basic approach: look for capitalized words that might be important entities
+            sentences = last_assistant_response.split('.')
+            for sentence in sentences[:3]:  # Check first few sentences
+                words = sentence.split()
+                proper_nouns = [word for word in words 
+                              if word and word[0].isupper() and len(word) > 1]
+                if proper_nouns:
+                    return " ".join(proper_nouns[:5])
+        
+        return ""
+
+    def enhance_context_dependent_query(self, query: str, context: str) -> str:
+        """Enhance a context-dependent query with conversation context."""
+        if not context:
+            return query
+            
+        query = query.strip()
+        context = context.strip()
+        
+        # 1. For very minimal queries like "more" or "continue"
+        if query.lower() in ["more", "continue", "go on", "and", "then"]:
+            return f"Tell me more about {context}"
+            
+        # 2. For queries asking for examples
+        if re.match(r"^examples?(\s|$|\?)", query.lower()):
+            return f"Give examples of {context}"
+            
+        # 3. For "what about X" queries
+        if re.match(r"^what about|how about", query.lower()):
+            remaining = re.sub(r"^what about|^how about", "", query.lower()).strip()
+            return f"What about {remaining} in relation to {context}"
+            
+        # 4. For queries starting with pronouns
+        for pronoun in ["they", "them", "these", "those", "this", "that", "it"]:
+            if re.match(f"^{pronoun}\\b", query.lower()):
+                # Replace the pronoun with the context
+                return re.sub(f"^{pronoun}\\b", context, query, flags=re.IGNORECASE)
+        
+        # 5. Default approach: explicitly add context
+        if query.endswith("?"):
+            # Add context parenthetically for questions
+            return f"{query} (regarding {context})"
+        else:
+            # Add context with "about" or "regarding"
+            return f"{query} about {context}"
+
+    def cache_search_results(self, username: str, query: str, results):
+        """Store search results for potential follow-ups."""
+        # Only cache if we have decent results
+        if not results or len(results) < 2:
+            return
+            
+        self.search_cache[username] = {
+            'query': query,
+            'results': results,
+            'used_indices': set(range(min(5, len(results)))),  # Track which results were already shown
+            'timestamp': datetime.now()
+        }
+        logger.info(f"Cached {len(results)} search results for {username}, initially showed {len(self.search_cache[username]['used_indices'])}")
+    
+    def get_additional_results(self, username: str, top_k=3):
+        """Get additional unseen results from previous search."""
+        if username not in self.search_cache:
+            return []
+            
+        cache = self.search_cache[username]
+        
+        # Check if cache is too old (5 minutes)
+        if (datetime.now() - cache['timestamp']).total_seconds() > 300:
+            logger.info(f"Cache for {username} expired, ignoring")
+            return []
+        
+        # Find results not yet shown
+        new_results = []
+        for i, result in enumerate(cache['results']):
+            if i not in cache['used_indices'] and len(new_results) < top_k:
+                new_results.append(result)
+                cache['used_indices'].add(i)
+        
+        if new_results:
+            logger.info(f"Found {len(new_results)} additional unused results for {username}")
+        
+        return new_results
+
+    def generate_context_aware_embedding(self, query: str, context: str):
+        """Generate an embedding that combines current query with context."""
+        if not context:
+            # No context, use normal embedding
+            return self.document_manager.generate_embeddings([query], is_query=True)[0]
+        
+        # Generate embeddings for different query variants
+        query_variants = [
+            query,                   # Original query (highest weight)
+            f"{query} {context}",    # Query + context
+            context                  # Just context (lowest weight)
+        ]
+        
+        embeddings = self.document_manager.generate_embeddings(query_variants, is_query=True)
+        
+        # Weight: 60% original query, 30% combined, 10% context
+        weighted_embedding = 0.6 * embeddings[0] + 0.3 * embeddings[1] + 0.1 * embeddings[2]
+        
+        # Normalize the embedding
+        norm = np.linalg.norm(weighted_embedding)
+        if norm > 0:
+            weighted_embedding = weighted_embedding / norm
+            
+        return weighted_embedding
+
+    def process_hybrid_query(self, question: str, username: str, max_results: int = 5):
+        """Process queries using a hybrid of caching and context-aware embeddings."""
+        # 1. Detect if this is a context-dependent query
+        is_followup = self.is_context_dependent_query(question)
+        original_question = question
+        
+        # For standard non-follow-up queries
+        if not is_followup:
+            # Do regular search
+            search_results = self.document_manager.search(question, top_k=max_results)
+            # Cache for future follow-ups
+            self.cache_search_results(username, question, search_results)
+            return search_results
+        
+        # For follow-up queries
+        logger.info(f"Detected follow-up query: '{question}'")
+        
+        # 2. First, try to get more results from previous search
+        cached_results = self.get_additional_results(username, top_k=max_results)
+        
+        if cached_results:
+            # We have unused results, no need for new search
+            logger.info(f"Using {len(cached_results)} cached results")
+            return cached_results
+        
+        # 3. No cached results, use context-aware search
+        logger.info("No cached results, performing context-aware search")
+        
+        # Get conversation context
+        context = self.get_conversation_context(username)
+        
+        if context:
+            logger.info(f"Using context from conversation: '{context}'")
+            # Generate context-aware embedding
+            embedding = self.generate_context_aware_embedding(question, context)
+            # Search with this embedding
+            results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
+        else:
+            # Fallback to normal search
+            logger.info("No context found, using standard search")
+            results = self.document_manager.search(question, top_k=max_results)
+        
+        return results
 
 
 async def main():
