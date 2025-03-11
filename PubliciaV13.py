@@ -1051,6 +1051,9 @@ class Config:
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
             "eva-unit-01/eva-qwen-2.5-72b": 9,
+            # New models
+            "latitudegames/wayfarer-large-70b-llama-3.3": 9,  # good balance for storytelling
+            "thedrummer/anubis-pro-105b-v1": 8,  # slightly smaller for this massive model
             # Gemini embedding model
             "models/text-embedding-004": 20,  # Optimized for larger chunks
         }
@@ -1446,6 +1449,53 @@ class UserPreferencesManager:
         except Exception as e:
             logger.error(f"Error reading user preferences: {e}")
             return default_model
+
+    def get_channel_parsing(self, user_id: str) -> Tuple[bool, int]:
+        """Get the user's channel parsing preference and message count, defaults to (False, 0)."""
+        file_path = self.get_file_path(user_id)
+        
+        if not os.path.exists(file_path):
+            return (False, 0)
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                enabled = preferences.get("channel_parsing_enabled", False)
+                count = preferences.get("channel_parsing_count", 0)
+                return (enabled, count)
+        except Exception as e:
+            logger.error(f"Error reading channel parsing preference: {e}")
+            return (False, 0)
+
+    def set_channel_parsing(self, user_id: str, enabled: bool, count: int) -> bool:
+        """Set the user's channel parsing preference and message count."""
+        try:
+            file_path = self.get_file_path(user_id)
+            
+            # Load existing preferences or create new ones
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        preferences = json.load(file)
+                    except json.JSONDecodeError:
+                        # If file exists but isn't valid JSON, start fresh
+                        preferences = {}
+            else:
+                preferences = {}
+            
+            # Update preferences
+            preferences["channel_parsing_enabled"] = enabled
+            preferences["channel_parsing_count"] = count
+            
+            # Write back to file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            
+            return True
+                
+        except Exception as e:
+            logger.error(f"Error setting channel parsing preference: {e}")
+            return False
     
     def set_preferred_model(self, user_id: str, model: str) -> bool:
         """Set the user's preferred model."""
@@ -1552,7 +1602,7 @@ class DiscordBot(commands.Bot):
         
         self.user_preferences_manager = UserPreferencesManager()
         
-        self.timeout_duration = 150
+        self.timeout_duration = 500
 
         self.banned_users = set()
         self.banned_users_file = 'banned_users.json'
@@ -1582,6 +1632,44 @@ class DiscordBot(commands.Bot):
         # Replace backslashes to avoid escape sequence issues
         text = text.replace("\\", "\\\\")
         return text
+
+    async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
+        """Fetch recent messages from a channel.
+        
+        Args:
+            channel: The Discord channel to fetch messages from
+            limit: Maximum number of messages to retrieve
+            max_message_length: Maximum length of each message
+            
+        Returns:
+            List of message dictionaries (author, content, timestamp)
+        """
+        try:
+            messages = []
+            async for message in channel.history(limit=limit):
+                # Skip messages from the bot itself
+                if message.author == self.user:
+                    continue
+                    
+                # Truncate long messages
+                content = message.content
+                if len(content) > max_message_length:
+                    content = content[:max_message_length] + "..."
+                    
+                # Format the message
+                messages.append({
+                    "author": message.author.nick if (message.guild and message.author.nick) else message.author.name,
+                    "content": content,
+                    "timestamp": message.created_at.isoformat()
+                })
+                
+            # Reverse the list to get chronological order (oldest first)
+            messages.reverse()
+            
+            return messages
+        except Exception as e:
+            logger.error(f"Error fetching channel messages: {e}")
+            return []
 
     def load_banned_users(self):
         """Load banned users from JSON file."""
@@ -2511,8 +2599,8 @@ class DiscordBot(commands.Bot):
                     "Lore Queries": ["query"],
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
                     "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],  # Added export_prompt here
-                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages"], 
+                    "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
+                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
                 
@@ -2659,7 +2747,10 @@ class DiscordBot(commands.Bot):
             app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
-            app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),  # Add the new Testing Model option
+            app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
+            # Add the new models here
+            app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
+            app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
         ])
         async def set_model(interaction: discord.Interaction, model: str):
             await interaction.response.defer()
@@ -2689,22 +2780,29 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in model:
                     model_name = "Claude 3.7 Sonnet"
-                elif "qwen/qwq-32b" in model:  # Handle QWQ model
+                elif "qwen/qwq-32b" in model:
                     model_name = "Qwen QwQ 32B"
-                elif "unslopnemo" in model or "eva-unit-01/eva-qwen-2.5-72b" in model:  # Handle Testing Model
+                elif "unslopnemo" in model or "eva-unit-01/eva-qwen-2.5-72b" in model:
                     model_name = "Testing Model"
+                elif "latitudegames/wayfarer" in model:
+                    model_name = "Wayfarer 70B"
+                elif "thedrummer/anubis-pro" in model:
+                    model_name = "Anubis Pro 105B"
                 
                 if success:
                     # Create a description of all model strengths
+                    # Create a description of all model strengths
                     model_descriptions = [
-                        f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                        f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                        f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
+                        f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                         f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
-                        f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
+                        f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                         f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
+                        f"**Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({self.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
+                        f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({self.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     ]
                     
                     response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -2742,21 +2840,27 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
-                elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
+                elif "qwen/qwq-32b" in preferred_model:
                     model_name = "Qwen QwQ 32B"
-                elif "unslopnemo" or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:  # Handle Testing Model
+                elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                     model_name = "Testing Model"
+                elif "latitudegames/wayfarer" in preferred_model:
+                    model_name = "Wayfarer 70B"
+                elif "thedrummer/anubis-pro" in preferred_model:
+                    model_name = "Anubis Pro 105B"
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Excellent for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                    f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                    f"**Nous: Hermes 405B**: Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
+                    f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
-                    f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
+                    f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({self.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
+                    f"**Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({self.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
+                    f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({self.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                 ]
                 
                 response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
@@ -2973,6 +3077,43 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error updating image description: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while updating the image description.")
+
+        @self.tree.command(name="parse_channel", description="Toggle parsing of channel messages for context")
+        @app_commands.describe(
+            enabled="Enable or disable channel message parsing",
+            message_count="Number of messages to retrieve (max 100)"
+        )
+        async def toggle_channel_parsing(
+            interaction: discord.Interaction, 
+            enabled: bool, 
+            message_count: int = 20
+        ):
+            await interaction.response.defer()
+            try:
+                # Validate message count
+                if message_count <= 0:
+                    await interaction.followup.send("*neural error detected!* Message count must be a positive number.")
+                    return
+                
+                # Cap message count at 100
+                message_count = min(message_count, 100)
+                
+                # Save the preference
+                success = self.user_preferences_manager.set_channel_parsing(
+                    str(interaction.user.id), 
+                    enabled, 
+                    message_count
+                )
+                
+                if success:
+                    status = "enabled" if enabled else "disabled"
+                    await interaction.followup.send(f"*neural pathways reconfigured!* Channel message parsing is now **{status}**.\n\nWhen enabled, I will include the last **{message_count}** messages from the channel in my context to better understand conversations and roleplay scenarios.")
+                else:
+                    await interaction.followup.send("*synaptic error detected!* Failed to save your preference. Please try again later.")
+                    
+            except Exception as e:
+                logger.error(f"Error setting channel parsing preference: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while setting your preference.")
                 
         @self.tree.command(name="query", description="Ask Publicia a question about Ledus Banum 77 and Imperial lore")
         @app_commands.describe(
@@ -3165,15 +3306,86 @@ class DiscordBot(commands.Bot):
                     model_name = "Claude 3.5 Sonnet"
                 elif "claude-3.7-sonnet" in preferred_model:
                     model_name = "Claude 3.7 Sonnet"
-                elif preferred_model == "qwen/qwq-32b:free":  # Handle QWQ model
+                elif "qwen/qwq-32b" in preferred_model:
                     model_name = "Qwen QwQ 32B"
-                elif preferred_model == "thedrummer/unslopnemo-12b" or preferred_model == "eva-unit-01/eva-qwen-2.5-72b":  # Handle Testing Model
+                elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                     model_name = "Testing Model"
+                elif "latitudegames/wayfarer" in preferred_model:
+                    model_name = "Wayfarer 70B"
+                elif "thedrummer/anubis-pro" in preferred_model:
+                    model_name = "Anubis Pro 105B"
 
                 if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
                     await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
                 else:
                     await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+
+                # Check if channel parsing is enabled for this user
+                channel_parsing_enabled, channel_parsing_count = self.user_preferences_manager.get_channel_parsing(
+                    str(interaction.user.id)
+                )
+
+                # If enabled, fetch channel messages and add to context
+                if channel_parsing_enabled and channel_parsing_count > 0:
+                    await status_message.edit(content="*analyzing channel conversation context...*")
+                    
+                    # Fetch channel messages
+                    channel_messages = await self.fetch_channel_messages(
+                        interaction.channel,
+                        limit=channel_parsing_count,
+                        max_message_length=500  # Limit each message to 500 characters
+                    )
+                    
+                    if channel_messages:
+                        # Format channel messages for context
+                        channel_context = "Recent channel messages for context:\n\n"
+                        for msg in channel_messages:
+                            channel_context += f"{msg['author']}: {msg['content']}\n"
+                        
+                        # Limit total context size to 10000 characters
+                        if len(channel_context) > 10000:
+                            channel_context = channel_context[:10000] + "...\n(channel context truncated due to size)"
+                            logger.warning(f"Channel context truncated to 10000 characters")
+                        
+                        # Add to messages array
+                        messages.append({
+                            "role": "system",
+                            "content": channel_context
+                        })
+                        
+                        logger.info(f"Added {len(channel_messages)} channel messages to context")
+                        await status_message.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
+                
+                # If enabled, fetch channel messages and add to context
+                if channel_parsing_enabled and channel_parsing_count > 0:
+                    await thinking_msg.edit(content="*analyzing channel conversation context...*")
+                    
+                    # Fetch channel messages
+                    channel_messages = await self.fetch_channel_messages(
+                        message.channel,
+                        limit=channel_parsing_count,
+                        max_message_length=500  # Limit each message to 500 characters
+                    )
+                    
+                    if channel_messages:
+                        # Format channel messages for context
+                        channel_context = "Recent channel messages for context:\n\n"
+                        for msg in channel_messages:
+                            channel_context += f"{msg['author']}: {msg['content']}\n"
+                        
+                        # Limit total context size to 10000 characters
+                        if len(channel_context) > 10000:
+                            channel_context = channel_context[:10000] + "...\n(channel context truncated due to size)"
+                            logger.warning(f"Channel context truncated to 10000 characters")
+                        
+                        # Add to messages array
+                        messages.append({
+                            "role": "system",
+                            "content": channel_context
+                        })
+                        
+                        logger.info(f"Added {len(channel_messages)} channel messages to context")
+                        await thinking_msg.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
 
                 # Get AI response using user's preferred model
                 completion, actual_model = await self._try_ai_completion(
@@ -3181,20 +3393,24 @@ class DiscordBot(commands.Bot):
                     messages,
                     image_ids=image_ids,
                     image_attachments=image_attachments,
-                    temperature=0.05
+                    temperature=0.1
                 )
 
-                if completion and completion.get('choices'):
-                    response = completion['choices'][0]['message']['content']
-                    
-                    # Pass the status message as the existing_message parameter
-                    await self.send_split_message(
-                        interaction.channel,
-                        response,
-                        model_used=actual_model,
-                        user_id=str(interaction.user.id),
-                        existing_message=status_message
-                    )
+                if completion and completion.get('choices') and len(completion['choices']) > 0:
+                    if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                        response = completion['choices'][0]['message']['content']
+                        
+                        # Pass the status message as the existing_message parameter
+                        await self.send_split_message(
+                            interaction.channel,
+                            response,
+                            model_used=actual_model,
+                            user_id=str(interaction.user.id),
+                            existing_message=status_message
+                        )
+                    else:
+                        logger.error(f"Unexpected response structure: {completion}")
+                        await status_message.edit(content="*neural circuit overload!* I received an unexpected response structure.")
                 else:
                     await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
@@ -3630,6 +3846,7 @@ class DiscordBot(commands.Bot):
                 response += "• `/set_model` - Choose your preferred AI model:\n"
                 response += "• `/get_model` - Check which model you're currently using and display the different models available\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
+                response += "• `/parse_channel` - Toggle parsing of channel messages for context. When enabled, Publicia will include recent messages from the channel to better understand conversations and roleplay scenarios.\n\n"
                 
                 # Add our new section here
                 response += "**🧪 Debugging Tools**\n"
@@ -3828,6 +4045,7 @@ class DiscordBot(commands.Bot):
                 "thedrummer/rocinante-12b",
                 "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
             ]
+            models.extend([fb for fb in fallbacks if fb not in models])
         elif model_family == "eva-unit-01":
             fallbacks = [
                 "eva-unit-01/eva-qwen-2.5-72b:floor",
@@ -3866,6 +4084,19 @@ class DiscordBot(commands.Bot):
                 ]
             else:
                 fallbacks = []
+            models.extend([fb for fb in fallbacks if fb not in models])
+        # Inside the _try_ai_completion method
+        elif model_family == "latitudegames":
+            fallbacks = [
+                "latitudegames/wayfarer-large-70b-llama-3.3",
+                "meta-llama/llama-3.3-70b-instruct",  # base model fallback
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif model_family == "thedrummer" and "anubis" in model:
+            fallbacks = [
+                "thedrummer/anubis-pro-105b-v1",
+                "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
+            ]
             models.extend([fb for fb in fallbacks if fb not in models])
         
         # Add general fallbacks that aren't already in the list
@@ -4006,16 +4237,21 @@ class DiscordBot(commands.Bot):
                     timeout=self.timeout_duration
                 )
                 
-                if completion and completion.get('choices'):
-                    response_content = completion['choices'][0]['message']['content']
-                    logger.info(f"Successful completion from {current_model}")
-                    logger.info(f"Response: {shorten(response_content, width=200, placeholder='...')}")
-                    
-                    # For analytics, log which model was actually used
-                    if model != current_model:
-                        logger.info(f"Notice: Fallback model {current_model} was used instead of requested {model}")
+                if completion and completion.get('choices') and len(completion['choices']) > 0:
+                    if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                        response_content = completion['choices'][0]['message']['content']
+                        logger.info(f"Successful completion from {current_model}")
+                        logger.info(f"Response: {shorten(response_content, width=200, placeholder='...')}")
                         
-                    return completion, current_model  # Return both the completion and the model used
+                        # For analytics, log which model was actually used
+                        if model != current_model:
+                            logger.info(f"Notice: Fallback model {current_model} was used instead of requested {model}")
+                            
+                        return completion, current_model  # Return both the completion and the model used
+                    else:
+                        logger.error(f"Unexpected response structure from {current_model}: {completion}")
+                        # Return the incomplete response anyway - let the caller handle it
+                        return completion, current_model
                     
             except Exception as e:
                 # Get the full traceback information
@@ -4094,7 +4330,6 @@ class DiscordBot(commands.Bot):
                 
                 if context:
                     # Enhance the query with context
-                    original_question = question
                     question = self.enhance_context_dependent_query(question, context)
                     logger.info(f"Enhanced query: '{original_question}' -> '{question}'")
             
@@ -4265,7 +4500,7 @@ class DiscordBot(commands.Bot):
 
             # Get friendly model name based on the model value
             model_name = "Unknown Model"
-            if preferred_model.startswith("deepseek/"):
+            if "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
             elif preferred_model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
@@ -4278,9 +4513,13 @@ class DiscordBot(commands.Bot):
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in preferred_model:
-                model_name = "QwQ 32B"
-            elif preferred_model == "thedrummer/unslopnemo-12b" or preferred_model == "eva-unit-01/eva-qwen-2.5-72b":  # Handle Testing Model
+                model_name = "Qwen QwQ 32B"
+            elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                 model_name = "Testing Model"
+            elif "latitudegames/wayfarer" in preferred_model:
+                model_name = "Wayfarer 70B"
+            elif "thedrummer/anubis-pro" in preferred_model:
+                model_name = "Anubis Pro 105B"
 
             # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
@@ -4299,17 +4538,22 @@ class DiscordBot(commands.Bot):
                 messages,
                 image_ids=image_ids,
                 image_attachments=image_attachments,
-                temperature=0.05
+                temperature=0.1
             )
 
-            if completion and completion.get('choices'):
-                response = completion['choices'][0]['message']['content']
+            if completion and completion.get('choices') and len(completion['choices']) > 0:
+                if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                    response = completion['choices'][0]['message']['content']
+                else:
+                    logger.error(f"Unexpected response structure: {completion}")
+                    await thinking_msg.edit(content="*neural circuit overload!* I received an unexpected response structure.")
+                    return
                 
                 # Update conversation history
                 self.conversation_manager.write_conversation(
                     message.author.name,
                     "user",
-                    question + (" [with image attachment(s)]" if image_attachments else ""),
+                    original_question + (" [with image attachment(s)]" if image_attachments else ""),
                     channel_name
                 )
                 self.conversation_manager.write_conversation(
@@ -4553,7 +4797,7 @@ class DiscordBot(commands.Bot):
         logger.info("No cached results, performing context-aware search")
         
         # Get conversation context
-        context = self.get_conversation_context(username)
+        context = self.get_conversation_context(username, question)
         
         if context:
             logger.info(f"Using context from conversation: '{context}'")
