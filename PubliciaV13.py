@@ -2980,12 +2980,22 @@ class DiscordBot(commands.Bot):
             image_url="Optional URL to an image you want to analyze (must be a direct image URL ending with .jpg, .png, etc.)"
         )
         async def query_lore(interaction: discord.Interaction, question: str, image_url: str = None):
-            await interaction.response.defer()
             try:
+                # Try to defer immediately
+                try:
+                    await interaction.response.defer()
+                except discord.errors.NotFound:
+                    # If we get here, the interaction has expired
+                    logger.warning("Interaction expired before we could defer")
+                    return  # Exit gracefully
+                except Exception as e:
+                    logger.error(f"Error deferring interaction: {e}")
+                    return  # Exit on any other error
+
                 if not question:
                     await interaction.followup.send("*neural error detected!* Please provide a question.")
                     return
-                    
+
                 # Get channel name and user info
                 channel_name = interaction.channel.name if interaction.guild else "DM"
                 nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
@@ -3035,20 +3045,17 @@ class DiscordBot(commands.Bot):
                     default_model=self.config.LLM_MODEL
                 )
 
-                # Use the new multi-section processing approach
+                # Use the hybrid search system
                 await status_message.edit(content="*analyzing query and searching imperial databases...*")
-                multi_results = await self.process_multi_section_query(question, preferred_model)
-                
-                # Extract results from multi-section processing
-                search_results = multi_results["search_results"]
-                synthesis = multi_results["synthesis"]
-                analysis = multi_results["analysis"]
-                sections = multi_results["sections"]
+                search_results = self.process_hybrid_query(
+                    question,
+                    interaction.user.name,
+                    max_results=self.config.get_top_k_for_model(preferred_model)
+                )
                 
                 # Log the results
-                logger.info(f"Multi-section query processing complete. Query was split into {len(sections)} sections.")
                 logger.info(f"Found {len(search_results)} relevant document sections")
-
+                
                 await status_message.edit(content="*synthesizing information...*")
                 
                 # Load Google Doc ID mapping for citation links
@@ -3105,13 +3112,6 @@ class DiscordBot(commands.Bot):
                     }
                 ]
 
-                # Add synthesized context if available
-                if synthesis:
-                    messages.append({
-                        "role": "system",
-                        "content": f"Synthesized document context:\n{synthesis}"
-                    })
-
                 # Add raw document context as additional reference
                 raw_doc_context = "\n\n".join(raw_doc_contexts)
                 messages.append({
@@ -3140,16 +3140,11 @@ class DiscordBot(commands.Bot):
                         img_source.append(f"{len(image_ids)} from search results")
                     if image_attachments:
                         img_source.append(f"{len(image_attachments)} from attachments")
-                        
+                    
                     messages.append({
                         "role": "system",
                         "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
                     })
-                
-                messages.append({
-                    "role": "system",
-                    "content": "IMPORTANT: Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
-                })
 
                 messages.append({
                     "role": "user",
@@ -3176,18 +3171,17 @@ class DiscordBot(commands.Bot):
                     model_name = "Testing Model"
 
                 if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
-                    await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
-                    # No model switching - continues with user's preferred model
+                    await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
                 else:
-                    await status_message.edit(content=f"*formulating one-off response with enhanced neural mechanisms using {model_name}...*")
+                    await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
 
-                # Step 5: Get AI response using user's preferred model
-                completion, actual_model = await self._try_ai_completion(  # Now unpack the tuple of (completion, actual_model)
+                # Get AI response using user's preferred model
+                completion, actual_model = await self._try_ai_completion(
                     preferred_model,
                     messages,
                     image_ids=image_ids,
                     image_attachments=image_attachments,
-                    temperature=0.1
+                    temperature=0
                 )
 
                 if completion and completion.get('choices'):
@@ -3199,15 +3193,17 @@ class DiscordBot(commands.Bot):
                         response,
                         model_used=actual_model,
                         user_id=str(interaction.user.id),
-                        existing_message=status_message  # Use status message instead of None
+                        existing_message=status_message
                     )
-                    
                 else:
                     await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
             except Exception as e:
                 logger.error(f"Error processing query: {e}")
-                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+                try:
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+                except:
+                    logger.error("Failed to send error message to user")
 
         @self.tree.command(name="search_docs", description="Search the document knowledge base")
         @app_commands.describe(query="What to search for")
@@ -4256,10 +4252,10 @@ class DiscordBot(commands.Bot):
                     "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
                 })
 
-            messages.append({
+            """messages.append({
                 "role": "system",
                 "content": "IMPORTANT: Do not make up or be incorrect about information about the setting of Ledus Banum 77 or the Infinite Empire. If you don't have information on what the user is asking, admit that you don't know."
-            })
+            })"""
             
             messages.append({
                 "role": "user",
@@ -4302,7 +4298,7 @@ class DiscordBot(commands.Bot):
                 messages,
                 image_ids=image_ids,
                 image_attachments=image_attachments,
-                temperature=0.1
+                temperature=0
             )
 
             if completion and completion.get('choices'):
