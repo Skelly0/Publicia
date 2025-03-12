@@ -1422,6 +1422,104 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"Error deleting messages: {e}")
             return False, f"Error deleting messages: {str(e)}", 0
+
+    def archive_conversation(self, username: str, archive_name: str = None) -> Tuple[bool, str]:
+    """Archive a user's conversation history."""
+    try:
+        # Get the path to the current conversation file
+        current_file_path = self.get_file_path(username)
+        
+        # Check if the file exists
+        if not os.path.exists(current_file_path):
+            return False, "No conversation history found to archive."
+            
+        # Create archives directory if it doesn't exist
+        archives_dir = os.path.join(self.conversation_dir, "archives", username)
+        os.makedirs(archives_dir, exist_ok=True)
+        
+        # Generate archive name if not provided
+        if not archive_name:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_name = f"archive_{timestamp}"
+        else:
+            # Sanitize archive name
+            archive_name = "".join(c for c in archive_name if c.isalnum() or c in (' ', '.', '_')).rstrip()
+        
+        # Make sure archive name ends with .json
+        if not archive_name.endswith('.json'):
+            archive_name += '.json'
+        
+        # Set the path for the archived file
+        archive_file_path = os.path.join(archives_dir, archive_name)
+        
+        # Copy the current conversation to the archive
+        with open(current_file_path, 'r', encoding='utf-8') as current_file:
+            conversations = json.load(current_file)
+            
+            with open(archive_file_path, 'w', encoding='utf-8') as archive_file:
+                json.dump(conversations, archive_file, indent=2)
+        
+        return True, f"Conversation archived as: {archive_name}"
+        
+    except Exception as e:
+        logger.error(f"Error archiving conversation: {e}")
+        return False, f"Error archiving conversation: {str(e)}"
+
+def list_archives(self, username: str) -> List[str]:
+    """List all archived conversations for a user."""
+    try:
+        # Get the archives directory
+        archives_dir = os.path.join(self.conversation_dir, "archives", username)
+        
+        # Check if the directory exists
+        if not os.path.exists(archives_dir):
+            return []
+            
+        # Get all JSON files in the directory
+        archives = [f for f in os.listdir(archives_dir) if f.endswith('.json')]
+        
+        return sorted(archives)
+        
+    except Exception as e:
+        logger.error(f"Error listing archives: {e}")
+        return []
+
+    def swap_conversation(self, username: str, archive_name: str) -> Tuple[bool, str]:
+        """Swap between current and archived conversations."""
+        try:
+            # Get the path to the current conversation file
+            current_file_path = self.get_file_path(username)
+            
+            # Get the path to the archived conversation file
+            archives_dir = os.path.join(self.conversation_dir, "archives", username)
+            archive_file_path = os.path.join(archives_dir, archive_name)
+            
+            # Make sure archive name ends with .json
+            if not archive_name.endswith('.json'):
+                archive_file_path += '.json'
+            
+            # Check if the archived file exists
+            if not os.path.exists(archive_file_path):
+                return False, f"Archive '{archive_name}' not found."
+                
+            # Create a temporary archive of the current conversation
+            temp_archive_success, temp_archive_message = self.archive_conversation(username, f"temp_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+            if not temp_archive_success:
+                return False, f"Failed to create temporary archive: {temp_archive_message}"
+            
+            # Read the archived conversation
+            with open(archive_file_path, 'r', encoding='utf-8') as archive_file:
+                archived_conversations = json.load(archive_file)
+            
+            # Write the archived conversation to the current conversation file
+            with open(current_file_path, 'w', encoding='utf-8') as current_file:
+                json.dump(archived_conversations, current_file, indent=2)
+            
+            return True, f"Swapped to archive: {archive_name}"
+            
+        except Exception as e:
+            logger.error(f"Error swapping conversation: {e}")
+            return False, f"Error swapping conversation: {str(e)}"
             
             
 class UserPreferencesManager:
@@ -2398,6 +2496,77 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error deleting messages: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while deleting messages.")
 
+        @self.tree.command(name="archive_conversation", description="Archive your current conversation history")
+        @app_commands.describe(
+            archive_name="Optional name for the archive (defaults to timestamp)"
+        )
+        async def archive_conversation(interaction: discord.Interaction, archive_name: str = None):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                success, message = self.conversation_manager.archive_conversation(interaction.user.name, archive_name)
+                
+                if success:
+                    await interaction.followup.send(f"*neural storage complete!* {message}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"*neural error detected!* {message}", ephemeral=True)
+                    
+            except Exception as e:
+                logger.error(f"Error archiving conversation: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while archiving the conversation.", ephemeral=True)
+
+        @self.tree.command(name="list_archives", description="List your archived conversation histories")
+        async def list_archives(interaction: discord.Interaction):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                archives = self.conversation_manager.list_archives(interaction.user.name)
+                
+                if not archives:
+                    await interaction.followup.send("*neural archives empty!* You don't have any archived conversations.", ephemeral=True)
+                    return
+                
+                # Format the list of archives
+                response = "*accessing neural storage banks...*\n\n"
+                response += "**ARCHIVED CONVERSATIONS**\n\n"
+                
+                for i, archive in enumerate(archives):
+                    # Try to extract a timestamp from the filename
+                    timestamp_match = re.search(r'(\d{8}_\d{6})', archive)
+                    if timestamp_match:
+                        try:
+                            timestamp = datetime.strptime(timestamp_match.group(1), "%Y%m%d_%H%M%S")
+                            formatted_time = timestamp.strftime("%Y-%m-%d %H:%M:%S")
+                            response += f"{i+1}. **{archive}** (Created: {formatted_time})\n"
+                        except:
+                            response += f"{i+1}. **{archive}**\n"
+                    else:
+                        response += f"{i+1}. **{archive}**\n"
+                
+                response += "\n*use `/swap_conversation` to swap between current and archived conversations*"
+                
+                await interaction.followup.send(response, ephemeral=True)
+                
+            except Exception as e:
+                logger.error(f"Error listing archives: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while listing archives.", ephemeral=True)
+
+        @self.tree.command(name="swap_conversation", description="Swap between current and archived conversation histories")
+        @app_commands.describe(
+            archive_name="Name of the archive to swap with"
+        )
+        async def swap_conversation(interaction: discord.Interaction, archive_name: str):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                success, message = self.conversation_manager.swap_conversation(interaction.user.name, archive_name)
+                
+                if success:
+                    await interaction.followup.send(f"*neural reconfiguration complete!* {message}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"*neural error detected!* {message}", ephemeral=True)
+                    
+            except Exception as e:
+                logger.error(f"Error swapping conversation: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while swapping conversations.", ephemeral=True)
+
         @self.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
         @app_commands.describe(
             question="The question to generate a prompt for",
@@ -2600,7 +2769,7 @@ class DiscordBot(commands.Bot):
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
                     "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                     "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
-                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel"], 
+                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
                 
@@ -3107,7 +3276,7 @@ class DiscordBot(commands.Bot):
                 
                 if success:
                     status = "enabled" if enabled else "disabled"
-                    await interaction.followup.send(f"*neural pathways reconfigured!* Channel message parsing is now **{status}**.\n\nWhen enabled, I will include the last **{message_count}** messages from the channel in my context to better understand conversations and roleplay scenarios.")
+                    await interaction.followup.send(f"*neural pathways reconfigured!* Channel message parsing is now **{status}**.\n\nWhen enabled, when you ping me I will include the last **{message_count}** messages from the channel in my context to better understand conversations and roleplay scenarios.")
                 else:
                     await interaction.followup.send("*synaptic error detected!* Failed to save your preference. Please try again later.")
                     
