@@ -1424,46 +1424,46 @@ class ConversationManager:
             return False, f"Error deleting messages: {str(e)}", 0
 
     def archive_conversation(self, username: str, archive_name: str = None) -> Tuple[bool, str]:
-    """Archive a user's conversation history."""
-    try:
-        # Get the path to the current conversation file
-        current_file_path = self.get_file_path(username)
-        
-        # Check if the file exists
-        if not os.path.exists(current_file_path):
-            return False, "No conversation history found to archive."
+        """Archive a user's conversation history."""
+        try:
+            # Get the path to the current conversation file
+            current_file_path = self.get_file_path(username)
             
-        # Create archives directory if it doesn't exist
-        archives_dir = os.path.join(self.conversation_dir, "archives", username)
-        os.makedirs(archives_dir, exist_ok=True)
-        
-        # Generate archive name if not provided
-        if not archive_name:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            archive_name = f"archive_{timestamp}"
-        else:
-            # Sanitize archive name
-            archive_name = "".join(c for c in archive_name if c.isalnum() or c in (' ', '.', '_')).rstrip()
-        
-        # Make sure archive name ends with .json
-        if not archive_name.endswith('.json'):
-            archive_name += '.json'
-        
-        # Set the path for the archived file
-        archive_file_path = os.path.join(archives_dir, archive_name)
-        
-        # Copy the current conversation to the archive
-        with open(current_file_path, 'r', encoding='utf-8') as current_file:
-            conversations = json.load(current_file)
+            # Check if the file exists
+            if not os.path.exists(current_file_path):
+                return False, "No conversation history found to archive."
+                
+            # Create archives directory if it doesn't exist
+            archives_dir = os.path.join(self.conversation_dir, "archives", username)
+            os.makedirs(archives_dir, exist_ok=True)
             
-            with open(archive_file_path, 'w', encoding='utf-8') as archive_file:
-                json.dump(conversations, archive_file, indent=2)
-        
-        return True, f"Conversation archived as: {archive_name}"
-        
-    except Exception as e:
-        logger.error(f"Error archiving conversation: {e}")
-        return False, f"Error archiving conversation: {str(e)}"
+            # Generate archive name if not provided
+            if not archive_name:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                archive_name = f"archive_{timestamp}"
+            else:
+                # Sanitize archive name
+                archive_name = "".join(c for c in archive_name if c.isalnum() or c in (' ', '.', '_')).rstrip()
+            
+            # Make sure archive name ends with .json
+            if not archive_name.endswith('.json'):
+                archive_name += '.json'
+            
+            # Set the path for the archived file
+            archive_file_path = os.path.join(archives_dir, archive_name)
+            
+            # Copy the current conversation to the archive
+            with open(current_file_path, 'r', encoding='utf-8') as current_file:
+                conversations = json.load(current_file)
+                
+                with open(archive_file_path, 'w', encoding='utf-8') as archive_file:
+                    json.dump(conversations, archive_file, indent=2)
+            
+            return True, f"Conversation archived as: {archive_name}"
+            
+        except Exception as e:
+            logger.error(f"Error archiving conversation: {e}")
+            return False, f"Error archiving conversation: {str(e)}"
 
 def list_archives(self, username: str) -> List[str]:
     """List all archived conversations for a user."""
