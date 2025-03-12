@@ -3571,8 +3571,7 @@ class DiscordBot(commands.Bot):
                         await thinking_msg.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
 
                 temperature = self.calculate_dynamic_temperature(
-                    question,
-                    conversation_messages
+                    question
                 )
 
                 completion, actual_model = await self._try_ai_completion(
