@@ -1102,8 +1102,9 @@ class DocumentManager:
             filtered_results = [r for r in reranked_results if r[2] >= min_score]
 
         # Only limit to top_k if we have more than needed and filter_mode isn't 'strict'
-        if filter_mode != 'strict' and top_k and len(filtered_results) > top_k:
+        if top_k and len(filtered_results) > top_k:
             final_results = filtered_results[:top_k]
+            logger.info(f"Enforcing maximum of {top_k} results (had {len(filtered_results)} after filtering)")
         else:
             final_results = filtered_results
 
