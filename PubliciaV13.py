@@ -628,26 +628,53 @@ class DocumentManager:
         
         return mapping
     
-    def search(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
+    def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
         """
-        Search for relevant document chunks.
-        Returns a list of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
+        Search for relevant document chunks with optional re-ranking.
+        
+        Args:
+            query: The search query
+            top_k: Number of final results to return
+            apply_reranking: Whether to apply re-ranking (overrides config setting)
+            
+        Returns:
+            List of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
         """
         try:
             if top_k is None:
                 top_k = self.top_k
             
+            # Determine whether to apply re-ranking
+            if apply_reranking is None and self.config:
+                apply_reranking = self.config.RERANKING_ENABLED
+            
             if not query or not query.strip():
                 logger.warning("Empty query provided to search")
                 return []
                 
-            # Generate query embedding using Google's Generative AI with retrieval_query task type
+            # Generate query embedding
             query_embedding = self.generate_embeddings([query], is_query=True)[0]
             
-            return self.custom_search_with_embedding(query_embedding, top_k)
+            # Determine how many initial results to retrieve
+            initial_top_k = self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k
+            initial_top_k = max(initial_top_k, top_k)  # Always get at least top_k results
             
+            # Get initial results
+            initial_results = self.custom_search_with_embedding(query_embedding, top_k=initial_top_k)
+            
+            # Apply re-ranking if enabled and we have enough results
+            if apply_reranking and len(initial_results) > 1:  
+                logger.info(f"Applying re-ranking to {len(initial_results)} initial results")
+                return self.rerank_results(query, initial_results, top_k=top_k)
+            else:
+                # No re-ranking, return initial results
+                logger.info(f"Skipping re-ranking (enabled={apply_reranking}, results={len(initial_results)})")
+                return initial_results[:top_k]
+                
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return []
 
     def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
@@ -999,6 +1026,77 @@ class DocumentManager:
             logger.error(f"Error deleting document {name}: {e}")
             return False
 
+    def rerank_results(self, query: str, initial_results: List[Tuple], top_k: int = None) -> List[Tuple]:
+        """
+        Re-rank search results using the Gemini embedding model for more nuanced relevance.
+        
+        Args:
+            query: The search query
+            initial_results: List of tuples (doc_name, chunk, similarity, image_id, chunk_index, total_chunks)
+            top_k: Number of results to return after re-ranking
+            
+        Returns:
+            List of re-ranked results
+        """
+        if top_k is None:
+            top_k = self.top_k
+            
+        if not initial_results:
+            return []
+        
+        logger.info(f"Re-ranking {len(initial_results)} initial results for query: {query}")
+        
+        # Extract the text chunks from the initial results
+        chunks = [result[1] for result in initial_results]
+        
+        # Create specialized embedding queries for re-ranking
+        # This approach creates embeddings that better capture relevance to the specific query
+        
+        # 1. Generate a query-focused embedding that represents what we're looking for
+        query_context = f"Question: {query}\nWhat information would fully answer this question?"
+        query_embedding = self.generate_embeddings([query_context], is_query=True)[0]
+        
+        # 2. Generate content-focused embeddings for each chunk
+        content_texts = [f"This document contains the following information: {chunk}" for chunk in chunks]
+        content_embeddings = self.generate_embeddings(content_texts, is_query=False)
+        
+        # 3. Calculate relevance scores using these specialized embeddings
+        relevance_scores = np.dot(content_embeddings, query_embedding)
+        
+        # 4. Create re-ranked results by combining original and new scores
+        reranked_results = []
+        for i, (doc, chunk, orig_sim, image_id, chunk_idx, total_chunks) in enumerate(initial_results):
+            if i < len(relevance_scores):
+                # Use weighted combination (favor the re-ranking score)
+                combined_score = 0.3 * orig_sim + 0.7 * float(relevance_scores[i])
+                reranked_results.append((doc, chunk, combined_score, image_id, chunk_idx, total_chunks))
+        
+        # 5. Sort by combined score
+        reranked_results.sort(key=lambda x: x[2], reverse=True)
+        
+        # 6. Filter by minimum score threshold
+        min_score = self.config.RERANKING_MIN_SCORE if self.config else 0.5
+        filtered_results = [r for r in reranked_results if r[2] >= min_score]
+        
+        # Use filtered results if we have enough, otherwise use all re-ranked results
+        final_results = filtered_results if len(filtered_results) >= top_k else reranked_results
+        
+        # Log before/after for comparison
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(f"Re-ranking changed results from {len(initial_results)} to {len(final_results[:top_k])}")
+            
+            # Log the top 3 results before and after for comparison
+            logger.info("Top 3 BEFORE re-ranking:")
+            for i, (doc, chunk, sim, img_id, idx, total) in enumerate(initial_results[:3]):
+                logger.info(f"  #{i+1}: {doc} (score: {sim:.3f})")
+                
+            logger.info("Top 3 AFTER re-ranking:")
+            for i, (doc, chunk, sim, img_id, idx, total) in enumerate(final_results[:3]):
+                logger.info(f"  #{i+1}: {doc} (score: {sim:.3f})")
+        
+        # Return top_k results
+        return final_results[:top_k]
+
 class Config:
     """Configuration settings for the bot."""
     
@@ -1078,6 +1176,10 @@ class Config:
         self.TEMPERATURE_BASE = float(os.getenv('TEMPERATURE_BASE', '0.1'))
         self.TEMPERATURE_MIN = float(os.getenv('TEMPERATURE_MIN', '0.0'))
         self.TEMPERATURE_MAX = float(os.getenv('TEMPERATURE_MAX', '0.4'))
+
+        self.RERANKING_ENABLED = bool(os.getenv('RERANKING_ENABLED', 'False').lower() in ('true', '1', 'yes'))
+        self.RERANKING_CANDIDATES = int(os.getenv('RERANKING_CANDIDATES', '20'))  # Number of initial candidates
+        self.RERANKING_MIN_SCORE = float(os.getenv('RERANKING_MIN_SCORE', '0.5'))  # Minimum score threshold
 
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
@@ -5085,15 +5187,23 @@ class DiscordBot(commands.Bot):
         return weighted_embedding
 
     def process_hybrid_query(self, question: str, username: str, max_results: int = 5):
-        """Process queries using a hybrid of caching and context-aware embeddings."""
-        # 1. Detect if this is a context-dependent query
+        """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
+        # First, detect if this is a context-dependent query
         is_followup = self.is_context_dependent_query(question)
         original_question = question
         
         # For standard non-follow-up queries
         if not is_followup:
-            # Do regular search
-            search_results = self.document_manager.search(question, top_k=max_results)
+            # Determine whether to apply re-ranking
+            apply_reranking = self.config.RERANKING_ENABLED
+            
+            # Do regular search with re-ranking
+            search_results = self.document_manager.search(
+                question, 
+                top_k=max_results,
+                apply_reranking=apply_reranking
+            )
+            
             # Cache for future follow-ups
             self.cache_search_results(username, question, search_results)
             return search_results
@@ -5101,7 +5211,7 @@ class DiscordBot(commands.Bot):
         # For follow-up queries
         logger.info(f"Detected follow-up query: '{question}'")
         
-        # 2. First, try to get more results from previous search
+        # Try to get more results from previous search
         cached_results = self.get_additional_results(username, top_k=max_results)
         
         if cached_results:
@@ -5109,7 +5219,7 @@ class DiscordBot(commands.Bot):
             logger.info(f"Using {len(cached_results)} cached results")
             return cached_results
         
-        # 3. No cached results, use context-aware search
+        # No cached results, use context-aware search
         logger.info("No cached results, performing context-aware search")
         
         # Get conversation context
@@ -5117,17 +5227,38 @@ class DiscordBot(commands.Bot):
         
         if context:
             logger.info(f"Using context from conversation: '{context}'")
+            
             # Generate context-aware embedding
             embedding = self.generate_context_aware_embedding(question, context)
-            # Search with this embedding
+            
+            # Search with this embedding and apply re-ranking
+            apply_reranking = self.config.RERANKING_ENABLED
+            
+            if apply_reranking:
+                # Get more initial results for re-ranking
+                initial_results = self.document_manager.custom_search_with_embedding(
+                    embedding, 
+                    top_k=self.config.RERANKING_CANDIDATES
+                )
+                
+                # Apply re-ranking
+                if initial_results:
+                    logger.info(f"Applying re-ranking to {len(initial_results)} context-aware results")
+                    results = self.document_manager.rerank_results(question, initial_results, top_k=max_results)
+                    return results
+            
+            # If re-ranking is disabled or failed, use standard search
             results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
+            return results
         else:
-            # Fallback to normal search
-            logger.info("No context found, using standard search")
-            results = self.document_manager.search(question, top_k=max_results)
-        
-        return results
-
+            # Fallback to normal search with re-ranking
+            logger.info("No context found, using standard search with re-ranking")
+            search_results = self.document_manager.search(
+                question, 
+                top_k=max_results,
+                apply_reranking=self.config.RERANKING_ENABLED
+            )
+            return search_results
 
 async def main():
     try:
