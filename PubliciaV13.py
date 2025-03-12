@@ -1079,7 +1079,35 @@ class DocumentManager:
         filtered_results = [r for r in reranked_results if r[2] >= min_score]
         
         # Use filtered results if we have enough, otherwise use all re-ranked results
-        final_results = filtered_results if len(filtered_results) >= top_k else reranked_results
+        filter_mode = self.config.RERANKING_FILTER_MODE if self.config else 'strict'
+
+        # Apply filtering based on mode
+        if filter_mode == 'dynamic':
+            # Analyze score distribution and set threshold dynamically
+            scores = [score for _, _, score, _, _, _ in reranked_results]
+            if scores:
+                mean = sum(scores) / len(scores)
+                # Set threshold to mean * factor (can be tuned)
+                dynamic_threshold = mean * 0.8  # 80% of mean
+                min_score = max(min_score, dynamic_threshold)
+                logger.info(f"Dynamic threshold set to {min_score:.3f} (80% of mean {mean:.3f})")
+                filtered_results = [r for r in reranked_results if r[2] >= min_score]
+            else:
+                filtered_results = []
+        elif filter_mode == 'topk':
+            # Traditional behavior - get top k regardless of score
+            filtered_results = reranked_results[:top_k] if top_k else reranked_results
+        else:
+            # 'strict' mode - use absolute threshold (already calculated above)
+            filtered_results = [r for r in reranked_results if r[2] >= min_score]
+
+        # Only limit to top_k if we have more than needed and filter_mode isn't 'strict'
+        if filter_mode != 'strict' and top_k and len(filtered_results) > top_k:
+            final_results = filtered_results[:top_k]
+        else:
+            final_results = filtered_results
+
+        logger.info(f"Re-ranking with '{filter_mode}' mode: {len(reranked_results)} -> {len(final_results)} results")
         
         # Log before/after for comparison
         if logger.isEnabledFor(logging.INFO):
@@ -1180,6 +1208,8 @@ class Config:
         self.RERANKING_ENABLED = bool(os.getenv('RERANKING_ENABLED', 'False').lower() in ('true', '1', 'yes'))
         self.RERANKING_CANDIDATES = int(os.getenv('RERANKING_CANDIDATES', '20'))  # Number of initial candidates
         self.RERANKING_MIN_SCORE = float(os.getenv('RERANKING_MIN_SCORE', '0.5'))  # Minimum score threshold
+
+        self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
