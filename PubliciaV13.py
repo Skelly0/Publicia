@@ -1074,6 +1074,20 @@ class Config:
             },
             # Add any other model variants that need custom provider ordering
         }
+
+        self.TEMPERATURE_BASE = float(os.getenv('TEMPERATURE_BASE', '0.1'))
+        self.TEMPERATURE_MIN = float(os.getenv('TEMPERATURE_MIN', '0.0'))
+        self.TEMPERATURE_MAX = float(os.getenv('TEMPERATURE_MAX', '0.4'))
+
+        # Validate temperature settings
+        if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
+            logger.warning(f"Invalid temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")
+            logger.warning("Temperatures should satisfy: 0 ≤ MIN ≤ BASE ≤ MAX ≤ 1")
+            # Fall back to defaults if settings are invalid
+            self.TEMPERATURE_BASE = 0.1 
+            self.TEMPERATURE_MIN = 0.0
+            self.TEMPERATURE_MAX = 0.4
+            logger.warning(f"Using fallback temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")
    
     def get_provider_config(self, model: str):
         # Extract base model without suffixes like :free or :nitro
@@ -3556,13 +3570,17 @@ class DiscordBot(commands.Bot):
                         logger.info(f"Added {len(channel_messages)} channel messages to context")
                         await thinking_msg.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
 
-                # Get AI response using user's preferred model
+                temperature = self.calculate_dynamic_temperature(
+                    question,
+                    conversation_messages
+                )
+
                 completion, actual_model = await self._try_ai_completion(
                     preferred_model,
                     messages,
                     image_ids=image_ids,
                     image_attachments=image_attachments,
-                    temperature=0.1
+                    temperature=temperature 
                 )
 
                 if completion and completion.get('choices') and len(completion['choices']) > 0:
@@ -4166,7 +4184,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
         """Get AI completion with dynamic fallback options based on the requested model.
         
         Returns:
@@ -4710,6 +4728,12 @@ class DiscordBot(commands.Bot):
                     await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
                 else:
                     await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+
+            # Calculate dynamic temperature based on query and conversation history
+            temperature = self.calculate_dynamic_temperature(
+                question,
+                conversation_messages
+            )
             
             # Get AI response using user's preferred model
             completion, actual_model = await self._try_ai_completion(
@@ -4717,7 +4741,7 @@ class DiscordBot(commands.Bot):
                 messages,
                 image_ids=image_ids,
                 image_attachments=image_attachments,
-                temperature=0.1
+                temperature=temperature
             )
 
             if completion and completion.get('choices') and len(completion['choices']) > 0:
@@ -4765,6 +4789,120 @@ class DiscordBot(commands.Bot):
                 )
             except:
                 pass  # If even sending the error message fails, just log and move on
+
+    def calculate_dynamic_temperature(self, query: str, conversation_history=None):
+        """
+        Calculates appropriate temperature based on query type:
+        - Lower (TEMPERATURE_MIN-TEMPERATURE_BASE) for factual/information queries 
+        - Higher (TEMPERATURE_BASE-TEMPERATURE_MAX) for creative/roleplay scenarios
+        - Base of TEMPERATURE_BASE for balanced queries
+        """
+        # Get temperature constants from config
+        BASE_TEMP = self.config.TEMPERATURE_BASE
+        MIN_TEMP = self.config.TEMPERATURE_MIN
+        MAX_TEMP = self.config.TEMPERATURE_MAX
+        
+        # Normalize query
+        query = query.lower().strip()
+        
+        # Score tracking
+        roleplay_score = 0.0
+        information_score = 0.0
+        
+        # === ROLEPLAY DETECTION ===
+        
+        # Action descriptions with asterisks
+        action_count = len(re.findall(r"\*[^*]+\*", query))
+        if action_count > 0:
+            roleplay_score += min(1.5, action_count * 0.5)
+        
+        # Dialogue markers
+        if re.search(r"[\"'].+?[\"']", query):
+            roleplay_score += 0.8
+        
+        # Roleplay phrases
+        roleplay_phrases = [
+            # Basic roleplay indicators
+            "roleplay", "in character", "act as", "conversation", "scene", "scenario",
+            
+            # Speech indicators
+            "says", "say", "speak", "speaks", "said", "speaking", "talk", "talks", 
+            "reply", "replies", "respond", "responds", "answered", "tells", "told",
+            
+            # Action verbs
+            "does", "do", "perform", "performs", "acted", "acting", "moves", "moved",
+            "walks", "sits", "stands", "turns", "looks", "smiles", "frowns", "nods",
+            
+            # Narrative elements
+            "narrate", "describe scene", "setting", "environment", "continues", 
+            "starts", "begins", "enters", "exits", "appears", "suddenly",
+            
+            # Character emotions/states
+            "feeling", "felt", "emotion", "expression", "mood", "attitude",
+            "surprised", "excited", "nervous", "calm", "angry"
+        ]
+        if any(phrase in query for phrase in roleplay_phrases):
+            roleplay_score += 1.5
+            
+        # First-person narrative (common in roleplay)
+        first_person_count = len(re.findall(r"\b(i|me|my|mine|myself)\b", query))
+        if first_person_count > 1:
+            roleplay_score += 0.5
+        
+        # === INFORMATION DETECTION ===
+        
+        # Question indicators
+        question_markers = ["?", "what", "who", "where", "when", "why", "how"]
+        if any(marker in query.split() for marker in question_markers) or "?" in query:
+            information_score += 0.6
+        
+        # Information-seeking phrases
+        info_phrases = ["explain", "describe", "tell me", "information", "info", "details"]
+        if any(phrase in query for phrase in info_phrases):
+            information_score += 1.2
+        
+        # Lore-specific terms
+        lore_terms = ["ledus banum", "tundra", "empire", "imperial", "lore", 
+                    "history", "institution", "house", "region", "church"]
+        if any(term in query for term in lore_terms):
+            information_score += 1.0
+        
+        # === CONVERSATION CONTEXT ===
+        
+        # Check previous messages for roleplay context
+        if conversation_history and len(conversation_history) > 0:
+            recent_msgs = conversation_history[-min(3, len(conversation_history)):]
+            
+            for msg in recent_msgs:
+                msg_content = msg.get("content", "").lower()
+                if "*" in msg_content or any(phrase in msg_content for phrase in roleplay_phrases):
+                    roleplay_score += 0.8
+                    break
+        
+        # === CALCULATE FINAL TEMPERATURE ===
+        
+        # If both scores are very low, use base temperature
+        if roleplay_score < 0.5 and information_score < 0.5:
+            return BASE_TEMP
+        
+        # Calculate ratio of roleplay vs information
+        total_score = roleplay_score + information_score
+        if total_score > 0:
+            roleplay_ratio = roleplay_score / total_score
+        else:
+            roleplay_ratio = 0.5
+        
+        # Map ratio to temperature range
+        temp_range = MAX_TEMP - MIN_TEMP
+        temperature = MIN_TEMP + (roleplay_ratio * temp_range)
+        
+        # Ensure we're within boundaries
+        temperature = max(MIN_TEMP, min(MAX_TEMP, temperature))
+        
+        # Log for debugging
+        logger.info(f"Query temp analysis: '{query[:30]}...' - Roleplay: {roleplay_score:.1f}, Info: {information_score:.1f}, Temp: {temperature:.2f} [Range: {MIN_TEMP}-{MAX_TEMP}]")        
+        
+        return temperature
 
     def is_context_dependent_query(self, query: str) -> bool:
         """Determine if a query likely depends on conversation context."""
