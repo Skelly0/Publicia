@@ -1903,7 +1903,7 @@ class DiscordBot(commands.Bot):
                     
                 # Format the message
                 messages.append({
-                    "author": message.author.nick if (message.guild and message.author.nick) else message.author.name,
+                    "author": message.author.nick if (message.guild and hasattr(message.author, 'nick') and message.author.nick) else message.author.name,
                     "content": content,
                     "timestamp": message.created_at.isoformat()
                 })
@@ -4065,6 +4065,7 @@ class DiscordBot(commands.Bot):
                 response += "• Use `/query` command for more structured questions (supports image URLs for analysis)\n"
                 response += "• I'll search my knowledge base and provide answers with citations where possible\n"
                 response += "• You can attach images directly to mentioned messages for visual analysis\n\n"
+                response += "If you reply to a message and ping Publicia, she will be able to see the message you are replying to\n\n"
                 
                 # Knowledge Base
                 response += "## **KNOWLEDGE BASE & LIMITATIONS**\n\n"
@@ -4770,8 +4771,12 @@ class DiscordBot(commands.Bot):
                 google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
             
             # Get nickname or username
-            nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
-            
+            nickname = None
+            if message.guild and hasattr(message.author, 'nick') and message.author.nick:
+                nickname = message.author.nick
+            else:
+                nickname = message.author.name
+
             # Prepare messages for model
             messages = [
                 {
@@ -4783,12 +4788,19 @@ class DiscordBot(commands.Bot):
 
             if referenced_message:
                 # Get the author name/nickname
-                reply_author = referenced_message.author.nick if (message.guild and referenced_message.author.nick) else referenced_message.author.name
-                
+                reply_author = None
+                if message.guild and hasattr(referenced_message.author, 'nick') and referenced_message.author.nick:
+                    reply_author = referenced_message.author.nick
+                else:
+                    reply_author = referenced_message.author.name                
                 # Process the content to handle mentions
                 ref_content = referenced_message.content
                 for mention in referenced_message.mentions:
-                    mention_name = mention.nick if (message.guild and mention.nick) else mention.name
+                    mention_name = None
+                    if message.guild and hasattr(mention, 'nick') and mention.nick:
+                        mention_name = mention.nick
+                    else:
+                        mention_name = mention.name
                     ref_content = ref_content.replace(f'<@{mention.id}>', f'@{mention_name}').replace(f'<@!{mention.id}>', f'@{mention_name}')
                 
                 # Check for attachments
