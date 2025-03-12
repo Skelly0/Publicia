@@ -1017,13 +1017,13 @@ class Config:
         self.EMBEDDING_DIMENSIONS = int(os.getenv('EMBEDDING_DIMENSIONS', '0'))
         
         # Chunk size configuration
-        self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '750'))  # Default to 750 words per chunk
-        self.CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '125'))  # Default to 125 words overlap
+        self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '300'))  # Default to 750 words per chunk
+        self.CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '30'))  # Default to 125 words overlap
         
         # TOP_K configuration with multiplier
         self.TOP_K = int(os.getenv('TOP_K', '5'))
         self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
-        self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '0.7'))  # Default to no change
+        self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '1'))  # Default to no change
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
@@ -1034,7 +1034,7 @@ class Config:
             "deepseek/deepseek-r1:nitro": 7,
             "deepseek/deepseek-chat": 10,
             # Gemini models 
-            "google/gemini-2.0-flash-001": 15,
+            "google/gemini-2.0-flash-001": 17,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
@@ -2965,7 +2965,7 @@ class DiscordBot(commands.Bot):
                         f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                         f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                         f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                        f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -3023,7 +3023,7 @@ class DiscordBot(commands.Bot):
                     f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
                     f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
-                    f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                    f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -4452,7 +4452,12 @@ class DiscordBot(commands.Bot):
                 return
                 
             channel_name = message.channel.name if message.guild else "DM"
-                
+
+            referenced_message = None
+            if message.reference and message.reference.resolved:
+                referenced_message = message.reference.resolved
+                logger.info(f"Message is a reply to a message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
+                            
             # Check for LOBOTOMISE command
             if "LOBOTOMISE" in message.content.strip().upper():
                 try:
@@ -4615,6 +4620,34 @@ class DiscordBot(commands.Bot):
                 },
                 *conversation_messages
             ]
+
+            if referenced_message:
+                # Get the author name/nickname
+                reply_author = referenced_message.author.nick if (message.guild and referenced_message.author.nick) else referenced_message.author.name
+                
+                # Process the content to handle mentions
+                ref_content = referenced_message.content
+                for mention in referenced_message.mentions:
+                    mention_name = mention.nick if (message.guild and mention.nick) else mention.name
+                    ref_content = ref_content.replace(f'<@{mention.id}>', f'@{mention_name}').replace(f'<@!{mention.id}>', f'@{mention_name}')
+                
+                # Check for attachments
+                attachment_info = ""
+                if referenced_message.attachments:
+                    attachment_count = len(referenced_message.attachments)
+                    attachment_info = f" [with {attachment_count} attachment{'s' if attachment_count > 1 else ''}]"
+                
+                # Check if it's a message from Publicia herself
+                if referenced_message.author == self.user:
+                    messages.append({
+                        "role": "system",
+                        "content": f"The user is replying to your previous message: \"{ref_content}\"{attachment_info}"
+                    })
+                else:
+                    messages.append({
+                        "role": "system",
+                        "content": f"The user is replying to a message from {reply_author}: \"{ref_content}\"{attachment_info}"
+                    })
 
             # Add synthesized context if available
             if synthesis:
