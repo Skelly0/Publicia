@@ -4316,7 +4316,7 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
+    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
         """Get AI completion with dynamic fallback options based on the requested model.
         
         Returns:
@@ -4559,6 +4559,39 @@ class DiscordBot(commands.Bot):
                 if completion and completion.get('choices') and len(completion['choices']) > 0:
                     if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
                         response_content = completion['choices'][0]['message']['content']
+                        
+                        # Check if response is too short (implement retry logic)
+                        if len(response_content.strip()) < min_response_length:
+                            logger.warning(f"Response from {current_model} is too short ({len(response_content.strip())} chars): '{response_content}'")
+                            
+                            # If we have retries left, try again with the same model (possibly with higher temperature)
+                            if kwargs.get('_retry_count', 0) < max_retries:
+                                logger.info(f"Retrying with {current_model} (retry {kwargs.get('_retry_count', 0) + 1}/{max_retries})")
+                                
+                                # Create a copy of kwargs with incremented retry count and slightly higher temperature
+                                retry_kwargs = kwargs.copy()
+                                retry_kwargs['_retry_count'] = kwargs.get('_retry_count', 0) + 1
+                                
+                                # Increase temperature slightly for retry (but cap it)
+                                retry_temp = min(temperature * 1.2, 0.9)  # Increase by 20% but max 0.9
+                                
+                                # Recursive call to retry with the same model
+                                return await self._try_ai_completion(
+                                    current_model, 
+                                    messages, 
+                                    image_ids, 
+                                    image_attachments, 
+                                    retry_temp, 
+                                    max_retries,
+                                    min_response_length,
+                                    **retry_kwargs
+                                )
+                            else:
+                                # If we've used all retries for this model, log it and continue to the next model
+                                logger.warning(f"Used all retries for {current_model}, continuing to next model")
+                                continue
+                        
+                        # Normal case - response is long enough
                         logger.info(f"Successful completion from {current_model}")
                         logger.info(f"Response: {shorten(response_content, width=200, placeholder='...')}")
                         
