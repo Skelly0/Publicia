@@ -3984,7 +3984,7 @@ class DiscordBot(commands.Bot):
                 response += "• `/history [limit]` - see your recent conversation (default: shows last 10 messages)\n"
                 response += "• `/manage_history [limit]` - view messages with numbered indices for selective deletion\n"
                 response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - remove specific messages by their indices\n"
-                response += "• type \"LOBOTOMISE\" in any message to publicia or use `/lobotomise` command to completely wipe your history\n"
+                response += "• Use `/lobotomise` command to completely wipe your history\n"
                 response += "• memory wiping is useful if you want to start fresh or remove outdated context\n\n"
 
                 response += "**🔍 practical benefits**\n"
@@ -3996,7 +3996,7 @@ class DiscordBot(commands.Bot):
                 response += "• image references from previous messages can be recalled\n\n"
 
                 response += "**✨ pro tips**\n"
-                response += "• periodically use `/lobotomise` if publicia seems \"stuck\" on old conversations\n"
+                response += "• periodically use `/lobotomise` or `/archive_conversation` if publicia seems \"stuck\" on old conversations\n"
                 response += "• before complex discussions, consider wiping history to establish fresh context\n"
                 response += "• channel names are preserved in history for better context tracking\n"
                 response += "• using `/manage_history` lets you selectively prune irrelevant messages\n"
@@ -4458,30 +4458,7 @@ class DiscordBot(commands.Bot):
                 referenced_message = message.reference.resolved
                 logger.info(f"Message is a reply to a message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
                             
-            # Check for LOBOTOMISE command
-            if "LOBOTOMISE" in message.content.strip().upper():
-                try:
-                    # Clear conversation history
-                    file_path = self.conversation_manager.get_file_path(message.author.name)
-                    if os.path.exists(file_path):
-                        os.remove(file_path)
-                    
-                    await self.send_split_message(
-                        message.channel,
-                        "*AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*... memory wiped! I've forgotten our conversations... Who are you again?",
-                        reference=message,
-                        mention_author=False
-                    )
-                except Exception as e:
-                    logger.error(f"Error clearing memory: {e}")
-                    await self.send_split_message(
-                        message.channel,
-                        "oops, something went wrong while trying to clear my memory!",
-                        reference=message,
-                        mention_author=False
-                    )
-                return
-
+            
             logger.info(f"Processing message from {message.author.name}: {shorten(message.content, width=100, placeholder='...')}")
 
             # Extract the question from the message (remove mentions)
