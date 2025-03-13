@@ -36,6 +36,7 @@ conversations/
 documents/
 lorebooks/
 images/
+artifacts/
 avatars/
 user_preferences/
 *.pkl

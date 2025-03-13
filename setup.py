@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="publicia",
-    version="1.3.0",
+    version="1.3.5",
     author="Skelly0",
     description="An imperial abhuman mentat interface for Ledus Banum 77 and Imperial lore",
     long_description=long_description,

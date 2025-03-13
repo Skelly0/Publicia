@@ -12,8 +12,9 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Remembers conversations with individual users for contextual responses
 - Imports documents from text files or Google Docs with automatic refresh
 - Uses multiple AI models with fallback mechanisms for reliability
-- Performs semantic search across all knowledge documents and images
+- Performs semantic search with advanced reranking for improved relevance
 - Supports user-selectable AI models for different interaction styles
+- Features dynamic temperature control for better response quality
 
 ## Setup & Installation
 
@@ -46,13 +47,23 @@ GOOGLE_API_KEY=your_google_api_key
 
 # Optional (defaults shown)
 LLM_MODEL=google/gemini-2.0-flash-001
-CLASSIFIER_MODEL=google/gemini-2.0-flash-001
 EMBEDDING_MODEL=models/text-embedding-004
 EMBEDDING_DIMENSIONS=1024
 TOP_K=10
 TOP_K_MULTIPLIER=0.5
 API_TIMEOUT=150
 MAX_RETRIES=10
+
+# Temperature settings
+TEMPERATURE_MIN=0.0
+TEMPERATURE_BASE=0.1
+TEMPERATURE_MAX=0.4
+
+# Reranking configuration
+RERANKING_ENABLED=true
+RERANKING_CANDIDATES=20
+RERANKING_MIN_SCORE=0.5
+RERANKING_FILTER_MODE=strict
 ```
 
 4. Run the bot:
@@ -77,9 +88,17 @@ Users can select their preferred AI model for responses:
 - **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 3.5/3.7 Sonnet**: Admin-only premium capabilities
+- **Wayfarer 70B**: Optimized for narrative-driven roleplay
+- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
 
-### Semantic Document Search
-Publicia uses Google's Generative AI embeddings to understand the meaning behind user questions, not just keywords! This allows for more natural queries and better answers with proper citations.
+The bot includes automatic retry systems when models return blank or extremely short responses, and will fall back to alternative models when needed.
+
+### Advanced Semantic Search
+Publicia uses Google's Generative AI embeddings with sophisticated reranking mechanisms:
+- Multiple filter modes for improved relevance (strict, dynamic, topk)
+- Customizable minimum score threshold
+- Weighted combination of initial and reranked scores
+- Dynamic parsing limits based on query complexity
 
 ### Conversation Memory
 The bot remembers interactions with each user, providing continuity across conversations. Each user has their own conversation history that provides context for the AI, and can view or manage their history.
@@ -91,12 +110,19 @@ Automatically fetch and update content from Google Docs to keep your lore fresh 
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 
+### Dynamic Temperature Control
+The bot automatically adjusts response temperature based on query type:
+- Lower temperature for factual/information queries
+- Higher temperature for creative/roleplay scenarios
+- Base temperature for balanced queries
+- Detects context through analysis of roleplay elements, question markers, etc.
+
 ### Debugging and Logging
 Comprehensive tools to help troubleshoot issues:
 - Toggle debug mode to show which model generated responses
+- Export prompts to see exactly what's being sent to the models
 - Detailed logs for tracking operations and errors
 - Performance monitoring and optimization
-- Export prompts to see exactly what's being sent to the models
 
 ## Commands
 
@@ -117,6 +143,7 @@ Comprehensive tools to help troubleshoot issues:
 | `/manage_history` | View and manage history with indices |
 | `/delete_history_messages` | Delete specific messages |
 | `/lobotomise` | Wipe your conversation history |
+| `/parse_channel` | Toggle parsing of channel messages for context |
 
 #### Document Management
 | Command | Description |
@@ -158,23 +185,26 @@ Comprehensive tools to help troubleshoot issues:
 
 ## Recent Updates
 
-### Version 13
+### Version 13.5 (March 2025)
+- Fixed "user object has no attribute nickname" error for better user mentions handling
+- Added retry system when models return blank or extremely short responses
+- Made TOP_K act as a maximum limit for chunks parsed in
+- Enhanced reranking system with improved filter modes for better search relevance
+- Added better error handling for edge cases
+- Improved message splitting for longer responses
+
+### Version 13 (February 2025)
 - Updated to use Google's Generative AI for embeddings
-- Added `/export_prompt` command for debugging
+- Added dynamic temperature control system for better response quality
+- Implemented sophisticated result reranking with multiple filter modes
+- Added new models: Wayfarer 70B and Anubis Pro 105B
+- Enhanced embedding configuration with dimension control
 - Improved error handling and recovery mechanisms
+- Added `/export_prompt` command for debugging
 - Added more fallback options for models
 - Simplified search system for better reliability
-- Added support for Qwen QwQ 32B model
-- Added new testing model options
 - Enhanced message splitting for better Discord compatibility
-
-### Version 12
-- Added support for Claude 3.5 and 3.7 models
-- Improved conversation history management
-- Enhanced image description capabilities
-- Better Google Doc integration
-- More robust error handling
-- Comprehensive logging system
+- Improved handling of empty documents with automatic cleanup
 
 ## Documentation
 

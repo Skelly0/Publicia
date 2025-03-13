@@ -130,17 +130,21 @@ Users can choose their preferred AI model:
 - Claude 3.5 Haiku: Fast responses with image capabilities
 - Claude 3.5 Sonnet: Premium capabilities (admin restricted)
 - Claude 3.7 Sonnet: Premium capabilities (admin restricted)
-- Testing Model: Currently using EVA Qwen2.5 72B, can be swapped for testing
+- Wayfarer 70B: Optimized for narrative-driven roleplay
+- Anubis Pro 105B: Large parameter model with enhanced emotional intelligence
+- Testing Model: Experimental models for testing
 
 Each model has different strengths, fallback mechanisms ensure reliability.
 
 ### Search and Retrieval
 
-The search system has been simplified in recent versions:
+The search system has been enhanced in recent versions:
 
 1. **Query Processing**: Direct semantic search using embeddings
 2. **Search Results**: Top k results based on semantic similarity
-3. **Response Generation**: Creates roleplayed response with citations
+3. **Reranking**: Sophisticated reranking of results for improved relevance
+4. **Response Generation**: Creates roleplayed response with citations
+5. **Empty Response Handling**: Automatic retry system when models return blank responses
 
 ### Embedding System
 
@@ -150,6 +154,25 @@ The bot now uses Google's Generative AI for embeddings:
 - Supports configurable embedding dimensions
 - Automatically handles truncation for storage efficiency
 - Provides better semantic understanding than previous embedding systems
+
+### Dynamic Response Temperature
+
+Automatically adjusts the LLM temperature based on query type:
+
+- Low temperature (TEMPERATURE_MIN) for factual/information queries
+- Higher temperature (TEMPERATURE_MAX) for creative/roleplay scenarios
+- Base temperature (TEMPERATURE_BASE) for balanced queries
+- Detects query context through analysis of roleplay elements, question markers, etc.
+
+### Result Reranking
+
+Sophisticated reranking of search results to improve relevance:
+
+- Multiple filter modes: strict, dynamic, and topk
+- Customizable minimum score threshold
+- Reranking candidates configuration
+- Weighted combination of initial and reranked scores
+- TOP_K now acts as a maximum limit for chunks parsed
 
 ## Setup Guide
 
@@ -181,13 +204,23 @@ DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=google/gemini-2.0-flash-001  # Default model
-CLASSIFIER_MODEL=google/gemini-2.0-flash-001  # For query analysis
 EMBEDDING_MODEL=models/text-embedding-004  # Google embedding model
 EMBEDDING_DIMENSIONS=1024  # Optional: truncate embeddings to save space
 TOP_K=10  # Number of search results to return
 TOP_K_MULTIPLIER=0.5  # Optional: adjust number of results based on model
 API_TIMEOUT=150  # Seconds
 MAX_RETRIES=10
+
+# Temperature settings for different query types
+TEMPERATURE_MIN=0.0  # For factual queries
+TEMPERATURE_BASE=0.1  # Default balanced temperature
+TEMPERATURE_MAX=0.4  # For creative/roleplay queries
+
+# Reranking configuration
+RERANKING_ENABLED=true
+RERANKING_CANDIDATES=20  # Number of initial results to consider
+RERANKING_MIN_SCORE=0.5  # Threshold for relevance
+RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
 ```
 
 5. Create necessary directories
@@ -277,6 +310,9 @@ The bot will display a startup banner and initialize all components.
 
 - `/lobotomise`: Wipe your conversation history
 
+- `/parse_channel`: Toggle parsing of channel messages for context
+  - **Parameters**: `enabled` (true/false), `message_count` (number of messages)
+
 #### Settings and Utilities
 
 - `/set_model`: Change your preferred AI model
@@ -328,9 +364,11 @@ Choose models based on your needs:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 3.5 Sonnet**: Advanced capabilities, more creative than 3.7 Sonnet (admin-only)
 - **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
+- **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
+- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
 - **Testing Model**: Experimental models for testing
 
-The bot will automatically fall back to available models if your preferred model fails.
+The bot will automatically fall back to available models if your preferred model fails, and includes an automatic retry system when models return blank or extremely short responses.
 
 ### Document Organization Tips
 
@@ -348,6 +386,8 @@ The bot will automatically fall back to available models if your preferred model
 - Consider removing unused documents to reduce search space
 - Choose faster models (like Gemini Flash) for simple queries
 - Set EMBEDDING_DIMENSIONS to truncate embeddings for better storage efficiency
+- Configure dynamic temperature settings for response quality and relevance
+- Optimize reranking settings based on your needs
 
 ### Backup Strategies
 
@@ -374,6 +414,24 @@ The bot will automatically fall back to available models if your preferred model
 - Check logs for detailed operation information
 - Use admin commands for maintenance when needed
 
+### Custom Temperature Settings
+
+The bot uses dynamic temperature control based on query type:
+
+- Edit TEMPERATURE_MIN (default: 0.0) for factual queries
+- Edit TEMPERATURE_BASE (default: 0.1) for balanced queries
+- Edit TEMPERATURE_MAX (default: 0.4) for creative roleplay
+- The bot automatically analyzes queries and conversation context to select appropriate temperature
+
+### Reranking Configuration
+
+Customize search result reranking with these settings:
+
+- RERANKING_ENABLED: Turn reranking on/off
+- RERANKING_CANDIDATES: Number of initial results to consider for reranking
+- RERANKING_MIN_SCORE: Threshold score for relevance
+- RERANKING_FILTER_MODE: Choose between strict (absolute threshold), dynamic (adapts threshold based on results), or topk (traditional top-k regardless of score)
+
 ## Troubleshooting
 
 ### Common Issues
@@ -388,6 +446,7 @@ The bot will automatically fall back to available models if your preferred model
 - Use more specific queries
 - Check document formatting and content
 - Adjust TOP_K value in .env
+- Configure RERANKING settings for better results
 - Consider regenerating embeddings with `/regenerate_embeddings`
 
 #### Model Errors
@@ -413,6 +472,12 @@ The bot will automatically fall back to available models if your preferred model
 - Check if EMBEDDING_DIMENSIONS is set correctly
 - Try regenerating embeddings with `/regenerate_embeddings`
 - Make sure the Google Generative AI library is installed
+
+#### Empty or Short Responses
+- The bot has an automatic retry system for empty responses
+- Try adjusting the model temperature settings
+- Some models may have token limits that affect response length
+- Check if your query is too complex or ambiguous
 
 ### Logging and Debugging
 
@@ -445,15 +510,26 @@ If data becomes corrupted:
 
 ## Recent Updates
 
-### Version 13
-- Updated to use Google's Generative AI for embeddings
-- Added `/export_prompt` command for debugging
+### Version 13.5 (March 2025)
+- Fixed "user object has no attribute nickname" error for better handling of user mentions
+- Added retry system when models return blank or extremely short responses
+- Made TOP_K act as a maximum limit for chunks parsed in
+- Enhanced reranking system with improved filter modes for better search relevance
+- Added better error handling for edge cases
+- Improved message splitting for longer responses
+
+### Version 13 (February 2025)
+- Updated to use Google's Generative AI for embeddings (models/text-embedding-004)
+- Added dynamic temperature control system for better response quality
+- Implemented sophisticated result reranking with multiple filter modes
+- Added new models: Wayfarer 70B and Anubis Pro 105B
+- Enhanced embedding configuration with dimension control
 - Improved error handling and recovery mechanisms
+- Added `/export_prompt` command for debugging
 - Added more fallback options for models
 - Simplified search system for better reliability
-- Added support for Qwen QwQ 32B model
-- Added new testing model options
 - Enhanced message splitting for better Discord compatibility
+- Improved handling of empty documents with automatic cleanup
 
 ### Version 12
 - Added support for Claude 3.5 and 3.7 models
@@ -465,4 +541,4 @@ If data becomes corrupted:
 
 ---
 
-This documentation covers the main aspects of Publicia's functionality and setup. For more specific questions or advanced configurations, consult the source code or reach out for additional support.
+This documentation covers the main aspects of Publicia's functionality and setup. For specific questions or advanced configurations, consult the source code or reach out for additional support.
