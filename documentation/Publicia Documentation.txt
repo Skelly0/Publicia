@@ -69,9 +69,9 @@ Publicia is built on Python using discord.py, with several specialized component
 ### Data Flow
 
 1. User sends a query (message or command)
-2. Bot analyzes query with classifier model (usually Gemini)
+2. Bot processes the query using a direct search approach (simplified from earlier versions)
 3. Enhanced search finds relevant documents and images
-4. Search results are synthesized into context
+4. Search results are prepared as context
 5. User's conversation history is added for continuity
 6. AI model generates response based on all context
 7. Response is sent back to user, potentially with images
@@ -84,7 +84,7 @@ Publicia is built on Python using discord.py, with several specialized component
 The bot uses vector embeddings to store and retrieve documents semantically:
 
 - Documents are chunked into smaller sections for precise retrieval
-- Each chunk is converted to vector embeddings using SentenceTransformer
+- Each chunk is converted to vector embeddings using Google's Generative AI for embeddings
 - Queries are matched to the most relevant document chunks
 - Similarity scores determine the best matches
 - Documents can be added, removed, or searched directly
@@ -126,20 +126,53 @@ Users can choose their preferred AI model:
 - DeepSeek-R1: Best for immersive roleplaying
 - Gemini 2.0 Flash: Optimized for accuracy and image analysis
 - Nous: Hermes 405B: Balanced between creativity and precision
+- Qwen QwQ 32B: Great for roleplaying with strong lore accuracy
 - Claude 3.5 Haiku: Fast responses with image capabilities
 - Claude 3.5 Sonnet: Premium capabilities (admin restricted)
 - Claude 3.7 Sonnet: Premium capabilities (admin restricted)
+- Wayfarer 70B: Optimized for narrative-driven roleplay
+- Anubis Pro 105B: Large parameter model with enhanced emotional intelligence
+- Testing Model: Experimental models for testing
 
 Each model has different strengths, fallback mechanisms ensure reliability.
 
 ### Search and Retrieval
 
-The search system has multiple stages:
+The search system has been enhanced in recent versions:
 
-1. **Query Analysis**: Extracts key topics and search terms
-2. **Enhanced Search**: Uses analysis to improve search quality
-3. **Result Synthesis**: Combines search results into coherent context
+1. **Query Processing**: Direct semantic search using embeddings
+2. **Search Results**: Top k results based on semantic similarity
+3. **Reranking**: Sophisticated reranking of results for improved relevance
 4. **Response Generation**: Creates roleplayed response with citations
+5. **Empty Response Handling**: Automatic retry system when models return blank responses
+
+### Embedding System
+
+The bot now uses Google's Generative AI for embeddings:
+
+- Uses the `models/text-embedding-004` embedding model
+- Supports configurable embedding dimensions
+- Automatically handles truncation for storage efficiency
+- Provides better semantic understanding than previous embedding systems
+
+### Dynamic Response Temperature
+
+Automatically adjusts the LLM temperature based on query type:
+
+- Low temperature (TEMPERATURE_MIN) for factual/information queries
+- Higher temperature (TEMPERATURE_MAX) for creative/roleplay scenarios
+- Base temperature (TEMPERATURE_BASE) for balanced queries
+- Detects query context through analysis of roleplay elements, question markers, etc.
+
+### Result Reranking
+
+Sophisticated reranking of search results to improve relevance:
+
+- Multiple filter modes: strict, dynamic, and topk
+- Customizable minimum score threshold
+- Reranking candidates configuration
+- Weighted combination of initial and reranked scores
+- TOP_K now acts as a maximum limit for chunks parsed
 
 ## Setup Guide
 
@@ -148,6 +181,7 @@ The search system has multiple stages:
 - Python 3.8+ with pip
 - Discord Bot Token (from Discord Developer Portal)
 - OpenRouter API Key
+- Google API Key (for embeddings generation)
 - Required Python packages (see requirements section)
 
 ### Installation Steps
@@ -168,11 +202,25 @@ pip install -r requirements.txt
 ```
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
-LLM_MODEL=deepseek/deepseek-r1  # Default model
-CLASSIFIER_MODEL=google/gemini-2.0-flash-001  # For query analysis
+GOOGLE_API_KEY=your_google_api_key
+LLM_MODEL=google/gemini-2.0-flash-001  # Default model
+EMBEDDING_MODEL=models/text-embedding-004  # Google embedding model
+EMBEDDING_DIMENSIONS=1024  # Optional: truncate embeddings to save space
 TOP_K=10  # Number of search results to return
+TOP_K_MULTIPLIER=0.5  # Optional: adjust number of results based on model
 API_TIMEOUT=150  # Seconds
 MAX_RETRIES=10
+
+# Temperature settings for different query types
+TEMPERATURE_MIN=0.0  # For factual queries
+TEMPERATURE_BASE=0.1  # Default balanced temperature
+TEMPERATURE_MAX=0.4  # For creative/roleplay queries
+
+# Reranking configuration
+RERANKING_ENABLED=true
+RERANKING_CANDIDATES=20  # Number of initial results to consider
+RERANKING_MIN_SCORE=0.5  # Threshold for relevance
+RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
 ```
 
 5. Create necessary directories
@@ -183,19 +231,24 @@ mkdir -p documents images conversations user_preferences lorebooks
 ### Required Packages
 
 ```
-discord.py
-python-dotenv
-sentence-transformers
-numpy
-aiohttp
-apscheduler
-torch
+discord.py>=2.3.1
+python-dotenv>=1.0.0
+sentence-transformers>=2.2.2
+numpy>=1.22.3
+aiohttp>=3.8.5
+apscheduler>=3.10.1
+torch>=2.0.0
+pathlib>=1.0.1
+regex>=2023.0.0
+uuid>=1.30
+deque>=1.0
+google-generativeai>=0.3.0
 ```
 
 ### Running the Bot
 
 ```bash
-python PubliciaV8.py
+python PubliciaV13.py
 ```
 
 The bot will display a startup banner and initialize all components.
@@ -227,6 +280,18 @@ The bot will display a startup banner and initialize all components.
 
 - `/rename_document`: Rename a document
   - **Parameters**: `current_name`, `new_name`
+  
+- `/list_files`: List all files in Publicia's knowledge base
+  - **Parameters**: `file_type` (Documents, Images, Lorebooks, or All), `search_term` (optional)
+  - Shows available files that can be retrieved directly
+  - Categorizes results by file type with helpful prefixes
+  - Includes search functionality to find specific files
+
+- `/retrieve_file`: Retrieve a file from Publicia's storage
+  - **Parameters**: `file_name` (Name of the file), `file_type` (Document or Lorebook)
+  - Downloads the requested file as a Discord attachment
+  - Uses smart matching to find files (case-insensitive, extension handling)
+  - Works in conjunction with `/list_files` to discover available files
 
 #### Image Management
 
@@ -257,6 +322,9 @@ The bot will display a startup banner and initialize all components.
 
 - `/lobotomise`: Wipe your conversation history
 
+- `/parse_channel`: Toggle parsing of channel messages for context
+  - **Parameters**: `enabled` (true/false), `message_count` (number of messages)
+
 #### Settings and Utilities
 
 - `/set_model`: Change your preferred AI model
@@ -270,6 +338,9 @@ The bot will display a startup banner and initialize all components.
 
 - `/help`: Detailed help information
 
+- `/export_prompt`: Export the complete prompt for a query
+  - **Parameters**: `question` (your query), `private` (visibility toggle)
+
 #### Admin Commands
 
 - `/ban_user`: Ban a user from using the bot
@@ -278,6 +349,10 @@ The bot will display a startup banner and initialize all components.
 - `/unban_user`: Unban a user
   - **Parameters**: `user` (Discord user)
 
+- `/reload_docs`: Reload all documents from disk
+
+- `/regenerate_embeddings`: Regenerate all document embeddings
+
 ### Prefix Commands
 
 These commands use the prefix "Publicia!" instead of slash commands:
@@ -285,6 +360,8 @@ These commands use the prefix "Publicia!" instead of slash commands:
 - `Publicia! add_doc "Document Name"`: Add document (with optional attachment)
 
 - `Publicia! add_image "Image Name" [yes/no]`: Add image with optional auto-description
+
+- `Publicia! edit_image [image_id]`: View and edit an image description 
 
 ## Advanced Usage
 
@@ -295,11 +372,15 @@ Choose models based on your needs:
 - **DeepSeek-R1**: Use for immersive, creative responses and roleplaying
 - **Gemini 2.0 Flash**: Best for factual accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
+- **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5 Sonnet**:  Advanced capabilities, and more creative than 3.7 Sonnet (admin-only)
+- **Claude 3.5 Sonnet**: Advanced capabilities, more creative than 3.7 Sonnet (admin-only)
 - **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
+- **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
+- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
+- **Testing Model**: Experimental models for testing
 
-The bot will automatically fall back to available models if your preferred model fails.
+The bot will automatically fall back to available models if your preferred model fails, and includes an automatic retry system when models return blank or extremely short responses.
 
 ### Document Organization Tips
 
@@ -316,6 +397,9 @@ The bot will automatically fall back to available models if your preferred model
 - Use specific queries for better search precision
 - Consider removing unused documents to reduce search space
 - Choose faster models (like Gemini Flash) for simple queries
+- Set EMBEDDING_DIMENSIONS to truncate embeddings for better storage efficiency
+- Configure dynamic temperature settings for response quality and relevance
+- Optimize reranking settings based on your needs
 
 ### Backup Strategies
 
@@ -335,6 +419,31 @@ The bot will automatically fall back to available models if your preferred model
 - Label and tag images appropriately
 - For complex images, add multiple versions with different aspects highlighted
 
+### Debug Tools
+
+- Use `/export_prompt` to understand how prompts are constructed
+- Toggle debug mode with `/toggle_debug` to see which model generated responses
+- Check logs for detailed operation information
+- Use admin commands for maintenance when needed
+
+### Custom Temperature Settings
+
+The bot uses dynamic temperature control based on query type:
+
+- Edit TEMPERATURE_MIN (default: 0.0) for factual queries
+- Edit TEMPERATURE_BASE (default: 0.1) for balanced queries
+- Edit TEMPERATURE_MAX (default: 0.4) for creative roleplay
+- The bot automatically analyzes queries and conversation context to select appropriate temperature
+
+### Reranking Configuration
+
+Customize search result reranking with these settings:
+
+- RERANKING_ENABLED: Turn reranking on/off
+- RERANKING_CANDIDATES: Number of initial results to consider for reranking
+- RERANKING_MIN_SCORE: Threshold score for relevance
+- RERANKING_FILTER_MODE: Choose between strict (absolute threshold), dynamic (adapts threshold based on results), or topk (traditional top-k regardless of score)
+
 ## Troubleshooting
 
 ### Common Issues
@@ -349,6 +458,8 @@ The bot will automatically fall back to available models if your preferred model
 - Use more specific queries
 - Check document formatting and content
 - Adjust TOP_K value in .env
+- Configure RERANKING settings for better results
+- Consider regenerating embeddings with `/regenerate_embeddings`
 
 #### Model Errors
 - Ensure OpenRouter API key is valid
@@ -368,6 +479,18 @@ The bot will automatically fall back to available models if your preferred model
 - Try using a different vision-capable model
 - Reduce image size if very large
 
+#### Embedding Issues
+- Ensure Google API key is valid and has access to embedding models
+- Check if EMBEDDING_DIMENSIONS is set correctly
+- Try regenerating embeddings with `/regenerate_embeddings`
+- Make sure the Google Generative AI library is installed
+
+#### Empty or Short Responses
+- The bot has an automatic retry system for empty responses
+- Try adjusting the model temperature settings
+- Some models may have token limits that affect response length
+- Check if your query is too complex or ambiguous
+
 ### Logging and Debugging
 
 The bot uses a comprehensive logging system:
@@ -376,15 +499,17 @@ The bot uses a comprehensive logging system:
 - Enable debug mode with `/toggle_debug` for model information
 - Check console output for detailed errors
 - Image and document operations are logged extensively
+- Use `/export_prompt` to see exactly what prompts are being sent to the model
 
 ### Data Management
 
 If data becomes corrupted:
 
-- Missing embeddings: Re-add documents
+- Missing embeddings: Re-add documents or use `/regenerate_embeddings`
 - Conversation issues: Clear problematic conversations
 - Image database problems: Check `images/metadata.json`
 - Document storage issues: Verify `documents/` directory integrity
+- Empty documents: The bot automatically cleans up empty documents at startup
 
 ## Security Considerations
 
@@ -393,8 +518,39 @@ If data becomes corrupted:
 - Use admin commands carefully
 - Monitor API usage to avoid unexpected costs
 - Keep backup copies of important documents
+- API keys should never be committed to version control
+
+## Recent Updates
+
+### Version 13.5 (March 2025)
+- Fixed "user object has no attribute nickname" error for better handling of user mentions
+- Added retry system when models return blank or extremely short responses
+- Made TOP_K act as a maximum limit for chunks parsed in
+- Enhanced reranking system with improved filter modes for better search relevance
+- Added better error handling for edge cases
+- Improved message splitting for longer responses
+
+### Version 13 (February 2025)
+- Updated to use Google's Generative AI for embeddings (models/text-embedding-004)
+- Added dynamic temperature control system for better response quality
+- Implemented sophisticated result reranking with multiple filter modes
+- Added new models: Wayfarer 70B and Anubis Pro 105B
+- Enhanced embedding configuration with dimension control
+- Improved error handling and recovery mechanisms
+- Added `/export_prompt` command for debugging
+- Added more fallback options for models
+- Simplified search system for better reliability
+- Enhanced message splitting for better Discord compatibility
+- Improved handling of empty documents with automatic cleanup
+
+### Version 12
+- Added support for Claude 3.5 and 3.7 models
+- Improved conversation history management
+- Enhanced image description capabilities
+- Better Google Doc integration
+- More robust error handling
+- Comprehensive logging system
 
 ---
 
-This documentation covers the main aspects of Publicia's functionality and setup. For more specific questions or advanced configurations, consult the source code or reach out for additional support.
-
+This documentation covers the main aspects of Publicia's functionality and setup. For specific questions or advanced configurations, consult the source code or reach out for additional support.

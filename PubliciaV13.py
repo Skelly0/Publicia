@@ -2714,6 +2714,285 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error swapping conversation: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while swapping conversations.", ephemeral=True)
 
+        @self.tree.command(name="compare_models", description="Compare responses from multiple AI models (admin only)")
+        @app_commands.describe(
+            question="Question to ask all models",
+            model_types="Types of models to include, comma-separated (defaults to all)",
+            max_models="Maximum number of models to test (0 for unlimited)",
+            image_url="Optional URL to an image for vision-capable models",
+            private="Make the results visible only to you (default: True)"
+        )
+        @app_commands.check(check_permissions)
+        async def compare_models(
+            interaction: discord.Interaction, 
+            question: str, 
+            model_types: str = "all", 
+            max_models: int = 0, 
+            image_url: str = None,
+            private: bool = True
+        ):
+            await interaction.response.defer(ephemeral=private)
+            try:
+                if not question:
+                    await interaction.followup.send("*neural error detected!* Please provide a question.", ephemeral=private)
+                    return
+                    
+                # Parse model types
+                requested_types = [t.strip().lower() for t in model_types.split(',')]
+                include_all = "all" in requested_types
+                
+                # Send initial status message
+                status_message = await interaction.followup.send(
+                    "*neural pathways activating... preparing to test models...*",
+                    ephemeral=private
+                )
+                
+                # Process image URL if provided
+                image_attachments = []
+                if image_url:
+                    try:
+                        # Check if URL appears to be a direct image link
+                        if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                            await status_message.edit(content="*neural pathways activating... downloading image...*")
+                            
+                            # Download the image
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(image_url) as resp:
+                                    if resp.status == 200:
+                                        # Determine content type
+                                        content_type = resp.headers.get('Content-Type', 'image/jpeg')
+                                        if content_type.startswith('image/'):
+                                            image_data = await resp.read()
+                                            # Convert to base64
+                                            base64_data = base64.b64encode(image_data).decode('utf-8')
+                                            image_attachments.append(f"data:{content_type};base64,{base64_data}")
+                                            logger.info(f"Processed image from URL: {image_url}")
+                                        else:
+                                            await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=private)
+                                            return
+                                    else:
+                                        await interaction.followup.send(f"*neural error detected!* Could not download image (status code: {resp.status}).", ephemeral=private)
+                                        return
+                        else:
+                            await interaction.followup.send("*neural error detected!* The URL does not appear to be a direct image link. Please provide a URL ending with .jpg, .png, etc.", ephemeral=private)
+                            return
+                    except Exception as e:
+                        logger.error(f"Error processing image URL: {e}")
+                        await interaction.followup.send("*neural error detected!* Failed to process the image URL.", ephemeral=private)
+                        return
+                
+                # Collect models based on requested types
+                models_to_try = []
+                
+                # Define model categories
+                model_categories = {
+                    "deepseek": [
+                        "deepseek/deepseek-r1",
+                    ],
+                    "google": [
+                        "google/gemini-2.0-flash-001",
+                    ],
+                    "claude": [
+                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-sonnet:beta",
+                        "anthropic/claude-3.7-sonnet:beta",
+                    ],
+                    "qwen": [
+                        "qwen/qwq-32b",
+                    ],
+                    "nous": [
+                        "nousresearch/hermes-3-llama-3.1-405b",
+                    ],
+                    "testing": [
+                        "eva-unit-01/eva-qwen-2.5-72b",
+                        "thedrummer/unslopnemo-12b",
+                    ],
+                    "storytelling": [
+                        "latitudegames/wayfarer-large-70b-llama-3.3",
+                        "thedrummer/anubis-pro-105b-v1"
+                    ],
+                }
+                
+                # Add models based on requested types
+                for category, models in model_categories.items():
+                    if include_all or category in requested_types or any(req_type in category for req_type in requested_types):
+                        for model in models:
+                            if model not in models_to_try:
+                                models_to_try.append(model)
+                
+                # If no valid types specified, use all
+                if not models_to_try:
+                    for models in model_categories.values():
+                        for model in models:
+                            if model not in models_to_try:
+                                models_to_try.append(model)
+                                
+                # Limit number of models if requested
+                if max_models > 0 and len(models_to_try) > max_models:
+                    models_to_try = models_to_try[:max_models]
+                    
+                # Update status
+                await status_message.edit(content=f"*neural pathways activating... testing {len(models_to_try)} models...*")
+                
+                # Prepare messages for the models
+                messages = [
+                    {
+                        "role": "system",
+                        "content": SYSTEM_PROMPT
+                    },
+                    {
+                        "role": "user",
+                        "content": question
+                    }
+                ]
+                
+                # Dictionary to store results
+                results = {}
+                
+                # Try each model and collect results
+                for i, model in enumerate(models_to_try):
+                    try:
+                        await status_message.edit(content=f"*neural pathways testing... model {i+1}/{len(models_to_try)}: {model}*")
+                        
+                        # Check if this is a vision model and we have image attachments
+                        is_vision_model = model in self.vision_capable_models
+                        use_images = is_vision_model and image_attachments
+                        
+                        # Use the try_ai_completion method
+                        completion, actual_model = await self._try_ai_completion(
+                            model,
+                            messages,
+                            image_attachments=image_attachments if use_images else None,
+                            temperature=0.1
+                        )
+                        
+                        if completion and completion.get('choices') and len(completion['choices']) > 0:
+                            if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                                response = completion['choices'][0]['message']['content']
+                                results[model] = {
+                                    "actual_model": actual_model or model,
+                                    "response": response,
+                                    "status": "Success",
+                                    "is_vision_model": is_vision_model,
+                                    "used_image": use_images
+                                }
+                            else:
+                                results[model] = {
+                                    "actual_model": actual_model or model,
+                                    "response": "Error: Unexpected response structure",
+                                    "status": "Error",
+                                    "is_vision_model": is_vision_model,
+                                    "used_image": use_images
+                                }
+                        else:
+                            results[model] = {
+                                "actual_model": actual_model or "None",
+                                "response": "Error: No response received",
+                                "status": "Error",
+                                "is_vision_model": is_vision_model,
+                                "used_image": use_images
+                            }
+                            
+                    except Exception as e:
+                        results[model] = {
+                            "actual_model": model,
+                            "response": f"Error: {str(e)}",
+                            "status": "Exception",
+                            "is_vision_model": model in self.vision_capable_models,
+                            "used_image": False
+                        }
+                        logger.error(f"Error with model {model}: {e}")
+                        
+                # Create a text file with the results
+                file_content = f"""
+        =========================================================
+        PUBLICIA MODEL COMPARISON RESULTS
+        =========================================================
+        Generated at: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        Query: {question}
+        Models tested: {len(models_to_try)}
+        Timeout per model: {self.config.API_TIMEOUT} seconds (from config)
+        Image included: {"Yes" if image_url else "No"}
+
+        This file contains responses from multiple AI models to the same query,
+        allowing for comparison of how different models interpret and respond
+        to the same prompt.
+        =========================================================
+
+        """
+                
+                # Add a summary of successful/failed models
+                success_count = sum(1 for r in results.values() if r["status"] == "Success")
+                error_count = sum(1 for r in results.values() if r["status"] == "Error" or r["status"] == "Exception")
+                vision_count = sum(1 for r in results.values() if r["is_vision_model"])
+                
+                file_content += f"""
+        SUMMARY:
+        ---------------------------------------------------------
+        Total models: {len(models_to_try)}
+        Successful: {success_count}
+        Errors: {error_count}
+        Vision-capable models: {vision_count}
+        =========================================================
+
+        """
+                
+                # Add responses from each model
+                for model, result in results.items():
+                    actual_model = result["actual_model"]
+                    response = result["response"]
+                    status = result["status"]
+                    is_vision = result["is_vision_model"]
+                    used_image = result["used_image"]
+                    
+                    file_content += f"""
+        MODEL: {model}
+        STATUS: {status}
+        ACTUAL MODEL USED: {actual_model}
+        VISION-CAPABLE: {"Yes" if is_vision else "No"}
+        IMAGE USED: {"Yes" if used_image else "No"}
+        ---------------------------------------------------------
+        {response}
+        =========================================================
+
+        """
+                
+                # Save to file
+                file_name = f"publicia_model_comparison_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                with open(file_name, "w", encoding="utf-8") as f:
+                    f.write(file_content)
+                    
+                # Check file size and truncate if necessary
+                file_size = os.path.getsize(file_name)
+                if file_size > 8 * 1024 * 1024:  # 8MB Discord limit
+                    truncated_file_name = f"publicia_model_comparison_truncated_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                    with open(file_name, "r", encoding="utf-8") as f_in:
+                        with open(truncated_file_name, "w", encoding="utf-8") as f_out:
+                            f_out.write(f"WARNING: Original file was {file_size / (1024*1024):.2f}MB, exceeding Discord's limit. Content has been truncated.\n\n")
+                            f_out.write(f_in.read(7 * 1024 * 1024))
+                            f_out.write("\n\n[... Content truncated due to file size limits ...]")
+                            
+                    os.remove(file_name)
+                    file_name = truncated_file_name
+                
+                # Upload file
+                await status_message.edit(content="*uploading model comparison results...*")
+                await interaction.followup.send(
+                    file=discord.File(file_name), 
+                    content=f"*here are the responses from {len(results)} models to your query:*",
+                    ephemeral=private
+                )
+                
+                # Clean up
+                os.remove(file_name)
+                await status_message.edit(content="*model comparison complete!*")
+                
+            except Exception as e:
+                logger.error(f"Error in compare_models command: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                await interaction.followup.send("*neural circuit overload!* failed to complete model comparison due to an error.", ephemeral=private)
+
         @self.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
         @app_commands.describe(
             question="The question to generate a prompt for",
@@ -2913,7 +3192,7 @@ class DiscordBot(commands.Bot):
                 
                 categories = {
                     "Lore Queries": ["query"],
-                    "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document"],
+                    "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file"],
                     "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                     "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
                     "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation"], 
@@ -3549,7 +3828,7 @@ class DiscordBot(commands.Bot):
                         words = chunk.split()
                         search_text = ' '.join(words[:min(10, len(words))])
                         encoded_search = urllib.parse.quote(search_text)
-                        doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
+                        doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                         raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                     else:
                         raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
@@ -3803,6 +4082,137 @@ class DiscordBot(commands.Bot):
                     await interaction.followup.send(f"Document not found: {name}")
             except Exception as e:
                 await interaction.followup.send(f"Error removing document: {str(e)}")
+
+        @self.tree.command(name="list_files", description="List files that Publicia can upload")
+        @app_commands.describe(
+            file_type="Type of files to list",
+            search_term="Optional search term to filter files"
+        )
+        @app_commands.choices(file_type=[
+            app_commands.Choice(name="Documents", value="documents"),
+            app_commands.Choice(name="Images", value="images"),
+            app_commands.Choice(name="Lorebooks", value="lorebooks"),
+            app_commands.Choice(name="All", value="all")
+        ])
+        async def list_files(interaction: discord.Interaction, file_type: str, search_term: str = None):
+            await interaction.response.defer()
+            try:
+                files = []
+                
+                # Helper function to list files in a directory
+                def get_files_from_dir(dir_path, prefix=""):
+                    results = []
+                    try:
+                        for item in Path(dir_path).glob("*"):
+                            if item.is_file() and not item.name.startswith(".") and not item.name.endswith(".pkl") and not item.name.endswith(".json"):
+                                if search_term is None or search_term.lower() in item.name.lower():
+                                    results.append(f"{prefix}{item.name}")
+                    except Exception as e:
+                        logger.error(f"Error listing files in {dir_path}: {e}")
+                    return results
+                
+                # Get files based on type
+                if file_type == "documents" or file_type == "all":
+                    docs = get_files_from_dir(self.document_manager.base_dir, "[Document] ")
+                    files.extend(docs)
+                
+                if file_type == "images" or file_type == "all":
+                    # For images, get from metadata to include proper names
+                    if self.image_manager.metadata:
+                        for image_id, meta in self.image_manager.metadata.items():
+                            name = meta.get('name', 'Unnamed')
+                            if search_term is None or search_term.lower() in name.lower():
+                                files.append(f"[Image] {name} (ID: {image_id})")
+                
+                if file_type == "lorebooks" or file_type == "all":
+                    lorebooks = get_files_from_dir(self.document_manager.get_lorebooks_path(), "[Lorebook] ")
+                    files.extend(lorebooks)
+                
+                # Send response
+                if not files:
+                    if search_term:
+                        await interaction.followup.send(f"*neural search complete!* I couldn't find any files matching '{search_term}' in the selected storage areas.")
+                    else:
+                        await interaction.followup.send("*neural storage scan complete!* I don't have any files of this type in my memory banks.")
+                    return
+                
+                # Create formatted response
+                response = "*accessing neural storage banks...*\n\n**AVAILABLE FILES**\n\n"
+                for i, file_name in enumerate(sorted(files)):
+                    response += f"{i+1}. {file_name}\n"
+                    
+                # Add usage instructions
+                response += "\n*To retrieve a file, use the `/retrieve_file` command with the file name (without type prefix)*"
+                response += "\n*For images, use the image ID with the `/view_image` command*"
+                
+                # Split if necessary
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+            
+            except Exception as e:
+                logger.error(f"Error listing files: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while trying to list files.")
+
+        @self.tree.command(name="retrieve_file", description="Retrieve a file that Publicia has saved")
+        @app_commands.describe(
+            file_name="Name of the file to retrieve",
+            file_type="Type of the file"
+        )
+        @app_commands.choices(file_type=[
+            app_commands.Choice(name="Document", value="document"),
+            app_commands.Choice(name="Lorebook", value="lorebook")
+        ])
+        async def retrieve_file(interaction: discord.Interaction, file_name: str, file_type: str):
+            await interaction.response.defer()
+            try:
+                # Determine the directory based on file type
+                if file_type == "document":
+                    base_dir = self.document_manager.base_dir
+                elif file_type == "lorebook":
+                    base_dir = self.document_manager.get_lorebooks_path()
+                else:
+                    await interaction.followup.send("*neural error detected!* Invalid file type. Please select 'Document' or 'Lorebook'.")
+                    return
+                
+                # Try exact match first
+                path = Path(base_dir) / file_name
+                
+                # If not found, try adding .txt extension
+                if not path.exists() and not file_name.endswith('.txt'):
+                    path = Path(base_dir) / f"{file_name}.txt"
+                
+                # If still not found, try case-insensitive search
+                if not path.exists():
+                    found = False
+                    try:
+                        for item in Path(base_dir).glob("*"):
+                            if item.is_file() and (item.name.lower() == file_name.lower() or 
+                            item.name.lower() == f"{file_name.lower()}.txt"):
+                                path = item
+                                found = True
+                                break
+                    except Exception as e:
+                        logger.error(f"Error searching for file: {e}")
+                    
+                    if not found:
+                        await interaction.followup.send(f"*neural error detected!* Could not find file '{file_name}' in {file_type} storage.")
+                        return
+                
+                # Check if the file exists and is a file
+                if not path.exists() or not path.is_file():
+                    await interaction.followup.send(f"*neural error detected!* Could not find file: {file_name}")
+                    return
+                
+                # Send the file
+                file = discord.File(path, filename=path.name)
+                await interaction.followup.send(
+                    content=f"*neural pathways accessing storage...* Here is the requested {file_type}: `{path.name}`",
+                    file=file
+                )
+            
+            except Exception as e:
+                logger.error(f"Error retrieving file: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while trying to retrieve the file.")
 
         @self.tree.command(name="add_googledoc", description="Add a Google Doc to the tracked list")
         @app_commands.describe(
@@ -4077,26 +4487,25 @@ class DiscordBot(commands.Bot):
                 
                 response += "**⚠️ What I Don't Know**\n"
                 response += "• Information not contained in my document or image database\n"
-                response += "• I cannot make up lore or information that isn't documented\n"
-                response += "• I do not have knowledge about Earth or our real universe\n"
-                response += "• I cannot access the internet or information outside my documents\n\n"
+                response += "• I cannot access the internet\n\n"
+                response += "• I am bad at highly broad queries, or at queries asking for info that is not in my knowledge base\n\n"
+                response += "• I may lack up to date information if my documents have not been updated\n\n"
                 
                 # How I Work
                 response += "## **HOW I WORK**\n\n"
                 response += "**🧠 Neural Processing**\n"
-                response += "• I use semantic search to find relevant information in my documents and images\n"
+                response += "• I use semantic search with advanced reranking to find relevant information\n"
                 response += "• I analyze your query to understand what you're looking for\n"
                 response += "• I synthesize information from multiple documents when needed\n"
                 response += "• I provide citations to document sources when possible\n"
-                response += "• I use vector embeddings to match your questions with relevant content\n"
-                response += "• I automatically extract content from Google Docs linked in your queries\n\n"
+                response += "• I automatically extract content from Google Docs linked in your queries\n"
+                response += "• I use dynamic temperature control to adapt my responses to your query type\n\n"
                 
-                # Image Analysis
                 response += "**🖼️ Image Analysis**\n"
                 response += "• I can analyze images in three ways:\n"
-                response += "- Attach an image directly when mentioning me\n"
-                response += "- Use `/query` with an image URL\n"
-                response += "- I can search my image database for relevant visual information\n"
+                response += "  - Attach an image directly when mentioning me\n"
+                response += "  - Use `/query` with an image URL\n"
+                response += "  - I can search my image database for relevant visual information\n"
                 response += "• I can recognize content in images and integrate them into my responses\n"
                 response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
                 response += "• Vision-capable models: Gemini 2.0 Flash, Claude 3.5 Haiku, Claude 3.5 Sonnet, Claude 3.7 Sonnet\n\n"
@@ -4112,79 +4521,48 @@ class DiscordBot(commands.Bot):
                 response += "**📋 Managing Documents & Images**\n"
                 response += "• `/list_docs` - See all documents in my knowledge base\n"
                 response += "• `/list_images` - See all images in my visual knowledge base\n"
+                response += "• `/list_files` - See all files in my knowledge base\n"
+                response += "• `/retrieve_file` - Retrieve a file from my knowledge base and upload it to Discord\n\n"
                 response += "• `/view_image` - View an image from my knowledge base\n"
                 response += "• `/remove_doc` - Remove a document from my knowledge base\n"
                 response += "• `/remove_image` - Remove an image from my knowledge base\n"
                 response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
                 response += "• `/rename_document` - Rename a document in my database\n"
                 response += "• `/search_docs` - Search directly in my document knowledge base\n"
-                response += "• `/update_image_description` - Update the description for an image\n\n"
+                response += "• `/update_image_description` - Update the description for an image\n"
                 response += "• `/reload_docs` - Reload all documents from disk (admin only)\n\n"
                 
-                # Conversation Management section
+                # Conversation Management
                 response += "## **CONVERSATION SYSTEM**\n\n"
-                response += "**💬 how conversations work**\n"
-                response += "• publicia remembers your chats to provide more relevant, contextual responses\n"
-                response += "• each user has their own conversation history stored separately\n"
-                response += "• when you ask something, publicia checks your previous interactions for context\n"
-                response += "• this lets her understand ongoing discussions, recurring topics, and your interests\n"
-                response += "• the history is stored in a secure JSON format that preserves timestamps and channels\n"
-                response += "• conversations are limited to the most recent 50 messages to maintain performance\n\n"
+                response += "**💬 How Conversations Work**\n"
+                response += "• I remember your chats to provide more relevant, contextual responses\n"
+                response += "• Each user has their own conversation history stored separately\n"
+                response += "• When you ask something, I check your previous interactions for context\n"
+                response += "• This lets me understand ongoing discussions, recurring topics, and your interests\n"
+                response += "• Conversations are limited to the most recent 50 messages to maintain performance\n"
+                response += "• Use `/parse_channel` to let me analyze recent channel messages for more context\n\n"
 
-                response += "**🧠 memory management**\n"
-                response += "• `/history [limit]` - see your recent conversation (default: shows last 10 messages)\n"
-                response += "• `/manage_history [limit]` - view messages with numbered indices for selective deletion\n"
-                response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - remove specific messages by their indices\n"
+                response += "**🧠 Memory Management**\n"
+                response += "• `/history [limit]` - See your recent conversation (default: shows last 10 messages)\n"
+                response += "• `/manage_history [limit]` - View messages with numbered indices for selective deletion\n"
+                response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - Remove specific messages by their indices\n"
                 response += "• Use `/lobotomise` command to completely wipe your history\n"
-                response += "• memory wiping is useful if you want to start fresh or remove outdated context\n\n"
-
-                response += "**🔍 practical benefits**\n"
-                response += "• contextual awareness means you don't need to repeat information\n"
-                response += "• publicia can reference your previous questions when answering new ones\n"
-                response += "• she'll recognize when you're continuing a previous topic\n"
-                response += "• more personalized responses based on your interaction history\n"
-                response += "• better lore recommendations based on your demonstrated interests\n"
-                response += "• image references from previous messages can be recalled\n\n"
-
-                response += "**✨ pro tips**\n"
-                response += "• periodically use `/lobotomise` or `/archive_conversation` if publicia seems \"stuck\" on old conversations\n"
-                response += "• before complex discussions, consider wiping history to establish fresh context\n"
-                response += "• channel names are preserved in history for better context tracking\n"
-                response += "• using `/manage_history` lets you selectively prune irrelevant messages\n"
-                response += "• conversation history helps most when discussing related topics over time\n"
-                response += "• if asking something completely new, explicitly say so to help publicia shift focus\n\n"
-
-                response += "**🔒 privacy note**\n"
-                response += "• your conversation history is only visible to you and publicia\n"
-                response += "• history is stored locally on the bot's server, not in external databases\n"
-                response += "• using ephemeral (private) responses when managing your history ensures privacy\n"
-                response += "• history can be completely deleted at any time with the lobotomise command\n\n"
+                response += "• Memory wiping is useful if you want to start fresh or remove outdated context\n\n"
                 
                 # Customization
                 response += "## **CUSTOMIZATION**\n\n"
                 response += "**⚙️ AI Model Selection**\n"
                 response += "• `/set_model` - Choose your preferred AI model:\n"
-                response += "• `/get_model` - Check which model you're currently using and display the different models available\n"
+                response += "• `/get_model` - Check which model you're currently using, as well as get a list of all available models and their descriptions\n"
                 response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
-                response += "• `/parse_channel` - Toggle parsing of channel messages for context. When enabled, Publicia will include recent messages from the channel to better understand conversations and roleplay scenarios.\n\n"
+                response += "I recommend using Gemini 2.0 Flash for factual queries, DeepSeek-R1 for times when you want good prose and creative writing, Claude 3.5 Haiku for roleplay and accuracy, and QwQ 32B when you want a balance.\n\n"
                 
                 # Add our new section here
                 response += "**🧪 Debugging Tools**\n"
-                response += "• `/export_prompt` - Export the complete prompt that would be sent to the AI for your query\n"
+                response += "• `/export_prompt` - Export the complete prompt for your query\n"
                 response += "  - Shows system prompt, conversation history, search results, and more\n"
-                response += "  - Helps understand exactly how Publicia processes your questions\n"
-                response += "  - Includes privacy option to make output only visible to you\n"
-                response += "  - Useful for troubleshooting issues or understanding response generation\n\n"
-                
-                # Technical Information
-                response += "## **TECHNICAL INFORMATION**\n\n"
-                response += "**⚙️ Technical Details**\n"
-                response += "• I'm powered by OpenRouter.ai with access to multiple LLM models\n"
-                response += "• I have automatic fallback between models if one fails\n"
-                response += "• I process documents and images using semantic search and vector embeddings\n"
-                response += "• My database stores text chunks, image descriptions, and their embeddings\n"
-                response += "• Google Doc integration uses public access to fetch document content\n"
-                response += "• Image analysis requires vision-capable models (Gemini, Claude)\n\n"
+                response += "  - Helps understand exactly how I process your questions\n"
+                response += "  - Includes privacy option to make output only visible to you\n\n"
                 
                 # Tips
                 response += "## **TIPS FOR BEST RESULTS**\n\n"
@@ -4192,9 +4570,17 @@ class DiscordBot(commands.Bot):
                 response += "• If I don't know something, add relevant documents or images to my database\n"
                 response += "• Use Google Docs integration for large, regularly updated documents\n"
                 response += "• Include links to Google Docs in your queries for on-the-fly context\n"
-                response += "• For adding images, I recommend labelling things within the image to help me have a better idea of how it relates to the lore\n"
-                response += "• If you're unsure about the model to use, use the default Gemini 2.0 Flash for general queries\n"
+                response += "• For creative writing, try DeepSeek-R1\n"
+                response += "• For factual accuracy, try Gemini 2.0 Flash or Claude 3.5 Haiku\n\n"
                 response += "*my genetically enhanced brain is always ready to help... just ask!*"
+                
+                # Send the response in chunks
+                for chunk in split_message(response):
+                    await interaction.followup.send(chunk)
+                    
+            except Exception as e:
+                logger.error(f"Error displaying help: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while trying to display help information.")
                 
                 # Send the response in chunks
                 for chunk in split_message(response):
@@ -4758,7 +5144,7 @@ class DiscordBot(commands.Bot):
                     words = chunk.split()
                     search_text = ' '.join(words[:min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
-                    doc_url = f"https://docs.google.com/document/d/{doc_id}/edit?findtext={encoded_search}"
+                    doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                     raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                 else:
                     raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
@@ -4844,7 +5230,7 @@ class DiscordBot(commands.Bot):
 
             # Add the query itself
             messages.append({
-                "role": "user",
+                "role": "system",
                 "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
             

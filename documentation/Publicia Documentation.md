@@ -280,6 +280,18 @@ The bot will display a startup banner and initialize all components.
 
 - `/rename_document`: Rename a document
   - **Parameters**: `current_name`, `new_name`
+  
+- `/list_files`: List all files in Publicia's knowledge base
+  - **Parameters**: `file_type` (Documents, Images, Lorebooks, or All), `search_term` (optional)
+  - Shows available files that can be retrieved directly
+  - Categorizes results by file type with helpful prefixes
+  - Includes search functionality to find specific files
+
+- `/retrieve_file`: Retrieve a file from Publicia's storage
+  - **Parameters**: `file_name` (Name of the file), `file_type` (Document or Lorebook)
+  - Downloads the requested file as a Discord attachment
+  - Uses smart matching to find files (case-insensitive, extension handling)
+  - Works in conjunction with `/list_files` to discover available files
 
 #### Image Management
 
