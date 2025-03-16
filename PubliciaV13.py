@@ -4551,8 +4551,10 @@ class DiscordBot(commands.Bot):
                 
                 response += "**⚠️ What I Don't Know**\n"
                 response += "• Information not contained in my document or image database\n"
-                response += "• I cannot access the internet\n\n"
-                response += "• I am bad at highly broad queries, or at queries asking for info that is not in my knowledge base\n\n"
+                response += "• I cannot access the internet\n"
+                response += "• I am bad at highly broad queries, or at queries asking for info that is not in my knowledge base\n"
+                response += "• I am bad at queries that would require information from many different sources, as my embedding search system has a limit on the amount of document chunks it will return\n"
+                response += "   • I would recommend breaking down your query into smaller, more focused questions so that my embeddings search can return more relevant and focused results\n"
                 response += "• I may lack up to date information if my documents have not been updated\n\n"
                 
                 # How I Work
