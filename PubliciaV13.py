@@ -1612,24 +1612,24 @@ class ConversationManager:
             logger.error(f"Error archiving conversation: {e}")
             return False, f"Error archiving conversation: {str(e)}"
 
-def list_archives(self, username: str) -> List[str]:
-    """List all archived conversations for a user."""
-    try:
-        # Get the archives directory
-        archives_dir = os.path.join(self.conversation_dir, "archives", username)
-        
-        # Check if the directory exists
-        if not os.path.exists(archives_dir):
-            return []
+    def list_archives(self, username: str) -> List[str]:
+        """List all archived conversations for a user."""
+        try:
+            # Get the archives directory
+            archives_dir = os.path.join(self.conversation_dir, "archives", username)
             
-        # Get all JSON files in the directory
-        archives = [f for f in os.listdir(archives_dir) if f.endswith('.json')]
-        
-        return sorted(archives)
-        
-    except Exception as e:
-        logger.error(f"Error listing archives: {e}")
-        return []
+            # Check if the directory exists
+            if not os.path.exists(archives_dir):
+                return []
+                
+            # Get all JSON files in the directory
+            archives = [f for f in os.listdir(archives_dir) if f.endswith('.json')]
+            
+            return sorted(archives)
+            
+        except Exception as e:
+            logger.error(f"Error listing archives: {e}")
+            return []
 
     def swap_conversation(self, username: str, archive_name: str) -> Tuple[bool, str]:
         """Swap between current and archived conversations."""
@@ -1667,6 +1667,37 @@ def list_archives(self, username: str) -> List[str]:
         except Exception as e:
             logger.error(f"Error swapping conversation: {e}")
             return False, f"Error swapping conversation: {str(e)}"
+
+    def delete_archive(self, username: str, archive_name: str) -> Tuple[bool, str]:
+        """Delete an archived conversation.
+        
+        Args:
+            username: The username
+            archive_name: Name of the archive to delete
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            # Get the path to the archived conversation file
+            archives_dir = os.path.join(self.conversation_dir, "archives", username)
+            archive_file_path = os.path.join(archives_dir, archive_name)
+            
+            # Make sure archive name ends with .json
+            if not archive_name.endswith('.json'):
+                archive_file_path += '.json'
+            
+            # Check if the archived file exists
+            if not os.path.exists(archive_file_path):
+                return False, f"Archive '{archive_name}' not found."
+                
+            # Delete the file
+            os.remove(archive_file_path)
+            return True, f"Archive '{archive_name}' deleted."
+            
+        except Exception as e:
+            logger.error(f"Error deleting archive: {e}")
+            return False, f"Error deleting archive: {str(e)}"
             
             
 class UserPreferencesManager:
@@ -2714,6 +2745,39 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error swapping conversation: {e}")
                 await interaction.followup.send("*neural circuit overload!* An error occurred while swapping conversations.", ephemeral=True)
 
+        @self.tree.command(name="delete_archive", description="Delete an archived conversation")
+        @app_commands.describe(
+            archive_name="Name of the archive to delete",
+            confirm="Type 'yes' to confirm deletion"
+        )
+        async def delete_archive(interaction: discord.Interaction, archive_name: str, confirm: str = "no"):
+            await interaction.response.defer(ephemeral=True)  # Make response only visible to the user
+            try:
+                # Check confirmation
+                if confirm.lower() != "yes":
+                    await interaction.followup.send("*deletion aborted!* Please confirm by setting `confirm` to 'yes'.", ephemeral=True)
+                    return
+                    
+                success, message = self.conversation_manager.delete_archive(interaction.user.name, archive_name)
+                
+                if success:
+                    await interaction.followup.send(f"*neural memory purged!* {message}", ephemeral=True)
+                else:
+                    # If archive not found, list available archives
+                    if "not found" in message:
+                        archives = self.conversation_manager.list_archives(interaction.user.name)
+                        if archives:
+                            archives_list = "\n".join([f"• {archive}" for archive in archives])
+                            await interaction.followup.send(f"*neural error detected!* {message}\n\nAvailable archives:\n{archives_list}", ephemeral=True)
+                        else:
+                            await interaction.followup.send(f"*neural error detected!* {message}\nYou don't have any archived conversations.", ephemeral=True)
+                    else:
+                        await interaction.followup.send(f"*neural error detected!* {message}", ephemeral=True)
+                    
+            except Exception as e:
+                logger.error(f"Error deleting archive: {e}")
+                await interaction.followup.send("*neural circuit overload!* An error occurred while deleting the archive.", ephemeral=True)
+
         @self.tree.command(name="compare_models", description="Compare responses from multiple AI models (admin only)")
         @app_commands.describe(
             question="Question to ask all models",
@@ -3195,7 +3259,7 @@ class DiscordBot(commands.Bot):
                     "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file"],
                     "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                     "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
-                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation"], 
+                    "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"], 
                     "Moderation": ["ban_user", "unban_user"]
                 }
                 
@@ -3253,7 +3317,7 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="history", description="Display your conversation history with the bot")
         @app_commands.describe(limit="Number of messages to display (default: 10, max: 50)")
         async def show_history(interaction: discord.Interaction, limit: int = 10):
-            await interaction.response.defer()
+            await interaction.response.defer(ephemeral=True)
             try:
                 # Validate limit
                 if limit <= 0:
@@ -3326,7 +3390,7 @@ class DiscordBot(commands.Bot):
                 
                 # Send the response, splitting if necessary
                 for chunk in split_message(response):
-                    await interaction.followup.send(chunk)
+                    await interaction.followup.send(chunk, ephemeral=True)
                 
             except Exception as e:
                 logger.error(f"Error displaying conversation history: {e}")
@@ -4546,8 +4610,12 @@ class DiscordBot(commands.Bot):
                 response += "• `/history [limit]` - See your recent conversation (default: shows last 10 messages)\n"
                 response += "• `/manage_history [limit]` - View messages with numbered indices for selective deletion\n"
                 response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - Remove specific messages by their indices\n"
-                response += "• Use `/lobotomise` command to completely wipe your history\n"
-                response += "• Memory wiping is useful if you want to start fresh or remove outdated context\n\n"
+                response += "• `/lobotomise` command to completely wipe your history\n"
+                response += "• `/archive_conversation [archive_name]` - Save your current conversation history with optional custom name\n" 
+                response += "• `/list_archives` - View all your archived conversations\n"
+                response += "• `/swap_conversation archive_name` - Switch between current and archived conversations (automatically saves current conversation first)\n"
+                response += "• `/delete_archive archive_name confirm:\"yes\"` - Permanently delete an archived conversation (requires confirmation)\n"
+                response += "• Memory management lets you organize conversations, preserve important discussions, and start fresh when needed\n\n"
                 
                 # Customization
                 response += "## **CUSTOMIZATION**\n\n"
