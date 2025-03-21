@@ -698,7 +698,7 @@ class DocumentManager:
                             "https://openrouter.ai/api/v1/chat/completions",
                             headers=headers,
                             json=payload,
-                            timeout=60  # 60 second timeout
+                            timeout=360  # 60 second timeout
                         ) as response:
                             if response.status != 200:
                                 error_text = await response.text()
