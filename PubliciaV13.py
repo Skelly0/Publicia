@@ -27,6 +27,8 @@ from image_prompt import IMAGE_DESCRIPTION_PROMPT
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
+from rank_bm25 import BM25Okapi
+
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
@@ -476,6 +478,213 @@ class DocumentManager:
         self._load_documents()
         logger.info("Document loading completed")
 
+        self.bm25_indexes = {}
+
+    def _create_bm25_index(self, chunks: List[str]) -> BM25Okapi:
+        """Create a BM25 index from document chunks."""
+        # Tokenize chunks - simple whitespace tokenization
+        tokenized_chunks = [chunk.lower().split() for chunk in chunks]
+        return BM25Okapi(tokenized_chunks)
+        
+    def _search_bm25(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
+        """Search for chunks using BM25."""
+        if top_k is None:
+            top_k = self.top_k
+            
+        # Tokenize query
+        query_tokens = query.lower().split()
+        
+        results = []
+        for doc_name, chunks in self.chunks.items():
+            # Make sure we have a BM25 index for this document
+            if doc_name not in self.bm25_indexes:
+                self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
+                
+            # Get BM25 scores
+            bm25_scores = self.bm25_indexes[doc_name].get_scores(query_tokens)
+            
+            # Add top results
+            for idx, score in enumerate(bm25_scores):
+                if idx < len(chunks):  # Safety check
+                    image_id = None
+                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                        image_id = doc_name[6:-4]
+                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                        image_id = self.metadata[doc_name]['image_id']
+                        
+                    results.append((
+                        doc_name,
+                        chunks[idx],
+                        float(score),
+                        image_id,
+                        idx + 1,
+                        len(chunks)
+                    ))
+        
+        # Sort by score and return top_k
+        results.sort(key=lambda x: x[2], reverse=True)
+        return results[:top_k]
+        
+    def _combine_search_results(self, embedding_results: List[Tuple], bm25_results: List[Tuple], top_k: int = None) -> List[Tuple]:
+        """Combine results from embedding and BM25 search using rank fusion."""
+        if top_k is None:
+            top_k = self.top_k
+            
+        # Create a dictionary to store combined scores
+        combined_scores = {}
+        
+        # Rank fusion formula: combined_score = (1 / (k + rank1)) + (1 / (k + rank2))
+        k = 60  # Typical value for rank fusion
+        
+        # Process embedding results
+        for rank, (doc_name, chunk, score, image_id, chunk_idx, total_chunks) in enumerate(embedding_results):
+            key = (doc_name, chunk_idx)
+            combined_scores[key] = combined_scores.get(key, 0) + 1 / (k + rank)
+            
+        # Process BM25 results
+        for rank, (doc_name, chunk, score, image_id, chunk_idx, total_chunks) in enumerate(bm25_results):
+            key = (doc_name, chunk_idx)
+            combined_scores[key] = combined_scores.get(key, 0) + 1 / (k + rank)
+        
+        # Create combined results
+        combined_results = []
+        for (doc_name, chunk_idx), score in combined_scores.items():
+            if chunk_idx - 1 < len(self.chunks.get(doc_name, [])):  # Safety check
+                chunk = self.chunks[doc_name][chunk_idx - 1]
+                image_id = None
+                if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                    image_id = doc_name[6:-4]
+                elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                    image_id = self.metadata[doc_name]['image_id']
+                    
+                combined_results.append((
+                    doc_name,
+                    chunk,
+                    score,
+                    image_id,
+                    chunk_idx,
+                    len(self.chunks[doc_name])
+                ))
+        
+        # Sort by score and return top_k
+        combined_results.sort(key=lambda x: x[2], reverse=True)
+        return combined_results[:top_k]
+
+    async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
+        """Generate context for a chunk using Gemini 2.0 Flash via OpenRouter."""
+        try:
+            # Create the prompt as messages for the API
+            system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
+            
+            user_prompt = f"""
+            <document> 
+            {document_content} 
+            </document> 
+            Here is the chunk we want to situate within the whole document 
+            <chunk> 
+            {chunk_content} 
+            </chunk> 
+            Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
+            """
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            # OpenRouter API headers - same as used elsewhere in the bot
+            headers = {
+                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
+                "HTTP-Referer": "https://discord.com", 
+                "X-Title": "Publicia - Context Generation",
+                "Content-Type": "application/json"
+            }
+            
+            # Prepare payload
+            payload = {
+                "model": "google/gemini-2.0-flash-001",
+                "messages": messages,
+                "temperature": 0.1,  # Low temperature for deterministic outputs
+                "max_tokens": 150    # Limit token length
+            }
+            
+            # Make API call
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.post(
+                            "https://openrouter.ai/api/v1/chat/completions",
+                            headers=headers,
+                            json=payload,
+                            timeout=60  # 60 second timeout
+                        ) as response:
+                            if response.status != 200:
+                                error_text = await response.text()
+                                logger.error(f"API error (Status {response.status}): {error_text}")
+                                # If we had a non-200 status, try again or return default
+                                if attempt == max_retries - 1:
+                                    return f"This chunk is from document dealing with {document_content[:50]}..."
+                                continue
+                                
+                            completion = await response.json()
+                    
+                    # Extract context from the response
+                    if completion and completion.get('choices') and len(completion['choices']) > 0:
+                        if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                            context = completion['choices'][0]['message']['content'].strip()
+                            
+                            # Ensure context isn't too long (target ~50-100 tokens)
+                            """
+                            if len(context.split()) > 150:
+                                # If too long, truncate and add ellipsis
+                                words = context.split()
+                                context = " ".join(words[:150]) + "..."
+                            """
+                            
+                            logger.info(f"Generated context ({len(context.split())} words): {context[:50]}...")
+                            return context
+                    
+                    # If we couldn't extract a valid context, return default
+                    logger.error("Failed to extract valid context")
+                    return f"This chunk is from document dealing with {document_content[:50]}..."
+                    
+                except Exception as e:
+                    logger.error(f"Error generating chunk context (attempt {attempt+1}/{max_retries}): {e}")
+                    if attempt == max_retries - 1:
+                        # If we've used all retries, return default context
+                        return f"This chunk is from document dealing with {document_content[:50]}..."
+                    # Otherwise, continue to next retry
+                    await asyncio.sleep(1)  # Wait before retrying
+            
+            # This should never be reached due to the returns in the loop, but just in case
+            return f"This chunk is from document dealing with {document_content[:50]}..."
+            
+        except Exception as e:
+            logger.error(f"Unhandled error generating chunk context: {e}")
+            # Return a default context if generation fails
+            return f"This chunk is from document dealing with {document_content[:50]}..."
+    
+    async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
+        """Generate context for each chunk and prepend to the chunk."""
+        contextualized_chunks = []
+        
+        logger.info(f"Contextualizing {len(chunks)} chunks for document: {doc_name}")
+        for i, chunk in enumerate(chunks):
+            # Generate context
+            context = await self.generate_chunk_context(document_content, chunk)
+            
+            # Prepend context to chunk
+            contextualized_chunk = f"{context} {chunk}"
+            
+            contextualized_chunks.append(contextualized_chunk)
+            
+            # Log progress for longer documents
+            if (i + 1) % 10 == 0:
+                logger.info(f"Contextualized {i + 1}/{len(chunks)} chunks for {doc_name}")
+        
+        return contextualized_chunks
+
     def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
         """Generate embeddings for a list of text chunks using Google's Generative AI."""
         try:
@@ -572,8 +781,8 @@ class DocumentManager:
         
         return empty_docs
     
-    def add_document(self, name: str, content: str, save_to_disk: bool = True):
-        """Add a new document to the system."""
+    async def add_document(self, name: str, content: str, save_to_disk: bool = True):
+        """Add a new document to the system with contextual retrieval."""
         try:
             if not content or not content.strip():
                 logger.warning(f"Document {name} has no content. Skipping.")
@@ -585,24 +794,31 @@ class DocumentManager:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
                 return
             
-            # Generate embeddings using Google's Generative AI
+            # Generate contextualized chunks
+            contextualized_chunks = await self.contextualize_chunks(name, content, chunks)
+            
+            # Generate embeddings using contextualized chunks
             # Use document name as title for all chunks to improve embedding quality
-            titles = [name] * len(chunks)
-            embeddings = self.generate_embeddings(chunks, is_query=False, titles=titles)
+            titles = [name] * len(contextualized_chunks)
+            embeddings = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
             
             # Store document data
-            self.chunks[name] = chunks
+            self.chunks[name] = chunks  # Store original chunks
+            self.contextualized_chunks[name] = contextualized_chunks  # Store contextualized chunks
             self.embeddings[name] = embeddings
             self.metadata[name] = {
                 'added': datetime.now().isoformat(),
                 'chunk_count': len(chunks)
             }
             
+            # Create BM25 index for contextualized chunks
+            self.bm25_indexes[name] = self._create_bm25_index(contextualized_chunks)
+            
             # Save to disk only if requested
             if save_to_disk:
                 self._save_to_disk()
             
-            logger.info(f"Added document: {name} with {len(chunks)} chunks")
+            logger.info(f"Added document: {name} with {len(chunks)} chunks and contextualized embeddings")
             
         except Exception as e:
             logger.error(f"Error adding document {name}: {e}")
@@ -659,17 +875,25 @@ class DocumentManager:
             initial_top_k = self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k
             initial_top_k = max(initial_top_k, top_k)  # Always get at least top_k results
             
-            # Get initial results
-            initial_results = self.custom_search_with_embedding(query_embedding, top_k=initial_top_k)
+            # Get initial results from embeddings
+            embedding_results = self.custom_search_with_embedding(query_embedding, top_k=initial_top_k)
+            
+            # Get results from BM25
+            logger.info("Performing BM25 search")
+            bm25_results = self._search_bm25(query, top_k=initial_top_k)
+            
+            # Combine results
+            logger.info(f"Combining {len(embedding_results)} embedding results with {len(bm25_results)} BM25 results")
+            combined_results = self._combine_search_results(embedding_results, bm25_results, top_k=initial_top_k)
             
             # Apply re-ranking if enabled and we have enough results
-            if apply_reranking and len(initial_results) > 1:  
-                logger.info(f"Applying re-ranking to {len(initial_results)} initial results")
-                return self.rerank_results(query, initial_results, top_k=top_k)
+            if apply_reranking and len(combined_results) > 1:  
+                logger.info(f"Applying re-ranking to {len(combined_results)} initial results")
+                return self.rerank_results(query, combined_results, top_k=top_k)
             else:
                 # No re-ranking, return initial results
-                logger.info(f"Skipping re-ranking (enabled={apply_reranking}, results={len(initial_results)})")
-                return initial_results[:top_k]
+                logger.info(f"Skipping re-ranking (enabled={apply_reranking}, results={len(combined_results)})")
+                return combined_results[:top_k]
                 
         except Exception as e:
             logger.error(f"Error searching documents: {e}")
@@ -732,6 +956,10 @@ class DocumentManager:
             with open(self.base_dir / 'chunks.pkl', 'wb') as f:
                 pickle.dump(self.chunks, f)
             
+            # Save contextualized chunks
+            with open(self.base_dir / 'contextualized_chunks.pkl', 'wb') as f:
+                pickle.dump(self.contextualized_chunks, f)
+            
             # Save embeddings
             with open(self.base_dir / 'embeddings.pkl', 'wb') as f:
                 pickle.dump(self.embeddings, f)
@@ -773,7 +1001,7 @@ class DocumentManager:
             logger.error(f"Error regenerating embeddings: {e}")
             return False
     
-    def _load_documents(self, force_reload: bool = False):
+    async def _load_documents(self, force_reload: bool = False):
         """Load document data from disk and add any new .txt files."""
         try:
             # Check if embeddings provider has changed
@@ -793,17 +1021,46 @@ class DocumentManager:
                 with open(self.base_dir / 'chunks.pkl', 'rb') as f:
                     self.chunks = pickle.load(f)
                 
+                # Load contextualized chunks if available
+                if (self.base_dir / 'contextualized_chunks.pkl').exists():
+                    with open(self.base_dir / 'contextualized_chunks.pkl', 'rb') as f:
+                        self.contextualized_chunks = pickle.load(f)
+                else:
+                    # If no contextualized chunks, initialize empty
+                    self.contextualized_chunks = {}
+                    logger.info("No contextualized chunks found, will generate when needed")
+                
                 if provider_changed:
                     # If provider changed, only load chunks and regenerate embeddings
                     logger.info("Provider changed, regenerating embeddings for all documents")
                     self.embeddings = {}
                     self.metadata = {}
+                    self.bm25_indexes = {}
                     
                     # Regenerate embeddings for all documents
                     for doc_name, chunks in self.chunks.items():
                         logger.info(f"Regenerating embeddings for document: {doc_name}")
-                        titles = [doc_name] * len(chunks)
-                        self.embeddings[doc_name] = self.generate_embeddings(chunks, is_query=False, titles=titles)
+                        
+                        # Get original document content if available
+                        doc_path = self.base_dir / doc_name
+                        if doc_path.exists():
+                            with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                                doc_content = f.read()
+                        else:
+                            # If original not available, concatenate chunks
+                            doc_content = " ".join(chunks)
+                        
+                        # Generate contextualized chunks
+                        contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
+                        self.contextualized_chunks[doc_name] = contextualized_chunks
+                        
+                        # Generate embeddings
+                        titles = [doc_name] * len(contextualized_chunks)
+                        self.embeddings[doc_name] = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
+                        
+                        # Create BM25 index
+                        self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
+                        
                         self.metadata[doc_name] = {
                             'added': datetime.now().isoformat(),
                             'chunk_count': len(chunks)
@@ -815,12 +1072,34 @@ class DocumentManager:
                     with open(self.base_dir / 'metadata.json', 'r') as f:
                         self.metadata = json.load(f)
                     
-                logger.info(f"Loaded {len(self.chunks)} documents from processed data")
+                    # Create BM25 indexes for all documents
+                    self.bm25_indexes = {}
+                    for doc_name, chunks in self.chunks.items():
+                        # Use contextualized chunks if available, otherwise use original chunks
+                        if doc_name in self.contextualized_chunks:
+                            self.bm25_indexes[doc_name] = self._create_bm25_index(self.contextualized_chunks[doc_name])
+                        else:
+                            # Generate contextualized chunks
+                            doc_path = self.base_dir / doc_name
+                            if doc_path.exists():
+                                with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                                    doc_content = f.read()
+                            else:
+                                # If original not available, concatenate chunks
+                                doc_content = " ".join(chunks)
+                            
+                            contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
+                            self.contextualized_chunks[doc_name] = contextualized_chunks
+                            self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
+                    
+                    logger.info(f"Loaded {len(self.chunks)} documents from processed data")
             else:
                 # Start fresh if force_reload is True or no processed data exists
                 self.chunks = {}
+                self.contextualized_chunks = {}
                 self.embeddings = {}
                 self.metadata = {}
+                self.bm25_indexes = {}
                 logger.info("Starting fresh or force reloading documents")
 
             # Save current provider info
@@ -837,7 +1116,7 @@ class DocumentManager:
                     try:
                         with open(txt_file, 'r', encoding='utf-8-sig') as f:
                             content = f.read()
-                        self.add_document(txt_file.name, content, save_to_disk=False)
+                        await self.add_document(txt_file.name, content, save_to_disk=False)
                         logger.info(f"Loaded and processed {txt_file.name}")
                     except Exception as e:
                         logger.error(f"Error processing {txt_file.name}: {e}")
@@ -849,12 +1128,14 @@ class DocumentManager:
         except Exception as e:
             logger.error(f"Error loading documents: {e}")
             self.chunks = {}
+            self.contextualized_chunks = {}
             self.embeddings = {}
             self.metadata = {}
+            self.bm25_indexes = {}
 
-    def reload_documents(self):
+    async def reload_documents(self):
         """Reload all documents from disk, regenerating embeddings."""
-        self._load_documents(force_reload=True)
+        await self._load_documents(force_reload=True)
             
     def get_lorebooks_path(self):
         """Get or create lorebooks directory path."""
@@ -1885,7 +2166,7 @@ class DiscordBot(commands.Bot):
         self.load_banned_users()
 
         self.scheduler = AsyncIOScheduler()
-        self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6)
+        self.scheduler.add_job(self.refresh_google_docs_wrapper, 'interval', hours=6)
         self.scheduler.start()
         
         # List of models that support vision capabilities
@@ -1908,6 +2189,10 @@ class DiscordBot(commands.Bot):
         # Replace backslashes to avoid escape sequence issues
         text = text.replace("\\", "\\\\")
         return text
+    
+    def refresh_google_docs_wrapper(self):
+        """Wrapper to run the async refresh_google_docs method."""
+        asyncio.create_task(self.refresh_google_docs())
 
     async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
         """Fetch recent messages from a channel.
@@ -2281,28 +2566,40 @@ class DiscordBot(commands.Bot):
                     if not file_name.endswith('.txt'):
                         file_name += '.txt'
                     
-                    async with aiohttp.ClientSession() as session:
-                        url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-                        async with session.get(url) as response:
-                            if response.status != 200:
-                                logger.error(f"Failed to download {doc_id}: {response.status}")
-                                continue
-                            content = await response.text()
+                    # Check if document has changed
+                    changed = await self._has_google_doc_changed(doc_id, file_name)
                     
-                    file_path = self.document_manager.base_dir / file_name
-                    with open(file_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
+                    if changed:
+                        logger.info(f"Google Doc {doc_id} has changed, updating")
                         
-                    logger.info(f"Updated Google Doc {doc_id} as {file_name}")
-                    
-                    if file_name in self.document_manager.chunks:
-                        del self.document_manager.chunks[file_name]
-                        del self.document_manager.embeddings[file_name]
+                        async with aiohttp.ClientSession() as session:
+                            url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                            async with session.get(url) as response:
+                                if response.status != 200:
+                                    logger.error(f"Failed to download {doc_id}: {response.status}")
+                                    continue
+                                content = await response.text()
                         
-                    # Add document without saving to disk yet
-                    self.document_manager.add_document(file_name, content, save_to_disk=False)
-                    updated_docs = True
-                    
+                        file_path = self.document_manager.base_dir / file_name
+                        with open(file_path, 'w', encoding='utf-8') as f:
+                            f.write(content)
+                            
+                        logger.info(f"Updated Google Doc {doc_id} as {file_name}")
+                        
+                        if file_name in self.document_manager.chunks:
+                            del self.document_manager.chunks[file_name]
+                            del self.document_manager.embeddings[file_name]
+                            if file_name in self.document_manager.contextualized_chunks:
+                                del self.document_manager.contextualized_chunks[file_name]
+                            if file_name in self.document_manager.bm25_indexes:
+                                del self.document_manager.bm25_indexes[file_name]
+                            
+                        # Add document without saving to disk yet
+                        await self.document_manager.add_document(file_name, content, save_to_disk=False)
+                        updated_docs = True
+                    else:
+                        logger.info(f"Google Doc {doc_id} has not changed, skipping")
+                        
                 except Exception as e:
                     logger.error(f"Error refreshing doc {doc_id}: {e}")
             
@@ -2311,6 +2608,76 @@ class DiscordBot(commands.Bot):
                 self.document_manager._save_to_disk()
         except Exception as e:
             logger.error(f"Error refreshing Google Docs: {e}")
+
+    async def _has_google_doc_changed(self, doc_id: str, file_name: str) -> bool:
+        """Check if a Google Doc has changed since last refresh using content hashing.
+        
+        Args:
+            doc_id: The Google Doc ID
+            file_name: The file name used to store the document
+            
+        Returns:
+            bool: True if the document has changed, False otherwise
+        """
+        try:
+            # Get the stored hash if available
+            stored_hash = None
+            doc_metadata_path = self.document_manager.base_dir / f"{file_name}.metadata.json"
+            
+            if doc_metadata_path.exists():
+                with open(doc_metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    stored_hash = metadata.get('content_hash')
+            
+            # Get the current document content
+            file_path = self.document_manager.base_dir / file_name
+            if not file_path.exists():
+                # If the file doesn't exist locally, it needs to be downloaded
+                return True
+            
+            with open(file_path, 'r', encoding='utf-8') as f:
+                current_content = f.read()
+                
+            # Compute hash of current content
+            import hashlib
+            current_hash = hashlib.md5(current_content.encode('utf-8')).hexdigest()
+            
+            # Download the latest version
+            async with aiohttp.ClientSession() as session:
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        # If we can't download, assume document has changed
+                        logger.warning(f"Failed to download {doc_id}, assuming document has changed")
+                        return True
+                    
+                    new_content = await response.text()
+            
+            # Compute hash of new content
+            new_hash = hashlib.md5(new_content.encode('utf-8')).hexdigest()
+            
+            # Save the new hash
+            metadata = {
+                'content_hash': new_hash
+            }
+            with open(doc_metadata_path, 'w') as f:
+                json.dump(metadata, f)
+            
+            # Compare hashes
+            if stored_hash is not None and stored_hash == new_hash:
+                return False
+            
+            # If the content has actually changed
+            if current_hash != new_hash:
+                return True
+            else:
+                # Content hasn't changed
+                return False
+                    
+        except Exception as e:
+            logger.error(f"Error checking if Google Doc {doc_id} has changed: {e}")
+            # If there's an error, assume document has changed
+            return True
             
     async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None) -> bool:
         """Refresh a single Google Doc by its ID.
@@ -2338,6 +2705,13 @@ class DiscordBot(commands.Bot):
             if not file_name.endswith('.txt'):
                 file_name += '.txt'
             
+            # Check if document has changed
+            changed = await self._has_google_doc_changed(doc_id, file_name)
+            
+            if not changed:
+                logger.info(f"Google Doc {doc_id} has not changed, skipping")
+                return True  # Return success, but no update needed
+            
             # Download the document
             async with aiohttp.ClientSession() as session:
                 url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
@@ -2359,6 +2733,10 @@ class DiscordBot(commands.Bot):
                 logger.info(f"Removing old document data for {old_filename}")
                 del self.document_manager.chunks[old_filename]
                 del self.document_manager.embeddings[old_filename]
+                if old_filename in self.document_manager.contextualized_chunks:
+                    del self.document_manager.contextualized_chunks[old_filename]
+                if old_filename in self.document_manager.bm25_indexes:
+                    del self.document_manager.bm25_indexes[old_filename]
                 if old_filename in self.document_manager.metadata:
                     del self.document_manager.metadata[old_filename]
                 
@@ -2372,9 +2750,13 @@ class DiscordBot(commands.Bot):
             if file_name in self.document_manager.chunks:
                 del self.document_manager.chunks[file_name]
                 del self.document_manager.embeddings[file_name]
+                if file_name in self.document_manager.contextualized_chunks:
+                    del self.document_manager.contextualized_chunks[file_name]
+                if file_name in self.document_manager.bm25_indexes:
+                    del self.document_manager.bm25_indexes[file_name]
                 
             # Add document and save to disk
-            self.document_manager.add_document(file_name, content)
+            await self.document_manager.add_document(file_name, content)
             
             return True
                 
@@ -2385,6 +2767,11 @@ class DiscordBot(commands.Bot):
     async def setup_hook(self):
         """Initial setup hook called by discord.py."""
         logger.info("Bot is setting up...")
+        
+        # Load documents asynchronously
+        await self.document_manager._load_documents()
+        
+        # Setup commands and sync
         await self.setup_commands()
         try:
             synced = await self.tree.sync()
@@ -4489,7 +4876,7 @@ class DiscordBot(commands.Bot):
         async def reload_docs(interaction: discord.Interaction):
             await interaction.response.defer()
             try:
-                self.document_manager.reload_documents()
+                await self.document_manager.reload_documents()
                 await interaction.followup.send("Documents reloaded successfully.")
             except Exception as e:
                 await interaction.followup.send(f"Error reloading documents: {str(e)}")
