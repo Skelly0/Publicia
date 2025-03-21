@@ -498,7 +498,9 @@ class DocumentManager:
         for doc_name, chunks in self.chunks.items():
             # Make sure we have a BM25 index for this document
             if doc_name not in self.bm25_indexes:
-                self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
+                self.bm25_indexes[doc_name] = self._create_bm25_index(
+                    self.contextualized_chunks.get(doc_name, chunks)
+                )
                 
             # Get BM25 scores
             bm25_scores = self.bm25_indexes[doc_name].get_scores(query_tokens)
@@ -511,10 +513,13 @@ class DocumentManager:
                         image_id = doc_name[6:-4]
                     elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
                         image_id = self.metadata[doc_name]['image_id']
-                        
+                    
+                    # Use contextualized chunk instead of original
+                    chunk = self.get_contextualized_chunk(doc_name, idx)
+                    
                     results.append((
                         doc_name,
-                        chunks[idx],
+                        chunk,
                         float(score),
                         image_id,
                         idx + 1,
@@ -524,50 +529,126 @@ class DocumentManager:
         # Sort by score and return top_k
         results.sort(key=lambda x: x[2], reverse=True)
         return results[:top_k]
+    
+    def get_contextualized_chunk(self, doc_name: str, chunk_idx: int) -> str:
+        """Get the contextualized chunk if available, otherwise fall back to the original chunk.
+        
+        Args:
+            doc_name: The document name
+            chunk_idx: The 0-based index of the chunk
+            
+        Returns:
+            The contextualized chunk if available, otherwise the original chunk
+        """
+        # Check if we have contextualized chunks for this document
+        if doc_name in self.contextualized_chunks and chunk_idx < len(self.contextualized_chunks[doc_name]):
+            return self.contextualized_chunks[doc_name][chunk_idx]
+        
+        # Fall back to original chunks
+        if doc_name in self.chunks and chunk_idx < len(self.chunks[doc_name]):
+            logger.warning(f"Using original chunk for {doc_name}[{chunk_idx}] as contextualized version not found")
+            return self.chunks[doc_name][chunk_idx]
+        
+        # Emergency fallback
+        logger.error(f"Chunk not found: {doc_name}[{chunk_idx}]")
+        return "Chunk not found"
         
     def _combine_search_results(self, embedding_results: List[Tuple], bm25_results: List[Tuple], top_k: int = None) -> List[Tuple]:
-        """Combine results from embedding and BM25 search using rank fusion."""
+        """Combine results from embedding and BM25 search using score-based fusion."""
         if top_k is None:
             top_k = self.top_k
             
         # Create a dictionary to store combined scores
         combined_scores = {}
         
-        # Rank fusion formula: combined_score = (1 / (k + rank1)) + (1 / (k + rank2))
-        k = 60  # Typical value for rank fusion
+        # Log the number of results from each method
+        logger.info(f"Combining {len(embedding_results)} embedding results with {len(bm25_results)} BM25 results using score-based fusion")
         
-        # Process embedding results
-        for rank, (doc_name, chunk, score, image_id, chunk_idx, total_chunks) in enumerate(embedding_results):
+        # Normalize embedding scores if needed - they should already be between 0 and 1 (cosine similarity)
+        # But we'll ensure they're properly normalized anyway
+        embedding_weight = 0.85  # Weight for embedding scores (adjust as needed)
+        
+        # Process embedding results 
+        for doc_name, chunk, score, image_id, chunk_idx, total_chunks in embedding_results:
             key = (doc_name, chunk_idx)
-            combined_scores[key] = combined_scores.get(key, 0) + 1 / (k + rank)
+            # Ensure score is between 0 and 1
+            norm_score = max(0, min(1, score))
+            combined_scores[key] = combined_scores.get(key, 0) + (norm_score * embedding_weight)
             
+            # Log some of the top embedding scores
+            if len(combined_scores) <= 3:
+                logger.info(f"Top embedding result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
+        
+        # Normalize BM25 scores to [0, 1] range
+        bm25_weight = 0.15  # Weight for BM25 scores (adjust as needed)
+        
+        if bm25_results:
+            # Find min and max scores for normalization
+            max_bm25 = max(score for _, _, score, _, _, _ in bm25_results)
+            min_bm25 = min(score for _, _, score, _, _, _ in bm25_results)
+            range_bm25 = max_bm25 - min_bm25
+            
+            # Log min/max for debugging
+            logger.info(f"BM25 score range: min={min_bm25:.4f}, max={max_bm25:.4f}")
+        else:
+            # Default values if no results
+            max_bm25, min_bm25, range_bm25 = 1.0, 0.0, 1.0
+        
         # Process BM25 results
-        for rank, (doc_name, chunk, score, image_id, chunk_idx, total_chunks) in enumerate(bm25_results):
+        for doc_name, chunk, score, image_id, chunk_idx, total_chunks in bm25_results:
             key = (doc_name, chunk_idx)
-            combined_scores[key] = combined_scores.get(key, 0) + 1 / (k + rank)
+            # Normalize BM25 score to [0, 1] range
+            if range_bm25 > 0:
+                norm_score = (score - min_bm25) / range_bm25
+            else:
+                norm_score = 0.5  # Default if all scores are the same
+                
+            combined_scores[key] = combined_scores.get(key, 0) + (norm_score * bm25_weight)
+            
+            # Log some of the top BM25 scores
+            if len([k for k in combined_scores.keys() if k == key]) <= 3:
+                logger.info(f"Top BM25 result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
+        
+        # Safety check - ensure we have some scores
+        if not combined_scores:
+            logger.warning("No combined scores found. Returning empty results.")
+            return []
         
         # Create combined results
         combined_results = []
         for (doc_name, chunk_idx), score in combined_scores.items():
-            if chunk_idx - 1 < len(self.chunks.get(doc_name, [])):  # Safety check
-                chunk = self.chunks[doc_name][chunk_idx - 1]
-                image_id = None
-                if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                    image_id = doc_name[6:-4]
-                elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                    image_id = self.metadata[doc_name]['image_id']
-                    
-                combined_results.append((
-                    doc_name,
-                    chunk,
-                    score,
-                    image_id,
-                    chunk_idx,
-                    len(self.chunks[doc_name])
-                ))
+            # Use contextualized chunk instead of original
+            chunk_index = chunk_idx - 1  # Convert from 1-based to 0-based indexing
+            
+            # Safety check for valid index
+            if chunk_index < 0 or chunk_index >= len(self.chunks.get(doc_name, [])):
+                continue
+                
+            # Get the contextualized chunk
+            chunk = self.get_contextualized_chunk(doc_name, chunk_index)
+                
+            image_id = None
+            if doc_name.startswith("image_") and doc_name.endswith(".txt"):
+                image_id = doc_name[6:-4]
+            elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
+                image_id = self.metadata[doc_name]['image_id']
+                
+            combined_results.append((
+                doc_name,
+                chunk,
+                score,  # This is the combined score
+                image_id,
+                chunk_idx,
+                len(self.chunks[doc_name])
+            ))
         
         # Sort by score and return top_k
         combined_results.sort(key=lambda x: x[2], reverse=True)
+        
+        # Log top combined results
+        for i, (doc_name, _, score, _, _, _) in enumerate(combined_results[:3]):
+            logger.info(f"Top {i+1} combined result: {doc_name}, score: {score:.4f}")
+        
         return combined_results[:top_k]
 
     async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
@@ -928,12 +1009,15 @@ class DocumentManager:
                         image_id = self.metadata[doc_name]['image_id']
                     
                     if idx < len(self.chunks[doc_name]):
+                        # Use contextualized chunk instead of original
+                        chunk = self.get_contextualized_chunk(doc_name, idx)
+                        
                         results.append((
                             doc_name,
-                            self.chunks[doc_name][idx],
+                            chunk,
                             float(similarities[idx]),
                             image_id,
-                            idx + 1,
+                            idx + 1,  # 1-based indexing for display
                             len(self.chunks[doc_name])
                         ))
         
@@ -945,6 +1029,13 @@ class DocumentManager:
             logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
             if image_id:
                 logger.info(f"This is an image description for image ID: {image_id}")
+            
+            # Log whether we're using a contextualized chunk
+            is_contextualized = (doc_name in self.contextualized_chunks and 
+                                chunk_index - 1 < len(self.contextualized_chunks[doc_name]) and
+                                chunk == self.contextualized_chunks[doc_name][chunk_index - 1])
+            logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk")
+            
             logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
         
         return results[:top_k]
@@ -1356,7 +1447,7 @@ class DocumentManager:
         reranked_results.sort(key=lambda x: x[2], reverse=True)
         
         # 6. Filter by minimum score threshold
-        min_score = self.config.RERANKING_MIN_SCORE if self.config else 0.5
+        min_score = self.config.RERANKING_MIN_SCORE if self.config else 0.45
         filtered_results = [r for r in reranked_results if r[2] >= min_score]
         
         # Use filtered results if we have enough, otherwise use all re-ranked results
@@ -1381,7 +1472,12 @@ class DocumentManager:
         else:
             # 'strict' mode - use absolute threshold (already calculated above)
             filtered_results = [r for r in reranked_results if r[2] >= min_score]
-
+        
+        # Add fallback mechanism if filtered results are empty
+        if not filtered_results:
+            logger.warning(f"Filtering with mode '{filter_mode}' removed all results. Falling back to top-{top_k} results.")
+            filtered_results = reranked_results[:top_k] if top_k else []
+        
         # Only limit to top_k if we have more than needed and filter_mode isn't 'strict'
         if top_k and len(filtered_results) > top_k:
             final_results = filtered_results[:top_k]
@@ -3489,7 +3585,7 @@ class DiscordBot(commands.Bot):
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 file_content = f"""
         =========================================================
-        PUBLICIA PROMPT EXPORT
+        PUBLICIA PROMPT EXPORT WITH CONTEXTUAL INFORMATION
         =========================================================
         Generated at: {timestamp}
         Query: {question}
@@ -3506,6 +3602,9 @@ class DiscordBot(commands.Bot):
         3. Search results from relevant documents
         4. How your query was analyzed
         5. The final message containing your question
+
+        SPECIAL FEATURE: This export shows whether document chunks have
+        been enhanced with contextual information to improve search quality.
 
         NOTE: This export includes your conversation history, which
         may contain personal information. If you're sharing this file,
@@ -3558,18 +3657,45 @@ class DiscordBot(commands.Bot):
         RAW SEARCH RESULTS ({len(search_results)} results)
         ---------------------------------------------------------
         These are the actual document chunks found by semantic search.
+        Each result shows whether it has been enhanced with AI-generated context.
         ---------------------------------------------------------
         """
                     for i, (doc, chunk, score, image_id, chunk_index, total_chunks) in enumerate(search_results):                        
+                        # Check if this chunk has been contextualized
+                        has_context = False
+                        original_chunk = chunk
+                        context_part = ""
+
+                        # Check if we have contextualized chunks for this document
+                        if hasattr(self.document_manager, 'contextualized_chunks') and doc in self.document_manager.contextualized_chunks:
+                            # Check if we have enough contextualized chunks
+                            if chunk_index - 1 < len(self.document_manager.contextualized_chunks[doc]):
+                                contextualized_chunk = self.document_manager.contextualized_chunks[doc][chunk_index - 1]
+                                
+                                # Check if this is actually different from the original
+                                if contextualized_chunk != original_chunk and original_chunk in contextualized_chunk:
+                                    has_context = True
+                                    # Try to extract just the context part (assuming it's prepended)
+                                    context_start_pos = contextualized_chunk.find(original_chunk)
+                                    if context_start_pos > 0:
+                                        context_part = contextualized_chunk[:context_start_pos].strip()
+                        
                         if image_id:
                             # Image result
                             image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
                             file_content += f"[{i+1}] IMAGE: {image_name} (ID: {image_id}, score: {score:.2f})\n"
-                            file_content += f"Description: {chunk}\n\n"
+                            file_content += f"Description: {chunk}\n"
                         else:
                             # Document result
-                            file_content += f"[{i+1}] DOCUMENT: {doc} (score: {score:.2f})\n"
-                            file_content += f"Content: {chunk}\n\n"
+                            file_content += f"[{i+1}] DOCUMENT: {doc} (score: {score:.2f}, chunk {chunk_index}/{total_chunks})\n"
+                            file_content += f"Content: {chunk}\n"
+                        
+                        # Display context information
+                        if has_context:
+                            file_content += f"[CONTEXTUAL ENHANCEMENT]: YES\n"
+                            file_content += f"Added context: {context_part}\n\n"
+                        else:
+                            file_content += f"[CONTEXTUAL ENHANCEMENT]: NO\n\n"
                     
                     file_content += "=========================================================\n\n"
                 
@@ -3609,15 +3735,15 @@ class DiscordBot(commands.Bot):
                             f_out.write(f"WARNING: Original prompt was {file_size / (1024*1024):.2f}MB, exceeding Discord's limit. Content has been truncated.\n\n")
                             f_out.write(f_in.read(7 * 1024 * 1024))
                             f_out.write("\n\n[... Content truncated due to file size limits ...]")
-                    
-                    os.remove(file_name)
-                    file_name = truncated_file_name
+                            
+                        os.remove(file_name)
+                        file_name = truncated_file_name
                 
                 # Upload file
                 await status_message.edit(content="*uploading prompt file...*")
                 await interaction.followup.send(
                     file=discord.File(file_name), 
-                    content=f"*here's the full prompt that would be sent to the AI model for your query. this includes the system prompt, conversation history, and search results:*",
+                    content=f"*here's the full prompt that would be sent to the AI model for your query. this includes the system prompt, conversation history, and search results with contextual enhancement info:*",
                     ephemeral=private
                 )
                 
