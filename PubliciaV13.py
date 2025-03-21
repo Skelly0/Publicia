@@ -4363,7 +4363,8 @@ class DiscordBot(commands.Bot):
                 search_results = self.process_hybrid_query(
                     question,
                     interaction.user.name,
-                    max_results=self.config.get_top_k_for_model(preferred_model)
+                    max_results=self.config.get_top_k_for_model(preferred_model),
+                    use_context=False  # this disables all the context logic for slash commands
                 )
                 
                 # Log the results
@@ -6231,9 +6232,21 @@ class DiscordBot(commands.Bot):
             
         return weighted_embedding
 
-    def process_hybrid_query(self, question: str, username: str, max_results: int = 5):
+    def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True):
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
-        # First, detect if this is a context-dependent query
+        # Skip context logic completely if use_context is False
+        if not use_context:
+            # Just do regular search with reranking
+            search_results = self.document_manager.search(
+                question, 
+                top_k=max_results,
+                apply_reranking=self.config.RERANKING_ENABLED
+            )
+            
+            # Still cache results for consistency
+            self.cache_search_results(username, question, search_results)
+            return search_results
+    
         is_followup = self.is_context_dependent_query(question)
         original_question = question
         

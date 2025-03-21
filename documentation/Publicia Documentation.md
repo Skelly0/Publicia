@@ -16,11 +16,11 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 
 ### Key Capabilities
 
-- **Document Search & Retrieval**: Uses vector embeddings to find relevant information from documents
+- **Document Search & Retrieval**: Uses vector embeddings and BM25 with contextual retrieval for highly accurate information retrieval
 - **Image Analysis**: Can process, store, and analyze images related to the lore
 - **Conversation Memory**: Remembers conversation history for contextual responses
 - **Multiple AI Models**: Supports various AI models with automatic fallback mechanisms
-- **Google Doc Integration**: Can fetch and index content from Google Docs
+- **Google Doc Integration**: Can fetch and index content from Google Docs with change detection
 - **Role-Playing**: Maintains character as Publicia while providing information
 
 ### Lore Context
@@ -47,7 +47,7 @@ Publicia is built on Python using discord.py, with several specialized component
          ▼                        │
 ┌────────────────┐      ┌─────────┴──────────┐
 │ Document Mgr   │◄─────┤     AI Backend     │
-│ (Vector Search)│      │ (OpenRouter API)   │
+│ (Vector+BM25)  │      │ (OpenRouter API)   │
 └────────┬────────┘      └──────────────────┘
          │                        ▲
          ▼                        │
@@ -60,7 +60,7 @@ Publicia is built on Python using discord.py, with several specialized component
 ### Key Classes
 
 1. **DiscordBot**: Main bot class that handles Discord integration and commands
-2. **DocumentManager**: Manages document storage, embedding generation, and semantic search
+2. **DocumentManager**: Manages document storage, embedding generation, BM25 indexing, contextual retrieval, and search
 3. **ImageManager**: Handles image storage, retrieval, and description generation
 4. **ConversationManager**: Maintains conversation history for users
 5. **UserPreferencesManager**: Handles user preferences like AI model selection
@@ -70,8 +70,8 @@ Publicia is built on Python using discord.py, with several specialized component
 
 1. User sends a query (message or command)
 2. Bot processes the query using a direct search approach (simplified from earlier versions)
-3. Enhanced search finds relevant documents and images
-4. Search results are prepared as context
+3. Enhanced search finds relevant documents and images using both embedding similarity and BM25 keyword matching
+4. Search results with contextual enhancements are prepared as context
 5. User's conversation history is added for continuity
 6. AI model generates response based on all context
 7. Response is sent back to user, potentially with images
@@ -81,13 +81,27 @@ Publicia is built on Python using discord.py, with several specialized component
 
 ### Document Management
 
-The bot uses vector embeddings to store and retrieve documents semantically:
+The bot uses an advanced hybrid search system combining vector embeddings and BM25:
 
 - Documents are chunked into smaller sections for precise retrieval
-- Each chunk is converted to vector embeddings using Google's Generative AI for embeddings
+- Each chunk is enhanced with AI-generated contextual information
+- Contextualized chunks are converted to vector embeddings using Google's Generative AI
+- BM25 (Best Matching 25) provides complementary keyword-based matching
+- Score-based fusion combines embedding and BM25 results for optimal retrieval
 - Queries are matched to the most relevant document chunks
 - Similarity scores determine the best matches
 - Documents can be added, removed, or searched directly
+
+### Contextual Retrieval
+
+A sophisticated approach to improve search accuracy and content understanding:
+
+- AI generates context for each document chunk to explain its relationship to the whole document
+- Context is prepended to chunks before embedding and indexing
+- The same contextualized chunks are included in prompts sent to the model
+- This solves problems with ambiguous pronouns, missing entity references, and lack of temporal context
+- Significantly reduces retrieval failures by up to 49% based on research
+- Uses Gemini 2.0 Flash via OpenRouter to generate context
 
 ### Image Processing
 
@@ -115,6 +129,7 @@ Unique capability to work with Google Docs:
 
 - Track Google Docs with custom names
 - Automatically refresh content on schedule
+- Uses content hashing to only update documents that have actually changed
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Support renaming and removing tracked documents
@@ -138,17 +153,20 @@ Each model has different strengths, fallback mechanisms ensure reliability.
 
 ### Search and Retrieval
 
-The search system has been enhanced in recent versions:
+The enhanced search system combines multiple techniques:
 
 1. **Query Processing**: Direct semantic search using embeddings
-2. **Search Results**: Top k results based on semantic similarity
-3. **Reranking**: Sophisticated reranking of results for improved relevance
-4. **Response Generation**: Creates roleplayed response with citations
-5. **Empty Response Handling**: Automatic retry system when models return blank responses
+2. **Hybrid Search**: Combination of embedding similarity and BM25 keyword matching
+3. **Score-Based Fusion**: Weighted combination of semantic and lexical search results
+4. **Search Results**: Top k results based on combined scores
+5. **Reranking**: Sophisticated reranking of results with fallback mechanism
+6. **Contextual Enhancement**: AI-generated context is included with search results
+7. **Response Generation**: Creates roleplayed response with citations
+8. **Empty Response Handling**: Automatic retry system when models return blank responses
 
 ### Embedding System
 
-The bot now uses Google's Generative AI for embeddings:
+The bot uses Google's Generative AI for embeddings:
 
 - Uses the `models/text-embedding-004` embedding model
 - Supports configurable embedding dimensions
@@ -172,6 +190,7 @@ Sophisticated reranking of search results to improve relevance:
 - Customizable minimum score threshold
 - Reranking candidates configuration
 - Weighted combination of initial and reranked scores
+- Fallback mechanism to ensure results are always returned
 - TOP_K now acts as a maximum limit for chunks parsed
 
 ## Setup Guide
@@ -243,7 +262,9 @@ regex>=2023.0.0
 uuid>=1.30
 deque>=1.0
 google-generativeai>=0.3.0
+rank_bm25>=0.2.2
 ```
+Note: Added `rank_bm25` for BM25 functionality.
 
 ### Running the Bot
 
@@ -340,6 +361,7 @@ The bot will display a startup banner and initialize all components.
 
 - `/export_prompt`: Export the complete prompt for a query
   - **Parameters**: `question` (your query), `private` (visibility toggle)
+  - Now includes information about contextual enhancements for each chunk
 
 #### Admin Commands
 
@@ -401,6 +423,24 @@ The bot will automatically fall back to available models if your preferred model
 - Configure dynamic temperature settings for response quality and relevance
 - Optimize reranking settings based on your needs
 
+### Hybrid Search Configuration
+
+Configure the hybrid search system for optimal performance:
+
+- Adjust embedding vs. BM25 weights (default: 60% embedding, 40% BM25)
+- Modify RERANKING settings to control result filtering
+- Consider customizing the contextual retrieval prompt for your specific domain
+- Tune the fusion parameters if results aren't meeting expectations
+- Use `/export_prompt` to see how context is being added to chunks
+
+### Contextual Retrieval Best Practices
+
+- Keep original documents well-structured for better context generation
+- Use descriptive section headings and clear organization
+- If context seems inadequate, consider manually enhancing document structure
+- Remember that context is generated once during document addition
+- For critical documents, consider regenerating embeddings after code updates
+
 ### Backup Strategies
 
 - Regularly back up the following directories:
@@ -421,7 +461,7 @@ The bot will automatically fall back to available models if your preferred model
 
 ### Debug Tools
 
-- Use `/export_prompt` to understand how prompts are constructed
+- Use `/export_prompt` to understand how prompts are constructed and see contextual enhancements
 - Toggle debug mode with `/toggle_debug` to see which model generated responses
 - Check logs for detailed operation information
 - Use admin commands for maintenance when needed
@@ -459,6 +499,7 @@ Customize search result reranking with these settings:
 - Check document formatting and content
 - Adjust TOP_K value in .env
 - Configure RERANKING settings for better results
+- Adjust embedding_weight and bm25_weight for fusion (default: 0.6/0.4)
 - Consider regenerating embeddings with `/regenerate_embeddings`
 
 #### Model Errors
@@ -472,6 +513,7 @@ Customize search result reranking with these settings:
 - Check that Doc IDs are correct
 - Verify internet connection
 - Try removing and re-adding the Doc
+- Verify the content hash mechanism is working correctly
 
 #### Image Processing Failures
 - Check supported image formats (PNG, JPG, etc.)
@@ -490,6 +532,12 @@ Customize search result reranking with these settings:
 - Try adjusting the model temperature settings
 - Some models may have token limits that affect response length
 - Check if your query is too complex or ambiguous
+
+#### Contextual Retrieval Issues
+- If context seems inadequate, check document structure
+- Use `/export_prompt` to verify context is being generated and included
+- Make sure OpenRouter API is configured correctly
+- Consider adjusting the context prompt template
 
 ### Logging and Debugging
 
@@ -521,6 +569,25 @@ If data becomes corrupted:
 - API keys should never be committed to version control
 
 ## Recent Updates
+
+### Version 13.7 (March 2025)
+- Added BM25 search capability for better keyword matching
+- Implemented contextual retrieval to enhance chunks with AI-generated context
+- Replaced rank-based fusion with score-based fusion (60% embeddings, 40% BM25)
+- Added fallback mechanism to reranking to ensure results are always returned
+- Fixed critical issue to include contextualized chunks in prompts sent to models
+- Enhanced `/export_prompt` to show contextual enhancements for chunks
+- Added Google Docs change detection with content hashing for efficiency
+- Added comprehensive logging for the search system
+- Added rank_bm25 dependency for BM25 functionality
+
+### Version 13.6 (March 2025)
+- Fixed "user object has no attribute nickname" error for better handling of user mentions
+- Added retry system when models return blank or extremely short responses
+- Made TOP_K act as a maximum limit for chunks parsed in
+- Enhanced reranking system with improved filter modes for better search relevance
+- Added better error handling for edge cases
+- Improved message splitting for longer responses
 
 ### Version 13.5 (March 2025)
 - Fixed "user object has no attribute nickname" error for better handling of user mentions
