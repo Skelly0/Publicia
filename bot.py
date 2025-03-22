@@ -94,8 +94,13 @@ class DiscordBot(commands.Bot):
         return text
     
     def refresh_google_docs_wrapper(self):
-        """Wrapper to run the async refresh_google_docs method."""
-        asyncio.create_task(self.refresh_google_docs())
+        """Wrapper to run the async refresh_google_docs method.""" #Should be fixed now
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.refresh_google_docs())
+        finally:
+            loop.close()
 
     async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
         """Fetch recent messages from a channel.
