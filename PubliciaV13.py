@@ -3795,7 +3795,6 @@ class DiscordBot(commands.Bot):
                 prefix_categories = {
                     "Document Management": [],
                     "Image Management": [],
-                    "Utility": []
                 }
                 
                 # Sort commands into categories
@@ -3804,8 +3803,6 @@ class DiscordBot(commands.Bot):
                         prefix_categories["Document Management"].append(cmd)
                     elif "image" in cmd.name.lower():
                         prefix_categories["Image Management"].append(cmd)
-                    else:
-                        prefix_categories["Utility"].append(cmd)
                 
                 # Format and add each category of prefix commands
                 for category, cmds in prefix_categories.items():
@@ -3816,8 +3813,7 @@ class DiscordBot(commands.Bot):
                             response += f"`Publicia! {cmd.name}`: {brief}\n"
                         response += "\n"
                 
-                response += "\n*you can ask questions about ledus banum 77 and imperial lore by mentioning me or using the /query command!*"
-                response += "\n*you can also type \"LOBOTOMISE\" in a message to wipe your conversation history.*"
+                response += "\n*you can ask questions about ledus banum 77 and imperial lore by pinging/mentioning me or using the /query command!*"
                 response += "\n\n*my genetically enhanced brain is always ready to help... just ask!*"
                 response += "\n\n*for a detailed guide on all my features, use the `/help` command!*"
                 
