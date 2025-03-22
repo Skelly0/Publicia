@@ -460,31 +460,64 @@ class DocumentManager:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
                 return
             
-            # Generate contextualized chunks
-            contextualized_chunks = await self.contextualize_chunks(name, content, chunks)
+            # Check if document already exists and if content has changed
+            content_changed = True
+            if name in self.chunks:
+                # Calculate hash of current content
+                import hashlib
+                current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+                
+                # Check if we have a stored hash
+                previous_hash = None
+                if name in self.metadata and 'content_hash' in self.metadata[name]:
+                    previous_hash = self.metadata[name]['content_hash']
+                
+                # Compare hashes to determine if content has changed
+                if previous_hash and previous_hash == current_hash:
+                    content_changed = False
+                    logger.info(f"Document {name} content has not changed, skipping contextualized chunks regeneration")
             
-            # Generate embeddings using contextualized chunks
-            # Use document name as title for all chunks to improve embedding quality
-            titles = [name] * len(contextualized_chunks)
-            embeddings = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
-            
-            # Store document data
-            self.chunks[name] = chunks  # Store original chunks
-            self.contextualized_chunks[name] = contextualized_chunks  # Store contextualized chunks
-            self.embeddings[name] = embeddings
-            self.metadata[name] = {
-                'added': datetime.now().isoformat(),
-                'chunk_count': len(chunks)
-            }
-            
-            # Create BM25 index for contextualized chunks
-            self.bm25_indexes[name] = self._create_bm25_index(contextualized_chunks)
+            # Generate contextualized chunks only if content has changed or document is new
+            if content_changed or name not in self.contextualized_chunks:
+                logger.info(f"Generating contextualized chunks for document {name}")
+                contextualized_chunks = await self.contextualize_chunks(name, content, chunks)
+                
+                # Generate embeddings using contextualized chunks
+                # Use document name as title for all chunks to improve embedding quality
+                titles = [name] * len(contextualized_chunks)
+                embeddings = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
+                
+                # Store document data
+                self.chunks[name] = chunks  # Store original chunks
+                self.contextualized_chunks[name] = contextualized_chunks  # Store contextualized chunks
+                self.embeddings[name] = embeddings
+                
+                # Calculate and store content hash
+                import hashlib
+                content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+                
+                # Update metadata
+                self.metadata[name] = {
+                    'added': datetime.now().isoformat(),
+                    'updated': datetime.now().isoformat(),
+                    'chunk_count': len(chunks),
+                    'content_hash': content_hash
+                }
+                
+                # Create BM25 index for contextualized chunks
+                self.bm25_indexes[name] = self._create_bm25_index(contextualized_chunks)
+            else:
+                # Update only the timestamp in metadata
+                self.metadata[name]['checked'] = datetime.now().isoformat()
             
             # Save to disk only if requested
             if save_to_disk:
                 self._save_to_disk()
             
-            logger.info(f"Added document: {name} with {len(chunks)} chunks and contextualized embeddings")
+            if content_changed or name not in self.chunks:
+                logger.info(f"Added/updated document: {name} with {len(chunks)} chunks and contextualized embeddings")
+            else:
+                logger.info(f"Document {name} verified unchanged")
             
         except Exception as e:
             logger.error(f"Error adding document {name}: {e}")
