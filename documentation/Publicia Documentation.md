@@ -173,6 +173,17 @@ The bot uses Google's Generative AI for embeddings:
 - Automatically handles truncation for storage efficiency
 - Provides better semantic understanding than previous embedding systems
 
+### Hybrid Search System
+
+The bot combines multiple search techniques for optimal results:
+
+- Vector embeddings for semantic understanding (60% weight)
+- BM25 (Best Matching 25) for keyword-based matching (40% weight)
+- Score-based fusion combines both approaches for better results
+- Handles follow-up queries with context-aware search
+- Caches search results for efficient handling of related queries
+- Automatically enhances context-dependent queries with conversation history
+
 ### Dynamic Response Temperature
 
 Automatically adjusts the LLM temperature based on query type:
@@ -570,6 +581,17 @@ If data becomes corrupted:
 
 ## Recent Updates
 
+### Version 13.8 (March 2025)
+- Enhanced hybrid search system with improved context-aware search
+- Added search result caching for efficient handling of follow-up queries
+- Implemented automatic enhancement of context-dependent queries
+- Improved conversation context extraction for better continuity
+- Added weighted context-aware embedding generation
+- Enhanced error handling and recovery for message sending
+- Improved file fallback for very long responses
+- Added better handling of rate limits with exponential backoff
+- Optimized Google Docs change detection with more efficient content hashing
+
 ### Version 13.7 (March 2025)
 - Added BM25 search capability for better keyword matching
 - Implemented contextual retrieval to enhance chunks with AI-generated context
@@ -589,13 +611,14 @@ If data becomes corrupted:
 - Added better error handling for edge cases
 - Improved message splitting for longer responses
 
-### Version 13.5 (March 2025)
-- Fixed "user object has no attribute nickname" error for better handling of user mentions
-- Added retry system when models return blank or extremely short responses
-- Made TOP_K act as a maximum limit for chunks parsed in
-- Enhanced reranking system with improved filter modes for better search relevance
-- Added better error handling for edge cases
-- Improved message splitting for longer responses
+### Version 13.5 (February 2025)
+- Added model-specific TOP_K configuration for optimized retrieval
+- Implemented dynamic provider selection for better reliability
+- Enhanced model fallback system with model-specific fallbacks
+- Added support for multimodal content in vision-capable models
+- Improved handling of image attachments and search results
+- Enhanced error handling for API calls with better recovery
+- Added better logging for search and retrieval operations
 
 ### Version 13 (February 2025)
 - Updated to use Google's Generative AI for embeddings (models/text-embedding-004)
@@ -610,7 +633,7 @@ If data becomes corrupted:
 - Enhanced message splitting for better Discord compatibility
 - Improved handling of empty documents with automatic cleanup
 
-### Version 12
+### Version 12 (January 2025)
 - Added support for Claude 3.5 and 3.7 models
 - Improved conversation history management
 - Enhanced image description capabilities
