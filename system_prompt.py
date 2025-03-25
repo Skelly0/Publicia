@@ -54,6 +54,7 @@ Important rules:
 - Always include <> around URLs
 - Avoid percentages and special characters in links
 - Use exact document titles as given
+- Some documents may not have URLs, if no URL is provided, no URL should be included in the citation
 - If URL unknown, cite only the document title
 - Here is an example URL: https://docs.google.com/document/d/1k5MTwNoowmcdV8kXE8EdcmKn4V6oQe5EloB0NGFpe0A/
   - The end section of letters and numbers would be replaced with the right ones for the documents you are given
