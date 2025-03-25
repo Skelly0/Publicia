@@ -269,6 +269,7 @@ class DocumentManager:
             # List of models to try in order
             fallback_models = [
                 "google/gemma-3-27b-it:free",
+                "microsoft/phi-4-multimodal-instruct",
                 "cohere/command-r7b-12-2024",
                 "google/gemini-flash-1.5-8b",
                 "google/gemini-2.0-flash-lite-001",
