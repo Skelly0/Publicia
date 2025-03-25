@@ -8,8 +8,23 @@ import random
 import logging
 
 def sanitize_for_logging(text: str) -> str:
-    """Remove problematic characters like BOM from the string for safe logging."""
-    return text.replace('\ufeff', '')
+    """Remove problematic characters from the string for safe logging.
+    
+    This function handles Unicode characters that might cause issues with certain
+    terminal encodings, especially on Windows with cp1252 encoding.
+    """
+    if not text:
+        return ""
+    
+    # Replace BOM and other potentially problematic characters
+    # Use the 'replace' error handler to substitute any characters that can't be encoded
+    try:
+        # Try to encode and decode with 'replace' error handler
+        # This will replace any characters that can't be encoded in cp1252
+        return text.encode('cp1252', errors='replace').decode('cp1252')
+    except Exception:
+        # Fallback to just removing the BOM if the above fails
+        return text.replace('\ufeff', '')
     
 # Custom colored formatter for logs
 class ColoredFormatter(logging.Formatter):
@@ -43,7 +58,7 @@ def configure_logging():
     console_formatter = ColoredFormatter(log_format)
     
     # Create handlers
-    file_handler = logging.FileHandler('bot_detailed.log')
+    file_handler = logging.FileHandler('bot_detailed.log', encoding='utf-8', errors='replace')
     file_handler.setFormatter(file_formatter)
     
     console_handler = logging.StreamHandler()
