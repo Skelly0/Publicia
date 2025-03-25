@@ -36,12 +36,14 @@ class Config:
 
         self.MODEL_TOP_K = {
             # DeepSeek models 
+            "deepseek/deepseek-chat-v3-0324:free": 20,
+            "deepseek/deepseek-chat-v3-0324": 10,
+            "deepseek/deepseek-chat": 10,
             "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 10,
             "deepseek/deepseek-r1-distill-llama-70b": 14,
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
-            "deepseek/deepseek-chat": 10,
             # Gemini models 
             "google/gemini-2.0-flash-001": 17,
             "google/gemini-2.0-pro-exp-02-05:free": 20,

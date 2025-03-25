@@ -85,10 +85,11 @@ def register_commands(bot):
     @bot.tree.command(name="set_model", description="Set your preferred AI model for responses")
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
-        app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
-        app_commands.Choice(name="Gemini 2.0 Flash", value="google/gemini-2.0-flash-001"),
-        app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
+        app_commands.Choice(name="Gemini 2.0 Flash", value="google/gemini-2.0-flash-001"),
+        app_commands.Choice(name="DeepSeek Chat V3 0324", value="deepseek/deepseek-chat-v3-0324:free"),
+        app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
+        app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
         app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
         app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
@@ -113,7 +114,9 @@ def register_commands(bot):
             
             # Get friendly model name based on the model value
             model_name = "Unknown Model"
-            if "deepseek/deepseek-r1" in model:
+            if "deepseek/deepseek-chat-v3-0324" in model:
+                model_name = "DeepSeek Chat v3"
+            elif "deepseek/deepseek-r1" in model:
                 model_name = "DeepSeek-R1"
             elif model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
@@ -144,10 +147,11 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
-                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                    f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                    f"**DeepSeek Chat V3 0324**: New model with improved reasoning and instruction following capabilities. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324:free')}) search results with the free version, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}).",
+                    f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                    f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -181,7 +185,11 @@ def register_commands(bot):
             
             # Get friendly model name based on the model value
             model_name = "Unknown Model"
-            if "deepseek/deepseek-r1" in preferred_model:
+            if "deepseek/deepseek-chat-v3-0324" in preferred_model:
+                model_name = "DeepSeek Chat v3"
+            elif "deepseek/deepseek-chat" in preferred_model:
+                model_name = "DeepSeek Chat"
+            elif "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
             elif preferred_model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
@@ -210,10 +218,11 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
-                f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
-                f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                 f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                f"**DeepSeek Chat V3 0324**: New model with improved reasoning and instruction following capabilities. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324:free')}) search results with the free version, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}).",
+                f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                 f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                 f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                 f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",

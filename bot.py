@@ -798,8 +798,19 @@ class DiscordBot(commands.Bot):
         # Build fallback list dynamically based on the requested model
         models = [model]  # Start with the requested model
         
-        # Add model-specific fallbacks first
-        if model_family == "deepseek":
+        # Add model-specific fallbacks based on more specific model types
+        # DeepSeek models - handle different model types separately
+        if "deepseek/deepseek-chat-v3" in model:
+            # DeepSeek Chat v3 fallbacks
+            fallbacks = [
+                "deepseek/deepseek-chat-v3-0324:free",
+                "deepseek/deepseek-chat-v3-0324",
+                "deepseek/deepseek-chat",
+                "deepseek/deepseek-r1:free",  # Last resort fallback to R1
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif "deepseek/deepseek-r1" in model:
+            # DeepSeek R1 fallbacks
             fallbacks = [
                 "deepseek/deepseek-r1:free",
                 "deepseek/deepseek-r1:floor",
@@ -809,7 +820,16 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "qwen":  # Add Qwen fallbacks
+        elif "deepseek/deepseek-chat" in model and "v3" not in model:
+            # DeepSeek Chat (non-v3) fallbacks
+            fallbacks = [
+                "deepseek/deepseek-chat",
+                "deepseek/deepseek-r1:free",
+                "deepseek/deepseek-r1"
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        # Qwen models
+        elif model_family == "qwen":
             fallbacks = [
                 "qwen/qwq-32b:free",
                 "qwen/qwq-32b",
@@ -817,6 +837,7 @@ class DiscordBot(commands.Bot):
                 "qwen/qwen2.5-32b-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        # Google models
         elif model_family == "google":
             fallbacks = [
                 "google/gemini-2.0-flash-thinking-exp:free",
@@ -824,13 +845,21 @@ class DiscordBot(commands.Bot):
                 "google/gemini-2.0-flash-001"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "thedrummer":  # Testing Model fallbacks
+        # TheDrummer models
+        elif model_family == "thedrummer" and "anubis" in model:
+            fallbacks = [
+                "thedrummer/anubis-pro-105b-v1",
+                "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif model_family == "thedrummer":  # Other TheDrummer models
             fallbacks = [
                 "thedrummer/unslopnemo-12b",
                 "thedrummer/rocinante-12b",
                 "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        # Eva models
         elif model_family == "eva-unit-01":
             fallbacks = [
                 "eva-unit-01/eva-qwen-2.5-72b:floor",
@@ -839,6 +868,7 @@ class DiscordBot(commands.Bot):
                 "qwen/qwq-32b",
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        # Nous Research models
         elif model_family == "nousresearch":
             fallbacks = [
                 "nousresearch/hermes-3-llama-3.1-70b",
@@ -846,6 +876,7 @@ class DiscordBot(commands.Bot):
                 "meta-llama/llama-3.3-70b-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        # Anthropic models
         elif model_family == "anthropic":
             if "claude-3.7-sonnet" in model:
                 fallbacks = [
@@ -854,6 +885,7 @@ class DiscordBot(commands.Bot):
                     "anthropic/claude-3.5-haiku:beta",
                     "anthropic/claude-3.5-haiku"
                 ]
+                models.extend([fb for fb in fallbacks if fb not in models])
             elif "claude-3.5-sonnet" in model:
                 fallbacks = [
                     "anthropic/claude-3.5-sonnet",
@@ -862,22 +894,20 @@ class DiscordBot(commands.Bot):
                     "anthropic/claude-3.5-haiku:beta",
                     "anthropic/claude-3.5-haiku"
                 ]
-            fallbacks = [
-                "latitudegames/wayfarer-large-70b-llama-3.3",
-                "meta-llama/llama-3.3-70b-instruct",  # base model fallback
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
+                models.extend([fb for fb in fallbacks if fb not in models])
+            else:
+                # General Anthropic fallbacks
+                fallbacks = [
+                    "latitudegames/wayfarer-large-70b-llama-3.3",
+                    "meta-llama/llama-3.3-70b-instruct",  # base model fallback
+                ]
+                models.extend([fb for fb in fallbacks if fb not in models])
+        # Microsoft models
         elif model_family == "microsoft":
             fallbacks = [
                 "microsoft/phi-4-multimodal-instruct",
                 "microsoft/phi-4",
                 "microsoft/phi-3.5-mini-128k-instruct"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "thedrummer" and "anubis" in model:
-            fallbacks = [
-                "thedrummer/anubis-pro-105b-v1",
-                "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
         
