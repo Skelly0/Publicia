@@ -95,6 +95,7 @@ def register_commands(bot):
         app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
         app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
         app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
+        app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
     ])
     async def set_model(interaction: discord.Interaction, model: str):
         await interaction.response.defer()
@@ -132,6 +133,12 @@ def register_commands(bot):
                 model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in model:
                 model_name = "Anubis Pro 105B"
+            elif "microsoft/phi-4-multimodal-instruct" in model:
+                model_name = "Phi-4 Multimodal"
+            elif "microsoft/phi-4" in model:
+                model_name = "Phi-4"
+            elif "microsoft/phi-3.5-mini-128k-instruct" in model:
+                model_name = "Phi-3.5 Mini"
             
             if success:
                 # Create a description of all model strengths
@@ -147,6 +154,9 @@ def register_commands(bot):
                     f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     f"**Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
+                    f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. Balanced between accuracy and creativity with fast response times. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
+                    f"**Phi-4**: Microsoft's text-only version of Phi-4. Good for general purpose queries with efficient performance. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4')}) search results.",
+                    f"**Phi-3.5 Mini**: Smaller, faster Microsoft model with 128k context window. Good for efficiency while maintaining reasonable quality. Uses ({bot.config.get_top_k_for_model('microsoft/phi-3.5-mini-128k-instruct')}) search results.",
                 ]
                 
                 response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -193,6 +203,12 @@ def register_commands(bot):
                 model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model:
                 model_name = "Anubis Pro 105B"
+            elif "microsoft/phi-4-multimodal-instruct" in preferred_model:
+                model_name = "Phi-4 Multimodal"
+            elif "microsoft/phi-4" in preferred_model:
+                model_name = "Phi-4"
+            elif "microsoft/phi-3.5-mini-128k-instruct" in preferred_model:
+                model_name = "Phi-3.5 Mini"
             
             # Create a description of all model strengths
             model_descriptions = [
@@ -206,6 +222,9 @@ def register_commands(bot):
                 f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                 f"**Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                 f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
+                f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. Balanced between accuracy and creativity with fast response times. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
+                f"**Phi-4**: Microsoft's text-only version of Phi-4. Good for general purpose queries with efficient performance. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4')}) search results.",
+                f"**Phi-3.5 Mini**: Smaller, faster Microsoft model with 128k context window. Good for efficiency while maintaining reasonable quality. Uses ({bot.config.get_top_k_for_model('microsoft/phi-3.5-mini-128k-instruct')}) search results.",
             ]
             
             response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
@@ -577,5 +596,3 @@ def register_commands(bot):
             import traceback
             logger.error(traceback.format_exc())
             await interaction.followup.send("*neural circuit overload!* failed to export prompt due to an error.")
-
-    

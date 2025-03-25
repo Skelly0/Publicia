@@ -78,6 +78,7 @@ class DiscordBot(commands.Bot):
         self.vision_capable_models = [
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-pro-exp-02-05:free",
+            "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet:beta",
             "anthropic/claude-3.7-sonnet",
             "anthropic/claude-3.5-sonnet:beta", 
@@ -864,6 +865,13 @@ class DiscordBot(commands.Bot):
             fallbacks = [
                 "latitudegames/wayfarer-large-70b-llama-3.3",
                 "meta-llama/llama-3.3-70b-instruct",  # base model fallback
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        elif model_family == "microsoft":
+            fallbacks = [
+                "microsoft/phi-4-multimodal-instruct",
+                "microsoft/phi-4",
+                "microsoft/phi-3.5-mini-128k-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
         elif model_family == "thedrummer" and "anubis" in model:
@@ -1725,6 +1733,12 @@ class DiscordBot(commands.Bot):
                 model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model:
                 model_name = "Anubis Pro 105B"
+            elif "microsoft/phi-4-multimodal-instruct" in preferred_model:
+                model_name = "Phi-4 Multimodal"
+            elif "microsoft/phi-4" in preferred_model:
+                model_name = "Phi-4"
+            elif "microsoft/phi-3.5-mini-128k-instruct" in preferred_model:
+                model_name = "Phi-3.5 Mini"
 
             # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
