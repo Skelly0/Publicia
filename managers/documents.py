@@ -31,6 +31,11 @@ class DocumentManager:
         self.top_k = top_k
         self.config = config
         
+        # Initialize contextualization stats 
+        # (actual values will be loaded from disk when needed)
+        self._contextualization_count = 0
+        self._contextualization_cost = 0.0
+        
         # Initialize Google Generative AI embedding model
         try:
             logger.info("Initializing Google Generative AI embedding model")
@@ -236,128 +241,271 @@ class DocumentManager:
         
         return combined_results[:top_k]
 
-    async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
-        """Generate context for a chunk using a list of fallback models via OpenRouter."""
+    def _estimate_batch_cost(self, batch, document_content, model):
+        """Estimate cost based on document size, batch size, and specific model."""
+        # System prompt tokens (~150)
+        system_tokens = 150
+        
+        # Document content tokens (first 2000 chars)
+        doc_tokens = min(len(document_content[:2000].split()) * 1.3, 500)
+        
+        # Instructions/formatting tokens (~100 base + 25 per chunk)
+        instruction_tokens = 100 + (25 * len(batch))
+        
+        # Chunk content tokens (each chunk limited to 300 chars)
+        chunk_tokens = sum(len(chunk[:300].split()) * 1.3 for chunk in batch)
+        
+        # Expected output tokens (~40 per chunk)
+        output_tokens = 40 * len(batch)
+        
+        # Total estimate
+        total_tokens = system_tokens + doc_tokens + instruction_tokens + chunk_tokens + output_tokens
+        
+        # Get model-specific cost
+        cost_per_1k = self.config.MODEL_COSTS.get(model, self.config.MODEL_COSTS["default"])
+        
+        return (total_tokens / 1000) * cost_per_1k
+    
+    def _get_actual_cost(self, tokens_used, model):
+        """Calculate actual cost based on tokens used and model."""
+        cost_per_1k = self.config.MODEL_COSTS.get(model, self.config.MODEL_COSTS["default"])
+        return (tokens_used / 1000) * cost_per_1k
+    
+    def _load_contextualization_stats(self):
+        """Load usage statistics with daily auto-reset."""
+        # Skip if already loaded
+        if hasattr(self, '_contextualization_count') and hasattr(self, '_contextualization_cost'):
+            return
+        
+        stats_path = Path(self.base_dir) / 'contextualization_stats.json'
+        
         try:
-            # Create the prompt as messages for the API
-            system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
-            
-            user_prompt = f"""
-            <document> 
-            {document_content} 
-            </document> 
-            Here is the chunk we want to situate within the whole document 
-            <chunk> 
-            {chunk_content} 
-            </chunk> 
-            Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
-            """
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            # OpenRouter API headers - same as used elsewhere in the bot
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com", 
-                "X-Title": "Publicia - Context Generation",
-                "Content-Type": "application/json"
+            if stats_path.exists():
+                with open(stats_path, 'r') as f:
+                    stats = json.load(f)
+                    
+                # Check if we need to reset for a new day
+                last_reset = datetime.fromisoformat(stats.get('last_reset', '2000-01-01'))
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                if last_reset < today:
+                    # New day - reset counters
+                    logger.info("New day detected, resetting contextualization counters")
+                    self._contextualization_count = 0
+                    self._contextualization_cost = 0.0
+                    self._save_contextualization_stats()
+                else:
+                    # Same day - load current counters
+                    self._contextualization_count = stats.get('count', 0)
+                    self._contextualization_cost = stats.get('cost', 0.0)
+            else:
+                # First run - initialize counters
+                self._contextualization_count = 0
+                self._contextualization_cost = 0.0
+                self._save_contextualization_stats()
+        except Exception as e:
+            logger.error(f"Error loading contextualization stats: {e}")
+            self._contextualization_count = 0
+            self._contextualization_cost = 0.0
+
+    def _save_contextualization_stats(self):
+        """Save usage statistics to disk."""
+        stats_path = Path(self.base_dir) / 'contextualization_stats.json'
+        try:
+            stats = {
+                'count': self._contextualization_count,
+                'cost': self._contextualization_cost,
+                'last_reset': datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             }
             
-            # List of models to try in order
-            fallback_models = [
-                "google/gemini-2.0-flash-thinking-exp:free",
-                "google/gemini-2.0-flash-exp:free",
-                "google/gemma-3-27b-it:free",
-                "microsoft/phi-4-multimodal-instruct",
-                "cohere/command-r7b-12-2024",
-                "google/gemini-flash-1.5-8b",
-                "google/gemini-2.0-flash-lite-001",
-                "google/gemini-2.0-flash-001"
-            ]
-            
-            # Try each model in sequence until one works
-            for model in fallback_models:
-                logger.info(f"Attempting to generate chunk context with model: {model}")
-                
-                # Prepare payload with current model
-                payload = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,  # Low temperature for deterministic outputs
-                    "max_tokens": 150    # Limit token length
-                }
-                
-                # Make API call with current model
-                max_retries = 2  # Fewer retries per model since we have multiple models
-                for attempt in range(max_retries):
-                    try:
-                        async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                "https://openrouter.ai/api/v1/chat/completions",
-                                headers=headers,
-                                json=payload,
-                                timeout=360  # 60 second timeout
-                            ) as response:
-                                if response.status != 200:
-                                    error_text = await response.text()
-                                    logger.error(f"API error with model {model} (Status {response.status}): {error_text}")
-                                    # If we had a non-200 status, try again or continue to next model
-                                    if attempt == max_retries - 1:
-                                        # Try next model
-                                        break
-                                    continue
-                                    
-                                completion = await response.json()
-                        
-                        # Extract context from the response
-                        if completion and completion.get('choices') and len(completion['choices']) > 0:
-                            if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
-                                context = completion['choices'][0]['message']['content'].strip()
-                                
-                                logger.info(f"Successfully generated context with model {model} ({len(context.split())} words): {context[:50]}...")
-                                return context
-                        
-                        # If we couldn't extract a valid context, try next model
-                        logger.warning(f"Failed to extract valid context from model {model}")
-                        break
-                        
-                    except Exception as e:
-                        logger.error(f"Error generating chunk context with model {model} (attempt {attempt+1}/{max_retries}): {e}")
-                        if attempt == max_retries - 1:
-                            # If we've used all retries for this model, try next model
-                            break
-                        # Otherwise, continue to next retry with same model
-                        await asyncio.sleep(1)  # Wait before retrying
-            
-            # If all models failed, return default context
-            logger.error("All models failed to generate context")
-            return f"This chunk is from document dealing with {document_content[:50]}..."
-            
+            with open(stats_path, 'w') as f:
+                json.dump(stats, f)
         except Exception as e:
-            logger.error(f"Unhandled error generating chunk context: {e}")
-            # Return a default context if generation fails
-            return f"This chunk is from document dealing with {document_content[:50]}..."
+            logger.error(f"Error saving contextualization stats: {e}")
+    
+    async def _generate_batch_contexts(self, document_content: str, chunks: List[str]) -> Tuple[List[str], str, int]:
+        """Generate contexts for multiple chunks in one API call, with model fallbacks."""
+        # Create batch prompt
+        system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. 
+Your task is to provide short, succinct contexts that situate specific chunks within the overall document.
+Output ONLY the contexts, one per line, in the same order as the chunks. No explanations or additional text."""
+        
+        user_prompt = f"""<document>\n{document_content[:2000]}\n</document>\n
+I need contextual descriptions for the following {len(chunks)} chunks from this document.
+Provide ONLY one line per chunk with a brief context that helps situate it within the document.
+Do not number your responses. Just provide one context per line."""
+        
+        # Add each chunk to the prompt
+        for i, chunk in enumerate(chunks):
+            user_prompt += f"\nCHUNK {i+1}:\n{chunk[:300]}\n"
+        
+        # Prioritize models by cost (free first, then cheapest to most expensive)
+        fallback_models = [
+            # Free models first
+            "google/gemini-2.0-flash-thinking-exp:free",
+            "google/gemini-2.0-flash-exp:free", 
+            "google/gemma-3-27b-it:free",
+            
+            # Then in order of increasing cost
+            "microsoft/phi-4",                    # $0.05
+            "cohere/command-r7b-12-2024",         # $0.0375
+            "google/gemini-2.0-flash-lite-001",   # $0.075
+            "google/gemini-2.0-flash-001"         # $0.1
+        ]
+        
+        # API headers
+        headers = {
+            "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
+            "HTTP-Referer": "https://discord.com", 
+            "X-Title": "Publicia - Batch Context",
+            "Content-Type": "application/json"
+        }
+        
+        # Try each model in sequence until one works
+        for model in fallback_models:
+            # Check if we can afford this model
+            estimated_cost = self._estimate_batch_cost(chunks, document_content, model)
+            remaining_budget = self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET - self._contextualization_cost
+            
+            # Skip paid models that would exceed budget
+            if estimated_cost > remaining_budget and self.config.MODEL_COSTS.get(model, 0) > 0:
+                logger.warning(f"Model {model} would exceed budget (est. ${estimated_cost:.2f}, remaining: ${remaining_budget:.2f})")
+                continue
+            
+            logger.info(f"Attempting batch context with model: {model} for {len(chunks)} chunks")
+            
+            # Prepare API payload
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.1,
+                "max_tokens": 50 * len(chunks)  # ~50 tokens per context
+            }
+            
+            # API call and response processing
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=120  # Longer timeout for batches
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            logger.error(f"API error with model {model}: {error_text}")
+                            continue
+                            
+                        completion = await response.json()
+                
+                # Process response
+                if completion and completion.get('choices') and len(completion['choices']) > 0:
+                    content = completion['choices'][0]['message']['content'].strip()
+                    
+                    # Split into lines to get individual contexts
+                    contexts = [line.strip() for line in content.split('\n') if line.strip()]
+                    
+                    # Get token usage for accurate costing
+                    tokens_used = completion.get('usage', {}).get('total_tokens', 0)
+                    
+                    # Estimate token count if not provided by API
+                    if not tokens_used:
+                        tokens_used = len(system_prompt.split()) + len(user_prompt.split()) + len(content.split())
+                        tokens_used = int(tokens_used * 1.3)  # Add 30% for tokenization
+                    
+                    # Handle mismatched context count
+                    if len(contexts) == len(chunks):
+                        logger.info(f"Successfully generated {len(contexts)} contexts with model {model}")
+                        return contexts, model, tokens_used
+                    
+                    logger.warning(f"Generated {len(contexts)} contexts but expected {len(chunks)}")
+                    
+                    # Try to salvage by padding or truncating
+                    if len(contexts) > len(chunks):
+                        return contexts[:len(chunks)], model, tokens_used
+                    else:
+                        return contexts + [None] * (len(chunks) - len(contexts)), model, tokens_used
+                
+            except Exception as e:
+                logger.error(f"Error with model {model}: {e}")
+                continue
+        
+        # If all models failed, return empty contexts
+        logger.error("All models failed to generate batch contexts")
+        return [None] * len(chunks), "none", 0
     
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
-        """Generate context for each chunk and prepend to the chunk."""
-        contextualized_chunks = []
+        """Generate context for chunks with batch processing and budget controls."""
+        # Skip if disabled
+        if not self.config.CONTEXTUALIZATION_ENABLED:
+            logger.info(f"Contextualization disabled, skipping for document: {doc_name}")
+            return chunks
         
-        logger.info(f"Contextualizing {len(chunks)} chunks for document: {doc_name}")
-        for i, chunk in enumerate(chunks):
-            # Generate context
-            context = await self.generate_chunk_context(document_content, chunk)
+        # Load stats
+        self._load_contextualization_stats()
+        
+        # Check daily limits
+        if self._contextualization_count >= self.config.CONTEXTUALIZATION_MAX_DAILY:
+            logger.warning(f"Daily chunk limit reached ({self._contextualization_count}/{self.config.CONTEXTUALIZATION_MAX_DAILY})")
+            return chunks
+        
+        if self._contextualization_cost >= self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:
+            logger.warning(f"Daily budget limit reached (${self._contextualization_cost:.2f}/${self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:.2f})")
+            return chunks
+        
+        logger.info(f"Starting contextualization for {doc_name} with {len(chunks)} chunks")
+        
+        # Start with copies of original chunks
+        contextualized_chunks = chunks.copy()
+        
+        # Process in batches
+        batch_size = self.config.CONTEXTUALIZATION_BATCH_SIZE
+        for i in range(0, len(chunks), batch_size):
+            # Get current batch
+            batch = chunks[i:i+batch_size]
             
-            # Prepend context to chunk
-            contextualized_chunk = f"{context} {chunk}"
+            # Check remaining chunk limit
+            remaining_limit = self.config.CONTEXTUALIZATION_MAX_DAILY - self._contextualization_count
+            if len(batch) > remaining_limit:
+                logger.warning(f"Approaching daily limit, processing only {remaining_limit} chunks")
+                batch = batch[:remaining_limit]
+                
+            if not batch:
+                continue
             
-            contextualized_chunks.append(contextualized_chunk)
+            # Generate contexts for batch
+            contexts, model_used, tokens_used = await self._generate_batch_contexts(document_content, batch)
             
-            # Log progress for longer documents
-            if (i + 1) % 10 == 0:
-                logger.info(f"Contextualized {i + 1}/{len(chunks)} chunks for {doc_name}")
+            # If generation successful
+            if contexts and model_used != "none":
+                # Calculate actual cost based on model used
+                actual_cost = self._get_actual_cost(tokens_used, model_used)
+                
+                # Update running totals
+                self._contextualization_count += len(batch)
+                self._contextualization_cost += actual_cost
+                self._save_contextualization_stats()
+                
+                # Apply contexts to chunks
+                for j, context in enumerate(contexts):
+                    if context and i + j < len(contextualized_chunks):
+                        contextualized_chunks[i + j] = f"{context} {chunks[i + j]}"
+                
+                # Log progress
+                logger.info(f"Batch {i//batch_size + 1}/{(len(chunks) + batch_size - 1)//batch_size} " +
+                           f"using {model_used} cost: ${actual_cost:.4f}, running: ${self._contextualization_cost:.2f}")
+            
+            # Stop if limits reached
+            if self._contextualization_count >= self.config.CONTEXTUALIZATION_MAX_DAILY:
+                logger.warning("Daily chunk limit reached during processing, stopping")
+                break
+                
+            if self._contextualization_cost >= self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:
+                logger.warning("Daily budget limit reached during processing, stopping")
+                break
         
         return contextualized_chunks
 
