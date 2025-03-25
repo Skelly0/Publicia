@@ -342,14 +342,14 @@ Do not number your responses. Just provide one context per line."""
         # Prioritize models by cost (free first, then cheapest to most expensive)
         fallback_models = [
             # Free models first
-            "google/gemini-2.0-flash-thinking-exp:free",
+            #"google/gemini-2.0-flash-thinking-exp:free",
             "google/gemini-2.0-flash-exp:free", 
             "google/gemma-3-27b-it:free",
             
             # Then in order of increasing cost
-            "microsoft/phi-4",                    # $0.05
-            "cohere/command-r7b-12-2024",         # $0.0375
             "google/gemini-2.0-flash-lite-001",   # $0.075
+            "cohere/command-r7b-12-2024",         # $0.0375
+            "microsoft/phi-4",                    # $0.05
             "google/gemini-2.0-flash-001"         # $0.1
         ]
         

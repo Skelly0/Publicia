@@ -13,6 +13,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 from utils.helpers import split_message
+from utils.helpers import check_permissions
+
 
 logger = logging.getLogger(__name__)
 
@@ -487,61 +489,121 @@ def register_commands(bot):
             logger.error(f"Error retrieving file: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to retrieve the file.")
 
-    @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document")
+    @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document (admin only)")
     @app_commands.describe(
         channel="The channel to archive messages from",
-        limit="Maximum number of messages to archive (leave empty for no limit)",
-        document_name="Custom name for the archived document (optional)"
+        message_limit="Maximum number of messages to fetch (0 for all, default: 1000, max: 10000)",
+        document_name="Name for the saved document (default: channel name)",
+        include_bots="Whether to include messages from bots (default: True)",
+        include_attachments="Whether to include attachment URLs (default: True)"
     )
-    async def archive_channel(interaction: discord.Interaction, channel: discord.TextChannel, limit: int = None, document_name: str = None):
+    @app_commands.check(check_permissions)
+    async def archive_channel(
+        interaction: discord.Interaction, 
+        channel: discord.TextChannel, 
+        message_limit: int = 1000,
+        document_name: str = None,
+        include_bots: bool = True,
+        include_attachments: bool = True
+    ):
         await interaction.response.defer()
         try:
-            # Check if user has admin permissions
-            if not interaction.user.guild_permissions.administrator:
-                await interaction.followup.send("*neural access denied!* This command requires administrator permissions.")
+            # Validate inputs
+            if message_limit < 0:
+                await interaction.followup.send("*neural error detected!* Message limit must be non-negative.")
                 return
                 
-            # Send initial status message
-            status_message = await interaction.followup.send("*neural archiving process initiated...* scanning channel messages")
-            
-            # Determine document name if not provided
+            # Enforce maximum message limit
+            MAX_MESSAGES = 10000  # Maximum number of messages that can be archived
+            if message_limit == 0 or message_limit > MAX_MESSAGES:
+                message_limit = MAX_MESSAGES
+                await interaction.followup.send(f"*neural caution!* Message limit capped at {MAX_MESSAGES} messages for performance reasons.")
+                
+            # Set default document name if not provided
             if not document_name:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
                 document_name = f"channel_archive_{channel.name}_{timestamp}"
-            
+                
             # Ensure document name has .txt extension
             if not document_name.endswith('.txt'):
                 document_name += '.txt'
                 
-            # Initialize content with header
-            content = f"# DISCORD CHANNEL ARCHIVE: {channel.name}\n"
-            content += f"# Server: {interaction.guild.name}\n"
-            content += f"# Archived by: {interaction.user.name} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-            content += f"# Message count: {'All' if limit is None else limit}\n\n"
+            # Send initial status message
+            status_message = await interaction.followup.send("*neural archiving process initiated...* scanning channel messages")
             
-            # Initialize counters
-            message_count = 0
-            attachment_count = 0
-            reaction_count = 0
-            embed_count = 0
-            
-            # Update status message with progress info
-            await status_message.edit(content="*neural pathways connecting to channel history...* retrieving messages")
-            
-            # Fetch messages
+            # Set up for careful fetching to avoid rate limits
             messages = []
+            batch_size = 100  # Fetch in batches of 100 messages
+            progress_interval = 500  # Update progress every 500 messages
+            
+            # Track timestamps for updates
             last_update_time = time.time()
             update_interval = 2.0  # Update status every 2 seconds
             
-            async for message in channel.history(limit=limit):
-                messages.append(message)
-                message_count += 1
+            # Update status
+            await status_message.edit(content="*neural pathways connecting to channel history...* retrieving messages")
+            
+            # Function to fetch messages in smaller batches with delays
+            async def fetch_messages_carefully(limit=None):
+                collected = []
+                last_id = None
+                remaining = limit
                 
-                # Show progress updates for large archives
-                current_time = time.time()
-                if current_time - last_update_time > update_interval:
-                    await status_message.edit(content=f"*neural archiving in progress...* retrieved {message_count} messages so far")
-                    last_update_time = current_time
+                while True:
+                    # Calculate batch size for this iteration
+                    current_batch = min(batch_size, remaining if remaining is not None else batch_size)
+                    if current_batch <= 0:
+                        break
+                        
+                    # Fetch a batch of messages
+                    kwargs = {'limit': current_batch}
+                    if last_id:
+                        kwargs['before'] = discord.Object(id=last_id)
+                        
+                    batch = []
+                    async for message in channel.history(**kwargs):
+                        # Skip bot messages if not including them
+                        if not include_bots and message.author.bot:
+                            continue
+                            
+                        batch.append(message)
+                        
+                    # If we got no messages, we're done
+                    if not batch:
+                        break
+                        
+                    # Process the batch
+                    collected.extend(batch)
+                    
+                    # Update progress periodically
+                    current_time = time.time()
+                    if current_time - last_update_time > update_interval:
+                        await status_message.edit(content=f"*neural pathways collecting... fetched {len(collected)} messages so far...*")
+                        last_update_time = current_time
+                    
+                    # Update last_id for next batch
+                    last_id = batch[-1].id
+                    
+                    # Brief delay between batches to avoid rate limits
+                    await asyncio.sleep(0.5)
+                    
+                    # If we got fewer messages than requested, we're done
+                    if len(batch) < current_batch:
+                        break
+                        
+                    # If we've reached the max limit, stop
+                    if limit is not None and len(collected) >= limit:
+                        collected = collected[:limit]  # Ensure we don't exceed the limit
+                        break
+                
+                return collected
+                
+            # Fetch messages
+            messages = await fetch_messages_carefully(message_limit)
+            
+            if not messages:
+                await status_message.edit(content="*neural archiving complete!* No messages found in the channel or all were filtered out.")
+                return
             
             # Sort messages by timestamp (oldest first)
             messages.sort(key=lambda m: m.created_at)
@@ -549,11 +611,34 @@ def register_commands(bot):
             # Update status
             await status_message.edit(content=f"*neural formatting process initiated...* formatting {len(messages)} messages")
             
+            # Initialize counters
+            message_count = 0
+            attachment_count = 0
+            reaction_count = 0
+            embed_count = 0
+            
+            # Initialize content with header
+            content = f"# DISCORD CHANNEL ARCHIVE: {channel.name}\n"
+            content += f"# Server: {interaction.guild.name}\n"
+            content += f"# Archived by: {interaction.user.name} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            content += f"# Message count: {len(messages)}\n"
+            content += f"# Bot messages: {'Included' if include_bots else 'Excluded'}\n"
+            content += f"# Attachments: {'Included' if include_attachments else 'Excluded'}\n\n"
+            
+            # Check if we need to split into multiple documents (if over 1MB)
+            max_doc_size = 1000000  # 1MB limit
+            current_doc_size = len(content.encode('utf-8'))
+            current_doc_content = content
+            doc_count = 1
+            documents = []
+            
             # Process messages
             for i, message in enumerate(messages):
                 # Show progress for large archives
                 if i % 500 == 0 and i > 0:
                     await status_message.edit(content=f"*neural formatting in progress...* processed {i}/{len(messages)} messages")
+                
+                message_count += 1
                 
                 # Format timestamp
                 timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -567,7 +652,7 @@ def register_commands(bot):
                         author_roles = f" [{', '.join(role_names)}]"
                 
                 # Add message header
-                content += f"\n[{timestamp}] {author_name}{author_roles}:\n"
+                message_content = f"\n[{timestamp}] {author_name}{author_roles}:\n"
                 
                 # Add message content
                 if message.content:
@@ -600,24 +685,24 @@ def register_commands(bot):
                     
                     # Add the processed content with indentation
                     for line in msg_content.split('\n'):
-                        content += f"    {line}\n"
+                        message_content += f"    {line}\n"
                 
                 # Add attachments
-                if message.attachments:
-                    content += "    [Attachments]\n"
+                if message.attachments and include_attachments:
+                    message_content += "    [Attachments]\n"
                     for attachment in message.attachments:
-                        content += f"    • {attachment.filename} - {attachment.url}\n"
+                        message_content += f"    • {attachment.filename} - {attachment.url}\n"
                         attachment_count += 1
                 
                 # Add embeds
                 if message.embeds:
-                    content += "    [Embeds]\n"
+                    message_content += "    [Embeds]\n"
                     for embed in message.embeds:
                         embed_count += 1
                         if embed.title:
-                            content += f"    • Title: {embed.title}\n"
+                            message_content += f"    • Title: {embed.title}\n"
                         if embed.description:
-                            content += f"      Description: {embed.description[:100]}{'...' if len(embed.description) > 100 else ''}\n"
+                            message_content += f"      Description: {embed.description[:100]}{'...' if len(embed.description) > 100 else ''}\n"
                 
                 # Add reactions
                 if message.reactions:
@@ -626,40 +711,121 @@ def register_commands(bot):
                         reaction_count += 1
                         emoji = reaction.emoji if isinstance(reaction.emoji, str) else reaction.emoji.name
                         reaction_str += f"{emoji} ({reaction.count}) "
-                    content += reaction_str + "\n"
+                    message_content += reaction_str + "\n"
+                
+                message_size = len(message_content.encode('utf-8'))
+                
+                # Check if adding this message would exceed the limit
+                if current_doc_size + message_size > max_doc_size:
+                    # Add footer with statistics for this part
+                    part_footer = f"\n\n# ARCHIVE SUMMARY (PART {doc_count})\n"
+                    part_footer += f"# Total messages in this part: {message_count}\n"
+                    part_footer += f"# Attachments: {attachment_count}\n"
+                    part_footer += f"# Reactions: {reaction_count}\n"
+                    part_footer += f"# Embeds: {embed_count}\n"
+                    part_footer += f"# Continued in part {doc_count + 1}\n"
+                    
+                    current_doc_content += part_footer
+                    
+                    # Save current document and start a new one
+                    doc_filename = document_name.replace('.txt', f'_part{doc_count}.txt')
+                    documents.append((doc_filename, current_doc_content))
+                    doc_count += 1
+                    
+                    # Reset counters for next part
+                    message_count_so_far = message_count
+                    attachment_count_so_far = attachment_count
+                    reaction_count_so_far = reaction_count
+                    embed_count_so_far = embed_count
+                    
+                    # Start new document with header
+                    current_doc_content = f"# DISCORD CHANNEL ARCHIVE: {channel.name} (PART {doc_count})\n"
+                    current_doc_content += f"# Server: {interaction.guild.name}\n"
+                    current_doc_content += f"# Archived by: {interaction.user.name} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    current_doc_content += f"# Continued from part {doc_count - 1}\n"
+                    current_doc_content += f"# Bot messages: {'Included' if include_bots else 'Excluded'}\n"
+                    current_doc_content += f"# Attachments: {'Included' if include_attachments else 'Excluded'}\n\n"
+                    
+                    current_doc_size = len(current_doc_content.encode('utf-8'))
+                
+                # Add message to current document
+                current_doc_content += message_content
+                current_doc_size += message_size
             
-            # Add footer with statistics
-            content += f"\n\n# ARCHIVE SUMMARY\n"
-            content += f"# Total messages: {message_count}\n"
-            content += f"# Attachments: {attachment_count}\n"
-            content += f"# Reactions: {reaction_count}\n"
-            content += f"# Embeds: {embed_count}\n"
+            # Add footer with statistics for the last part
+            footer = f"\n\n# ARCHIVE SUMMARY"
+            if doc_count > 1:
+                footer += f" (PART {doc_count})"
+            footer += f"\n# Total messages: {message_count}\n"
+            footer += f"# Attachments: {attachment_count}\n"
+            footer += f"# Reactions: {reaction_count}\n"
+            footer += f"# Embeds: {embed_count}\n"
+            
+            current_doc_content += footer
+            
+            # Add the final document
+            final_filename = document_name if doc_count == 1 else document_name.replace('.txt', f'_part{doc_count}.txt')
+            documents.append((final_filename, current_doc_content))
             
             # Update status
             await status_message.edit(content=f"*neural storage process initiated...* saving {len(messages)} messages to document system")
             
-            # Save as a document file
+            # Save documents
             lorebooks_path = bot.document_manager.get_lorebooks_path()
-            txt_path = lorebooks_path / document_name
-            txt_path.write_text(content, encoding='utf-8')
+            file_paths = []
             
-            # Add to document manager
-            await bot.document_manager.add_document(document_name, content)
+            for doc_name, doc_content in documents:
+                # Ensure the document name is clean
+                clean_doc_name = doc_name.strip()
+                if not clean_doc_name.endswith('.txt'):
+                    clean_doc_name += '.txt'
+                    
+                # Save as a document file
+                txt_path = lorebooks_path / clean_doc_name
+                txt_path.write_text(doc_content, encoding='utf-8')
+                file_paths.append(txt_path)
+                
+                # Add to document manager
+                await bot.document_manager.add_document(clean_doc_name, doc_content)
             
-            # Create downloadable file
-            file = discord.File(txt_path, filename=document_name)
-            
-            # Send completion message with file
-            await interaction.followup.send(
-                content=f"*neural archiving complete!* Successfully archived {message_count} messages from #{channel.name}.\n\n"
-                        f"• Document name: `{document_name}`\n"
-                        f"• Attachments: {attachment_count}\n"
-                        f"• Reactions: {reaction_count}\n"
-                        f"• Embeds: {embed_count}\n\n"
-                        f"The archive has been added to my knowledge base and is also available as a downloadable file below:",
-                file=file
-            )
+            # Create downloadable files
+            if len(documents) == 1:
+                # Single file case
+                file = discord.File(file_paths[0], filename=documents[0][0])
+                
+                # Send completion message with file
+                await interaction.followup.send(
+                    content=f"*neural archiving complete!* Successfully archived {len(messages)} messages from #{channel.name}.\n\n"
+                            f"• Document name: `{documents[0][0]}`\n"
+                            f"• Messages: {message_count}\n"
+                            f"• Attachments: {attachment_count}\n"
+                            f"• Reactions: {reaction_count}\n"
+                            f"• Embeds: {embed_count}\n\n"
+                            f"The archive has been added to my knowledge base and is also available as a downloadable file below:",
+                    file=file
+                )
+            else:
+                # Multiple files case - only attach the first file
+                file = discord.File(file_paths[0], filename=documents[0][0])
+                
+                doc_names = ', '.join([f"`{doc[0]}`" for doc in documents])
+                
+                # Send completion message with first file
+                await interaction.followup.send(
+                    content=f"*neural archiving complete!* Successfully archived {len(messages)} messages from #{channel.name}.\n\n"
+                            f"• Document parts: {len(documents)}\n"
+                            f"• Document names: {doc_names}\n"
+                            f"• Messages: {message_count}\n"
+                            f"• Attachments: {attachment_count}\n"
+                            f"• Reactions: {reaction_count}\n"
+                            f"• Embeds: {embed_count}\n\n"
+                            f"The archive has been added to my knowledge base. The first part is attached below. "
+                            f"Use the `/retrieve_file` command to download other parts.",
+                    file=file
+                )
             
         except Exception as e:
             logger.error(f"Error archiving channel: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             await interaction.followup.send(f"*neural circuit overload!* An error occurred while archiving the channel: {str(e)}")
