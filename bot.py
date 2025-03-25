@@ -804,6 +804,7 @@ class DiscordBot(commands.Bot):
             # DeepSeek Chat v3 fallbacks
             fallbacks = [
                 "deepseek/deepseek-chat-v3-0324:free",
+                "deepseek/deepseek-chat-v3-0324:floor",
                 "deepseek/deepseek-chat-v3-0324",
                 "deepseek/deepseek-chat",
                 "deepseek/deepseek-r1:free",  # Last resort fallback to R1

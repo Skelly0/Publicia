@@ -37,7 +37,7 @@ class Config:
         self.MODEL_TOP_K = {
             # DeepSeek models 
             "deepseek/deepseek-chat-v3-0324:free": 20,
-            "deepseek/deepseek-chat-v3-0324": 10,
+            "deepseek/deepseek-chat-v3-0324": 9,
             "deepseek/deepseek-chat": 10,
             "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 10,
