@@ -1735,10 +1735,6 @@ class DiscordBot(commands.Bot):
                 model_name = "Anubis Pro 105B"
             elif "microsoft/phi-4-multimodal-instruct" in preferred_model:
                 model_name = "Phi-4 Multimodal"
-            elif "microsoft/phi-4" in preferred_model:
-                model_name = "Phi-4"
-            elif "microsoft/phi-3.5-mini-128k-instruct" in preferred_model:
-                model_name = "Phi-3.5 Mini"
 
             # Add a note about vision capabilities if relevant
             if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:

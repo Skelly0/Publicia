@@ -65,6 +65,8 @@ class Config:
             "thedrummer/anubis-pro-105b-v1": 8,  # slightly smaller for this massive model
             # Gemini embedding model
             "models/text-embedding-004": 20,  # Optimized for larger chunks
+            # Microsoft Models
+            "microsoft/phi-4-multimodal-instruct": 15,
         }
         
         # Validate required environment variables
