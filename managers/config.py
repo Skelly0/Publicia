@@ -18,6 +18,7 @@ class Config:
         
         # Configure models with defaults
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.0-flash-001')
+        self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'qwen/qwq-32b')
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.0-flash-001')
         
         # New embedding configuration

@@ -19,9 +19,14 @@ class UserPreferencesManager:
         """Generate sanitized file path for user preferences."""
         return os.path.join(self.preferences_dir, f"{user_id}.json")
     
-    def get_preferred_model(self, user_id: str, default_model: str = "google/gemini-2.0-flash-001") -> str:
+    def get_preferred_model(self, user_id: str, default_model: str = None) -> str:
         """Get the user's preferred model, or the default if not set."""
         file_path = self.get_file_path(user_id)
+        
+        # Use provided default_model or fallback to "qwen/qwq-32b" if none provided
+        # This allows the config.DEFAULT_MODEL to be passed in from bot.py
+        if default_model is None:
+            default_model = "qwen/qwq-32b"
         
         if not os.path.exists(file_path):
             return default_model

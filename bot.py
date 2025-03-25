@@ -1541,7 +1541,7 @@ class DiscordBot(commands.Bot):
             # Get user's preferred model
             preferred_model = self.user_preferences_manager.get_preferred_model(
                 str(message.author.id),
-                default_model=self.config.LLM_MODEL
+                default_model=self.config.DEFAULT_MODEL
             )
 
             # Update thinking message

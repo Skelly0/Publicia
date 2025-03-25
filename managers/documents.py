@@ -237,7 +237,7 @@ class DocumentManager:
         return combined_results[:top_k]
 
     async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
-        """Generate context for a chunk using Gemini 2.0 Flash via OpenRouter."""
+        """Generate context for a chunk using a list of fallback models via OpenRouter."""
         try:
             # Create the prompt as messages for the API
             system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
@@ -266,64 +266,71 @@ class DocumentManager:
                 "Content-Type": "application/json"
             }
             
-            # Prepare payload
-            payload = {
-                "model": "google/gemini-2.0-flash-001",
-                "messages": messages,
-                "temperature": 0.1,  # Low temperature for deterministic outputs
-                "max_tokens": 150    # Limit token length
-            }
+            # List of models to try in order
+            fallback_models = [
+                "google/gemma-3-27b-it:free",
+                "cohere/command-r7b-12-2024",
+                "google/gemini-flash-1.5-8b",
+                "google/gemini-2.0-flash-lite-001",
+                "google/gemini-2.0-flash-001"
+            ]
             
-            # Make API call
-            max_retries = 3
-            for attempt in range(max_retries):
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            "https://openrouter.ai/api/v1/chat/completions",
-                            headers=headers,
-                            json=payload,
-                            timeout=360  # 60 second timeout
-                        ) as response:
-                            if response.status != 200:
-                                error_text = await response.text()
-                                logger.error(f"API error (Status {response.status}): {error_text}")
-                                # If we had a non-200 status, try again or return default
-                                if attempt == max_retries - 1:
-                                    return f"This chunk is from document dealing with {document_content[:50]}..."
-                                continue
+            # Try each model in sequence until one works
+            for model in fallback_models:
+                logger.info(f"Attempting to generate chunk context with model: {model}")
+                
+                # Prepare payload with current model
+                payload = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.1,  # Low temperature for deterministic outputs
+                    "max_tokens": 150    # Limit token length
+                }
+                
+                # Make API call with current model
+                max_retries = 2  # Fewer retries per model since we have multiple models
+                for attempt in range(max_retries):
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post(
+                                "https://openrouter.ai/api/v1/chat/completions",
+                                headers=headers,
+                                json=payload,
+                                timeout=360  # 60 second timeout
+                            ) as response:
+                                if response.status != 200:
+                                    error_text = await response.text()
+                                    logger.error(f"API error with model {model} (Status {response.status}): {error_text}")
+                                    # If we had a non-200 status, try again or continue to next model
+                                    if attempt == max_retries - 1:
+                                        # Try next model
+                                        break
+                                    continue
+                                    
+                                completion = await response.json()
+                        
+                        # Extract context from the response
+                        if completion and completion.get('choices') and len(completion['choices']) > 0:
+                            if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                                context = completion['choices'][0]['message']['content'].strip()
                                 
-                            completion = await response.json()
-                    
-                    # Extract context from the response
-                    if completion and completion.get('choices') and len(completion['choices']) > 0:
-                        if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
-                            context = completion['choices'][0]['message']['content'].strip()
-                            
-                            # Ensure context isn't too long (target ~50-100 tokens)
-                            """
-                            if len(context.split()) > 150:
-                                # If too long, truncate and add ellipsis
-                                words = context.split()
-                                context = " ".join(words[:150]) + "..."
-                            """
-                            
-                            logger.info(f"Generated context ({len(context.split())} words): {context[:50]}...")
-                            return context
-                    
-                    # If we couldn't extract a valid context, return default
-                    logger.error("Failed to extract valid context")
-                    return f"This chunk is from document dealing with {document_content[:50]}..."
-                    
-                except Exception as e:
-                    logger.error(f"Error generating chunk context (attempt {attempt+1}/{max_retries}): {e}")
-                    if attempt == max_retries - 1:
-                        # If we've used all retries, return default context
-                        return f"This chunk is from document dealing with {document_content[:50]}..."
-                    # Otherwise, continue to next retry
-                    await asyncio.sleep(1)  # Wait before retrying
+                                logger.info(f"Successfully generated context with model {model} ({len(context.split())} words): {context[:50]}...")
+                                return context
+                        
+                        # If we couldn't extract a valid context, try next model
+                        logger.warning(f"Failed to extract valid context from model {model}")
+                        break
+                        
+                    except Exception as e:
+                        logger.error(f"Error generating chunk context with model {model} (attempt {attempt+1}/{max_retries}): {e}")
+                        if attempt == max_retries - 1:
+                            # If we've used all retries for this model, try next model
+                            break
+                        # Otherwise, continue to next retry with same model
+                        await asyncio.sleep(1)  # Wait before retrying
             
-            # This should never be reached due to the returns in the loop, but just in case
+            # If all models failed, return default context
+            logger.error("All models failed to generate context")
             return f"This chunk is from document dealing with {document_content[:50]}..."
             
         except Exception as e:
