@@ -9,6 +9,8 @@ import re
 import aiohttp
 import asyncio
 import json
+import time
+from datetime import datetime
 from pathlib import Path
 from utils.helpers import split_message
 
@@ -485,4 +487,179 @@ def register_commands(bot):
             logger.error(f"Error retrieving file: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to retrieve the file.")
 
-    # Other document commands will be added here
+    @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document")
+    @app_commands.describe(
+        channel="The channel to archive messages from",
+        limit="Maximum number of messages to archive (leave empty for no limit)",
+        document_name="Custom name for the archived document (optional)"
+    )
+    async def archive_channel(interaction: discord.Interaction, channel: discord.TextChannel, limit: int = None, document_name: str = None):
+        await interaction.response.defer()
+        try:
+            # Check if user has admin permissions
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.followup.send("*neural access denied!* This command requires administrator permissions.")
+                return
+                
+            # Send initial status message
+            status_message = await interaction.followup.send("*neural archiving process initiated...* scanning channel messages")
+            
+            # Determine document name if not provided
+            if not document_name:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+                document_name = f"channel_archive_{channel.name}_{timestamp}"
+            
+            # Ensure document name has .txt extension
+            if not document_name.endswith('.txt'):
+                document_name += '.txt'
+                
+            # Initialize content with header
+            content = f"# DISCORD CHANNEL ARCHIVE: {channel.name}\n"
+            content += f"# Server: {interaction.guild.name}\n"
+            content += f"# Archived by: {interaction.user.name} on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+            content += f"# Message count: {'All' if limit is None else limit}\n\n"
+            
+            # Initialize counters
+            message_count = 0
+            attachment_count = 0
+            reaction_count = 0
+            embed_count = 0
+            
+            # Update status message with progress info
+            await status_message.edit(content="*neural pathways connecting to channel history...* retrieving messages")
+            
+            # Fetch messages
+            messages = []
+            last_update_time = time.time()
+            update_interval = 2.0  # Update status every 2 seconds
+            
+            async for message in channel.history(limit=limit):
+                messages.append(message)
+                message_count += 1
+                
+                # Show progress updates for large archives
+                current_time = time.time()
+                if current_time - last_update_time > update_interval:
+                    await status_message.edit(content=f"*neural archiving in progress...* retrieved {message_count} messages so far")
+                    last_update_time = current_time
+            
+            # Sort messages by timestamp (oldest first)
+            messages.sort(key=lambda m: m.created_at)
+            
+            # Update status
+            await status_message.edit(content=f"*neural formatting process initiated...* formatting {len(messages)} messages")
+            
+            # Process messages
+            for i, message in enumerate(messages):
+                # Show progress for large archives
+                if i % 500 == 0 and i > 0:
+                    await status_message.edit(content=f"*neural formatting in progress...* processed {i}/{len(messages)} messages")
+                
+                # Format timestamp
+                timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Format author with roles if available
+                author_name = message.author.display_name
+                author_roles = ""
+                if hasattr(message.author, "roles") and len(message.author.roles) > 1:  # Skip @everyone role
+                    role_names = [role.name for role in message.author.roles if role.name != "@everyone"]
+                    if role_names:
+                        author_roles = f" [{', '.join(role_names)}]"
+                
+                # Add message header
+                content += f"\n[{timestamp}] {author_name}{author_roles}:\n"
+                
+                # Add message content
+                if message.content:
+                    # Process mentions in the content
+                    msg_content = message.content
+                    
+                    # Replace user mentions with names
+                    for mention in message.mentions:
+                        mention_name = mention.display_name
+                        msg_content = msg_content.replace(f'<@{mention.id}>', f'@{mention_name}')
+                        msg_content = msg_content.replace(f'<@!{mention.id}>', f'@{mention_name}')
+                    
+                    # Replace channel mentions with names
+                    for channel_id in re.findall(r'<#(\d+)>', msg_content):
+                        try:
+                            mentioned_channel = interaction.guild.get_channel(int(channel_id))
+                            if mentioned_channel:
+                                msg_content = msg_content.replace(f'<#{channel_id}>', f'#{mentioned_channel.name}')
+                        except:
+                            pass
+                    
+                    # Replace role mentions with names
+                    for role_id in re.findall(r'<@&(\d+)>', msg_content):
+                        try:
+                            mentioned_role = interaction.guild.get_role(int(role_id))
+                            if mentioned_role:
+                                msg_content = msg_content.replace(f'<@&{role_id}>', f'@{mentioned_role.name}')
+                        except:
+                            pass
+                    
+                    # Add the processed content with indentation
+                    for line in msg_content.split('\n'):
+                        content += f"    {line}\n"
+                
+                # Add attachments
+                if message.attachments:
+                    content += "    [Attachments]\n"
+                    for attachment in message.attachments:
+                        content += f"    • {attachment.filename} - {attachment.url}\n"
+                        attachment_count += 1
+                
+                # Add embeds
+                if message.embeds:
+                    content += "    [Embeds]\n"
+                    for embed in message.embeds:
+                        embed_count += 1
+                        if embed.title:
+                            content += f"    • Title: {embed.title}\n"
+                        if embed.description:
+                            content += f"      Description: {embed.description[:100]}{'...' if len(embed.description) > 100 else ''}\n"
+                
+                # Add reactions
+                if message.reactions:
+                    reaction_str = "    [Reactions] "
+                    for reaction in message.reactions:
+                        reaction_count += 1
+                        emoji = reaction.emoji if isinstance(reaction.emoji, str) else reaction.emoji.name
+                        reaction_str += f"{emoji} ({reaction.count}) "
+                    content += reaction_str + "\n"
+            
+            # Add footer with statistics
+            content += f"\n\n# ARCHIVE SUMMARY\n"
+            content += f"# Total messages: {message_count}\n"
+            content += f"# Attachments: {attachment_count}\n"
+            content += f"# Reactions: {reaction_count}\n"
+            content += f"# Embeds: {embed_count}\n"
+            
+            # Update status
+            await status_message.edit(content=f"*neural storage process initiated...* saving {len(messages)} messages to document system")
+            
+            # Save as a document file
+            lorebooks_path = bot.document_manager.get_lorebooks_path()
+            txt_path = lorebooks_path / document_name
+            txt_path.write_text(content, encoding='utf-8')
+            
+            # Add to document manager
+            await bot.document_manager.add_document(document_name, content)
+            
+            # Create downloadable file
+            file = discord.File(txt_path, filename=document_name)
+            
+            # Send completion message with file
+            await interaction.followup.send(
+                content=f"*neural archiving complete!* Successfully archived {message_count} messages from #{channel.name}.\n\n"
+                        f"• Document name: `{document_name}`\n"
+                        f"• Attachments: {attachment_count}\n"
+                        f"• Reactions: {reaction_count}\n"
+                        f"• Embeds: {embed_count}\n\n"
+                        f"The archive has been added to my knowledge base and is also available as a downloadable file below:",
+                file=file
+            )
+            
+        except Exception as e:
+            logger.error(f"Error archiving channel: {e}")
+            await interaction.followup.send(f"*neural circuit overload!* An error occurred while archiving the channel: {str(e)}")

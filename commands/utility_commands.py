@@ -28,7 +28,7 @@ def register_commands(bot):
             
             categories = {
                 "Lore Queries": ["query"],
-                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file"],
+                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"], 
@@ -322,7 +322,8 @@ def register_commands(bot):
             response += "• `/rename_document` - Rename a document in my database\n"
             response += "• `/search_docs` - Search directly in my document knowledge base\n"
             response += "• `/update_image_description` - Update the description for an image\n"
-            response += "• `/reload_docs` - Reload all documents from disk (admin only)\n\n"
+            response += "• `/reload_docs` - Reload all documents from disk (admin only)\n"
+            response += "• `/archive_channel` - Archive messages from a Discord channel as a document (admin only)\n\n"
             
             # Conversation Management
             response += "## **CONVERSATION SYSTEM**\n\n"
