@@ -320,8 +320,8 @@ def register_commands(bot):
         except Exception as e:
             logger.error(f"Error displaying conversation history: {e}")
             await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to retrieve your conversation history.")
-    
-    @bot.command(name="lobotomise", brief="Wipe your conversation history with the bot")
+
+    @bot.tree.command(name="lobotomise", description="Wipe your conversation history with the bot")
     async def lobotomise(interaction: discord.Interaction):
         await interaction.response.defer()
         try:
