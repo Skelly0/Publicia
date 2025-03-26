@@ -1570,6 +1570,9 @@ class Config:
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
             "deepseek/deepseek-chat": 10,
+            "deepseek/deepseek-chat-v3-0324": 10,
+            "deepseek/deepseek-chat-v3-0324:floor": 10,
+            "deepseek/deepseek-chat-v3-0324:free": 10,
             # Gemini models 
             "google/gemini-2.0-flash-001": 17,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
@@ -2121,7 +2124,7 @@ class UserPreferencesManager:
         """Generate sanitized file path for user preferences."""
         return os.path.join(self.preferences_dir, f"{user_id}.json")
     
-    def get_preferred_model(self, user_id: str, default_model: str = "google/gemini-2.0-flash-001") -> str:
+    def get_preferred_model(self, user_id: str, default_model: str = "qwen/qwq-32b:free") -> str:
         """Get the user's preferred model, or the default if not set."""
         file_path = self.get_file_path(user_id)
         
@@ -3941,10 +3944,11 @@ class DiscordBot(commands.Bot):
         @self.tree.command(name="set_model", description="Set your preferred AI model for responses")
         @app_commands.describe(model="Choose the AI model you prefer")
         @app_commands.choices(model=[
-            app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
-            app_commands.Choice(name="Gemini 2.0 Flash", value="google/gemini-2.0-flash-001"),
-            app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
             app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
+            app_commands.Choice(name="Gemini 2.0 Flash", value="google/gemini-2.0-flash-001"),
+            app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"),  # add this line
+            app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
+            app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
             app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
             app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
             app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
@@ -3971,6 +3975,8 @@ class DiscordBot(commands.Bot):
                 model_name = "Unknown Model"
                 if "deepseek/deepseek-r1" in model:
                     model_name = "DeepSeek-R1"
+                elif "deepseek/deepseek-chat-v3-0324" in preferred_model:  # add this section
+                    model_name = "DeepSeek V3 0324"
                 elif model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
                 elif model.startswith("nousresearch/"):
@@ -3994,10 +4000,11 @@ class DiscordBot(commands.Bot):
                     # Create a description of all model strengths
                     # Create a description of all model strengths
                     model_descriptions = [
-                        f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
-                        f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                        f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                         f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({self.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                        f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                        f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({self.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.",  # add this line 
+                        f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                        f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                         f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                         f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                         f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -4031,6 +4038,8 @@ class DiscordBot(commands.Bot):
                 model_name = "Unknown Model"
                 if "deepseek/deepseek-r1" in preferred_model:
                     model_name = "DeepSeek-R1"
+                elif "deepseek/deepseek-chat-v3-0324" in preferred_model:  # add this section
+                    model_name = "DeepSeek V3 0324"
                 elif preferred_model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
                 elif preferred_model.startswith("nousresearch/"):
@@ -4052,10 +4061,11 @@ class DiscordBot(commands.Bot):
                 
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**DeepSeek-R1**: Great for roleplaying, more creative responses, and in-character immersion, but is slower to respond, sometimes has errors, and may make things up due to its creativity. With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
-                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
-                    f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({self.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
+                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({self.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                    f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({self.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.",  # add this line 
+                    f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({self.config.get_top_k_for_model('deepseek/deepseek-r1')}).",
+                    f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({self.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}) for balanced context.",
                     f"**Claude 3.5 Haiku**: Excellent for comprehensive lore analysis and nuanced understanding with creativity, and has image viewing capabilities. Also great for longer roleplays. Uses a moderate number of search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}) for balanced context.",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.7 Sonnet, may be more creative but less analytical (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}) to save money.",
                     f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({self.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
@@ -4498,6 +4508,8 @@ class DiscordBot(commands.Bot):
                 model_name = "Unknown Model"
                 if "deepseek/deepseek-r1" in preferred_model:
                     model_name = "DeepSeek-R1"
+                elif "deepseek/deepseek-chat" in preferred_model:
+                    model_name = "DeepSeek V3 0324"
                 elif preferred_model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
                 elif preferred_model.startswith("nousresearch/"):
@@ -5331,11 +5343,15 @@ class DiscordBot(commands.Bot):
         # Build fallback list dynamically based on the requested model
         models = [model]  # Start with the requested model
         
-        # Add model-specific fallbacks first
-        if model_family == "deepseek":
+        # Build fallback list dynamically based on the requested model
+        models = [model]  # Start with the requested model
+        
+        # Add model-specific fallbacks based on more precise model matching
+        
+        # DeepSeek R1 models
+        if "deepseek-r1" in model:
             fallbacks = [
                 "deepseek/deepseek-r1:free",
-                #"deepseek/deepseek-r1-distill-llama-70b",
                 "deepseek/deepseek-r1:floor",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-r1:nitro",
@@ -5343,7 +5359,18 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1-distill-qwen-32b"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "qwen":  # Add Qwen fallbacks
+        # DeepSeek V3 models
+        elif "deepseek-chat-v3" in model:
+            fallbacks = [
+                "deepseek/deepseek-chat-v3-0324:free",
+                "deepseek/deepseek-chat-v3-0324:floor",
+                "deepseek/deepseek-chat-v3-0324",
+                "deepseek/deepseek-r1:free",  # Fallback to R1 if V3 fails
+                "deepseek/deepseek-chat"
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        # Qwen models
+        elif "qwen" in model or "qwq" in model:
             fallbacks = [
                 "qwen/qwq-32b:free",
                 "qwen/qwq-32b",
@@ -5351,21 +5378,24 @@ class DiscordBot(commands.Bot):
                 "qwen/qwen2.5-32b-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "google":
+        # Google models
+        elif "google/gemini" in model:
             fallbacks = [
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-pro-exp-02-05:free",
                 "google/gemini-2.0-flash-001"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "thedrummer":  # Testing Model fallbacks
+        # Testing models
+        elif "thedrummer/unslopnemo" in model or "thedrummer/rocinante" in model:
             fallbacks = [
                 "thedrummer/unslopnemo-12b",
                 "thedrummer/rocinante-12b",
                 "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "eva-unit-01":
+        # Eva models
+        elif "eva-unit-01/eva-qwen" in model:
             fallbacks = [
                 "eva-unit-01/eva-qwen-2.5-72b:floor",
                 "eva-unit-01/eva-qwen-2.5-72b",
@@ -5373,45 +5403,49 @@ class DiscordBot(commands.Bot):
                 "qwen/qwq-32b",
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "nousresearch":
+        # Nous models
+        elif "nousresearch/hermes" in model:
             fallbacks = [
                 "nousresearch/hermes-3-llama-3.1-70b",
                 "meta-llama/llama-3.3-70b-instruct:free",
                 "meta-llama/llama-3.3-70b-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "anthropic":
-            if "claude-3.7-sonnet" in model:
-                fallbacks = [
-                    "anthropic/claude-3.7-sonnet",
-                    "anthropic/claude-3.5-sonnet:beta",
-                    "anthropic/claude-3.5-haiku:beta",
-                    "anthropic/claude-3.5-haiku"
-                ]
-            elif "claude-3.5-sonnet" in model:
-                fallbacks = [
-                    "anthropic/claude-3.5-sonnet",
-                    "anthropic/claude-3.7-sonnet:beta",
-                    "anthropic/claude-3.7-sonnet",
-                    "anthropic/claude-3.5-haiku:beta",
-                    "anthropic/claude-3.5-haiku"
-                ]
-            elif "claude-3.5-haiku" in model:
-                fallbacks = [
-                    "anthropic/claude-3.5-haiku",
-                    "anthropic/claude-3-haiku:beta"
-                ]
-            else:
-                fallbacks = []
+        # Claude 3.7 Sonnet
+        elif "anthropic/claude-3.7-sonnet" in model:
+            fallbacks = [
+                "anthropic/claude-3.7-sonnet",
+                "anthropic/claude-3.5-sonnet:beta",
+                "anthropic/claude-3.5-haiku:beta",
+                "anthropic/claude-3.5-haiku"
+            ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        # Inside the _try_ai_completion method
-        elif model_family == "latitudegames":
+        # Claude 3.5 Sonnet
+        elif "anthropic/claude-3.5-sonnet" in model:
+            fallbacks = [
+                "anthropic/claude-3.5-sonnet",
+                "anthropic/claude-3.7-sonnet:beta",
+                "anthropic/claude-3.7-sonnet",
+                "anthropic/claude-3.5-haiku:beta",
+                "anthropic/claude-3.5-haiku"
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        # Claude 3.5 Haiku
+        elif "anthropic/claude-3.5-haiku" in model or "anthropic/claude-3-haiku" in model:
+            fallbacks = [
+                "anthropic/claude-3.5-haiku",
+                "anthropic/claude-3-haiku:beta"
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
+        # Latitude models
+        elif "latitudegames/wayfarer" in model:
             fallbacks = [
                 "latitudegames/wayfarer-large-70b-llama-3.3",
                 "meta-llama/llama-3.3-70b-instruct",  # base model fallback
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "thedrummer" and "anubis" in model:
+        # Anubis models
+        elif "thedrummer/anubis" in model:
             fallbacks = [
                 "thedrummer/anubis-pro-105b-v1",
                 "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
@@ -5875,6 +5909,8 @@ class DiscordBot(commands.Bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
+            elif "deepseek/deepseek-chat" in preferred_model:
+                model_name = "DeepSeek V3 0324"
             elif preferred_model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
             elif preferred_model.startswith("nousresearch/"):
