@@ -202,6 +202,8 @@ def register_commands(bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
+            elif "deepseek/deepseek-chat-v3" in preferred_model:
+                model_name = "DeepSeek V3 0324"
             elif preferred_model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
             elif preferred_model.startswith("nousresearch/"):

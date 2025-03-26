@@ -71,7 +71,8 @@ class DiscordBot(commands.Bot):
         self.load_banned_users()
 
         self.scheduler = AsyncIOScheduler()
-        self.scheduler.add_job(self.refresh_google_docs_wrapper, 'interval', hours=6)
+        # Schedule the async function directly
+        self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6) 
         self.scheduler.start()
         
         # List of models that support vision capabilities
@@ -94,14 +95,7 @@ class DiscordBot(commands.Bot):
         text = text.replace("\\", "\\\\")
         return text
     
-    def refresh_google_docs_wrapper(self):
-        """Wrapper to run the async refresh_google_docs method.""" #Should be fixed now
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(self.refresh_google_docs())
-        finally:
-            loop.close()
+    # Removed refresh_google_docs_wrapper as it's not needed with apscheduler running coroutines directly
 
     async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
         """Fetch recent messages from a channel.
@@ -1747,6 +1741,8 @@ class DiscordBot(commands.Bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
+            elif "deepseek/deepseek-chat-v3" in preferred_model:
+                model_name = "DeepSeek V3 0324"
             elif preferred_model.startswith("google/"):
                 model_name = "Gemini 2.0 Flash"
             elif preferred_model.startswith("nousresearch/"):

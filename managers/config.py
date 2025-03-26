@@ -163,7 +163,8 @@ class Config:
         """Validate that all required environment variables are set."""
         required_vars = [
             'DISCORD_BOT_TOKEN',
-            'OPENROUTER_API_KEY'
+            'OPENROUTER_API_KEY',
+            'GOOGLE_API_KEY' # Added GOOGLE_API_KEY as it's needed for embeddings
             # LLM_MODEL and CLASSIFIER_MODEL are not required as they have defaults
         ]
         

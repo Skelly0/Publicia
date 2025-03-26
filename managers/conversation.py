@@ -185,10 +185,10 @@ class ConversationManager:
         for msg in messages:
             content = msg.get("content", "")
             
-            # Include channel in content if available
+            # Include channel in content if available and not already present
             channel = msg.get("channel")
-            if channel:
-                content = f"{content}"
+            if channel and not content.startswith(f"[{channel}]"):
+                content = f"[{channel}] {content}"
             
             result.append({
                 "role": msg.get("role", "user"),

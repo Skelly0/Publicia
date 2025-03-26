@@ -273,9 +273,7 @@ class DocumentManager:
     
     def _load_contextualization_stats(self):
         """Load usage statistics with daily auto-reset."""
-        # Skip if already loaded
-        if hasattr(self, '_contextualization_count') and hasattr(self, '_contextualization_cost'):
-            return
+        # Removed the hasattr check to ensure stats are always loaded from file on init
         
         stats_path = Path(self.base_dir) / 'contextualization_stats.json'
         
@@ -1160,8 +1158,38 @@ Do not number your responses. Just provide one context per line."""
             if lorebook_path.exists():
                 lorebook_path.unlink()
                 return True
-                
-            return False
+
+            # Check if it's a tracked Google Doc and remove from tracking if so
+            tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+            if tracked_file.exists():
+                try:
+                    with open(tracked_file, 'r') as f:
+                        tracked_docs = json.load(f)
+                    
+                    # Find the doc to remove based on filename or custom name matching 'name'
+                    original_length = len(tracked_docs)
+                    tracked_docs = [
+                        doc for doc in tracked_docs 
+                        if not (
+                            (doc.get('custom_name') == name) or 
+                            (f"googledoc_{doc['id']}.txt" == name) or
+                            (doc.get('custom_name') == name.replace('.txt', '')) or # Handle cases where .txt might be missing
+                            (f"googledoc_{doc['id']}" == name.replace('.txt', ''))
+                        )
+                    ]
+                    
+                    if len(tracked_docs) < original_length:
+                        logger.info(f"Removed tracked Google Doc entry corresponding to '{name}'")
+                        with open(tracked_file, 'w') as f:
+                            json.dump(tracked_docs, f)
+                        # If we removed a tracked doc, we can assume success even if it wasn't in chunks/metadata
+                        return True 
+                            
+                except Exception as track_e:
+                    logger.error(f"Error updating tracked Google Docs file while deleting {name}: {track_e}")
+                    # Don't fail the whole delete operation, just log the tracking error
+
+            return False # Return False if not found in regular docs, lorebooks, or tracked docs
         except Exception as e:
             logger.error(f"Error deleting document {name}: {e}")
             return False

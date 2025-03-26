@@ -116,6 +116,8 @@ def register_commands(bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-chat-v3-0324" in model:
                 model_name = "DeepSeek Chat v3"
+            elif "deepseek/deepseek-chat-v3" in model:
+                model_name = "DeepSeek V3 0324"
             elif "deepseek/deepseek-r1" in model:
                 model_name = "DeepSeek-R1"
             elif model.startswith("google/"):
@@ -187,8 +189,8 @@ def register_commands(bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-chat-v3-0324" in preferred_model:
                 model_name = "DeepSeek Chat v3"
-            elif "deepseek/deepseek-chat" in preferred_model:
-                model_name = "DeepSeek Chat"
+            elif "deepseek/deepseek-chat-v3" in preferred_model:
+                model_name = "DeepSeek V3 0324"
             elif "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
             elif preferred_model.startswith("google/"):
