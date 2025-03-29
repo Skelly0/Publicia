@@ -26,9 +26,7 @@ from system_prompt import SYSTEM_PROMPT
 from image_prompt import IMAGE_DESCRIPTION_PROMPT
 import numpy as np
 from sentence_transformers import SentenceTransformer
-import torch
 from rank_bm25 import BM25Okapi
-
 
 
 # Reconfigure stdout to use UTF-8 with error replacement
