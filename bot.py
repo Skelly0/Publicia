@@ -1491,7 +1491,7 @@ class DiscordBot(commands.Bot):
         try:
             # Process commands first
             await self.process_commands(message)
-            
+
             # Ignore messages from self
             if message.author == self.user:
                 return
@@ -1504,15 +1504,28 @@ class DiscordBot(commands.Bot):
             # Only respond to mentions
             if not self.user.mentioned_in(message):
                 return
-                
+
             channel_name = message.channel.name if message.guild else "DM"
 
+            # Check if the message is a reply and get the referenced message
             referenced_message = None
-            if message.reference and message.reference.resolved:
+            if message.reference and message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
+                # Ensure the resolved reference is actually a message object
                 referenced_message = message.reference.resolved
                 logger.info(f"Message is a reply to a message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
-                            
-            
+            elif message.reference and message.reference.message_id:
+                # If resolved is not a message object (might happen if message is old/deleted), try fetching
+                try:
+                    referenced_message = await message.channel.fetch_message(message.reference.message_id)
+                    logger.info(f"Fetched replied-to message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
+                except discord.NotFound:
+                    logger.warning(f"Could not fetch replied-to message (ID: {message.reference.message_id}), might be deleted.")
+                except discord.Forbidden:
+                    logger.warning(f"No permission to fetch replied-to message (ID: {message.reference.message_id}).")
+                except Exception as e:
+                    logger.error(f"Error fetching replied-to message (ID: {message.reference.message_id}): {e}")
+
+
             logger.info(f"Processing message from {message.author.name}: {shorten(message.content, width=100, placeholder='...')}")
 
             # Extract the question from the message (remove mentions)
@@ -1520,79 +1533,92 @@ class DiscordBot(commands.Bot):
             for mention in message.mentions:
                 question = question.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             question = question.strip()
-            
+
             # Check if the stripped question is empty
             if not question:
-                question = "Hello"
+                question = "Hello" # Default to a simple greeting if message is just a ping
                 logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
-            
-            # Add context-aware query enhancement
+
+            # Add context-aware query enhancement (if enabled, based on hybrid search logic)
             original_question = question
-            # Check if this query might need context
-            if self.is_context_dependent_query(question):
-                # Get context from conversation history
-                context = self.get_conversation_context(message.author.name, question)
-                
-                if context:
-                    # Enhance the query with context
-                    question = self.enhance_context_dependent_query(question, context)
-                    logger.info(f"Enhanced query: '{original_question}' -> '{question}'")
-            
+            # Context checking and enhancement happens within process_hybrid_query now
+
             # Check for Google Doc links in the message
             google_doc_ids = await self._extract_google_doc_ids(question)
             google_doc_contents = []
-            
-            # Check for image attachments
-            image_attachments = []
+
+            # --- Image Processing ---
+            direct_image_attachments = [] # Images attached directly to the user's message
+            referenced_image_attachments = [] # Images attached to the message being replied to
+            thinking_msg = await message.channel.send(
+                "*neural pathways activating... processing query...*",
+                reference=message,
+                mention_author=False
+            ) # Send initial thinking message
+
+            # Process DIRECT image attachments
             if message.attachments:
-                # Send a special thinking message if there are images
-                thinking_msg = await message.channel.send(
-                    "*neural pathways activating... processing query and analyzing images...*",
-                    reference=message,
-                    mention_author=False
-                )
-                
-                # Process image attachments
+                await thinking_msg.edit(content="*neural pathways activating... processing query and analyzing direct images...*")
                 for attachment in message.attachments:
-                    # Check if it's an image
                     if is_image(attachment):
-                        # Download and convert to base64
                         base64_image = await self._download_image_to_base64(attachment)
                         if base64_image:
-                            image_attachments.append(base64_image)
-                            logger.info(f"Processed image attachment: {attachment.filename}")
-            else:
-                # Regular thinking message for text-only queries
-                thinking_msg = await message.channel.send(
-                    "*neural pathways activating... processing query...*",
-                    reference=message,
-                    mention_author=False
-                )
-            
+                            direct_image_attachments.append(base64_image)
+                            logger.info(f"Processed direct image attachment: {attachment.filename}")
+
+            # Process image attachments from the REPLIED-TO message
+            if referenced_message and referenced_message.attachments:
+                # Update thinking message based on whether direct images were also found
+                current_thinking_content = thinking_msg.content # Get current content directly
+
+                if direct_image_attachments:
+                    new_thinking_content = "*neural pathways activating... processing query, direct images, and images from reply...*"
+                else:
+                    new_thinking_content = "*neural pathways activating... processing query and analyzing images from reply...*"
+                # Only edit if the content needs changing
+                if current_thinking_content != new_thinking_content:
+                    try: # Add try-except around edits in case the message was deleted
+                        await thinking_msg.edit(content=new_thinking_content)
+                    except discord.NotFound:
+                        logger.warning("Thinking message was deleted before edit for referenced images.")
+                    except Exception as edit_err:
+                        logger.error(f"Error editing thinking message for referenced images: {edit_err}")
+
+
+                for attachment in referenced_message.attachments:
+                    if is_image(attachment):
+                        base64_image = await self._download_image_to_base64(attachment)
+                        if base64_image:
+                            referenced_image_attachments.append(base64_image)
+                            logger.info(f"Processed referenced image attachment: {attachment.filename}")
+
+            # Combine all image attachments for the API call
+            all_api_image_attachments = direct_image_attachments + referenced_image_attachments
+            # --- End Image Processing ---
+
             # Get conversation history for context
             conversation_messages = self.conversation_manager.get_conversation_messages(message.author.name)
-            
+
             # Get user's preferred model
             preferred_model = self.user_preferences_manager.get_preferred_model(
                 str(message.author.id),
-                default_model=self.config.DEFAULT_MODEL
+                default_model=self.config.LLM_MODEL
             )
 
-            # Update thinking message
+            # Update thinking message before search
             await thinking_msg.edit(content="*analyzing query and searching imperial databases...*")
 
             # Use the new hybrid search system
+            # This now handles context checking and enhancement internally
             search_results = self.process_hybrid_query(
-                question,
+                question, # Pass the potentially non-enhanced question here
                 message.author.name,
-                max_results=self.config.get_top_k_for_model(preferred_model)
+                max_results=self.config.get_top_k_for_model(preferred_model),
+                use_context=True # Enable context features for on_message
             )
-            
-            # Extract results
-            synthesis = ""  # No synthesis in hybrid search
-            
+
             # Log the results
-            logger.info(f"Found {len(search_results)} relevant document sections")
+            logger.info(f"Found {len(search_results)} relevant document sections via hybrid search")
 
             # Load Google Doc ID mapping for citation links
             googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
@@ -1602,16 +1628,15 @@ class DiscordBot(commands.Bot):
             for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
-                    logger.info(f"Found relevant image: {image_id}")
+                    logger.info(f"Found relevant image from search: {image_id}")
 
-            # Fetch content for Google Doc links
+            # Fetch content for Google Doc links found in the *original* question
             if google_doc_ids:
-                # Fetch content for each Google Doc
                 await thinking_msg.edit(content="*detected Google Doc links in your query... fetching content...*")
                 for doc_id, doc_url in google_doc_ids:
                     content = await self._fetch_google_doc_content(doc_id)
                     if content:
-                        logger.info(f"Fetched content from Google Doc {doc_id}")
+                        logger.info(f"Fetched content from linked Google Doc {doc_id}")
                         google_doc_contents.append((doc_id, doc_url, content))
 
             # Format raw results with citation info
@@ -1619,14 +1644,12 @@ class DiscordBot(commands.Bot):
             raw_doc_contexts = []
             for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id:
-                    # This is an image description
-                    image_name = self.image_manager.metadata[image_id]['name'] if image_id in self.image_manager.metadata else "Unknown Image"
+                    image_name = self.image_manager.metadata.get(image_id, {}).get('name', "Unknown Image")
                     raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
                 elif doc in googledoc_mapping:
-                    # Create citation link for Google Doc
                     doc_id = googledoc_mapping[doc]
                     words = chunk.split()
-                    search_text = ' '.join(words[:min(10, len(words))])
+                    search_text = ' '.join(words[:min(10, len(words))]) # Use first 10 words for search context
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                     raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
@@ -1634,198 +1657,145 @@ class DiscordBot(commands.Bot):
                     raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
             # Add fetched Google Doc content to context
-            google_doc_context = []
+            google_doc_context_str = []
             for doc_id, doc_url, content in google_doc_contents:
-                # Truncate content if it's too long (first 10000 chars)
+                # Truncate content if it's too long (e.g., first 10000 chars)
                 truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
-                google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
-            
-            # Get nickname or username
-            nickname = None
-            if message.guild and hasattr(message.author, 'nick') and message.author.nick:
-                nickname = message.author.nick
-            else:
-                nickname = message.author.name
+                google_doc_context_str.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
 
-            # Prepare messages for model
+            # Get nickname or username
+            nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
+
+            # --- Prepare messages for AI Model ---
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT
+                    "content": SYSTEM_PROMPT # Base system prompt
                 },
-                *conversation_messages
+                *conversation_messages # Add previous messages from history
             ]
 
             if referenced_message:
-                # Get the author name/nickname
-                reply_author = None
-                if message.guild and hasattr(referenced_message.author, 'nick') and referenced_message.author.nick:
-                    reply_author = referenced_message.author.nick
-                else:
-                    reply_author = referenced_message.author.name                
-                # Process the content to handle mentions
+                # Get the author object from the referenced message
+                ref_author = referenced_message.author
+
+                # Determine the display name (nickname if available in guild context, otherwise username)
+                reply_author_name = ref_author.name # Default to username
+                if isinstance(ref_author, discord.Member) and ref_author.nick:
+                    # If the author object is a Member AND has a guild nickname set
+                    reply_author_name = ref_author.nick
+
                 ref_content = referenced_message.content
+
+                # Sanitize mentions in the referenced message content
                 for mention in referenced_message.mentions:
-                    mention_name = None
-                    if message.guild and hasattr(mention, 'nick') and mention.nick:
-                        mention_name = mention.nick
-                    else:
-                        mention_name = mention.name
-                    ref_content = ref_content.replace(f'<@{mention.id}>', f'@{mention_name}').replace(f'<@!{mention.id}>', f'@{mention_name}')
-                
-                # Check for attachments
+                    # Determine mention display name safely
+                    mention_display_name = mention.name # Default to username
+                    if isinstance(mention, discord.Member) and mention.nick:
+                        mention_display_name = mention.nick
+                    ref_content = ref_content.replace(f'<@{mention.id}>', f'@{mention_display_name}').replace(f'<@!{mention.id}>', f'@{mention_display_name}')
+
+                # Add note about attachments in the referenced message, using image_note
                 attachment_info = ""
                 if referenced_message.attachments:
                     attachment_count = len(referenced_message.attachments)
-                    attachment_info = f" [with {attachment_count} attachment{'s' if attachment_count > 1 else ''}]"
-                
-                # Check if it's a message from Publicia herself
-                if referenced_message.author == self.user:
-                    messages.append({
-                        "role": "system",
-                        "content": f"The user is replying to your previous message: \"{ref_content}\"{attachment_info}"
-                    })
-                else:
-                    messages.append({
-                        "role": "system",
-                        "content": f"The user is replying to a message from {reply_author}: \"{ref_content}\"{attachment_info}"
-                    })
+                    # Define image_note based on processed referenced images
+                    image_note = f", including {len(referenced_image_attachments)} image{'s' if len(referenced_image_attachments) > 1 else ''} provided" if referenced_image_attachments else ""
+                    # Construct attachment_info correctly using image_note
+                    attachment_info = f" [with {attachment_count} attachment{'s' if attachment_count > 1 else ''}{image_note}]"
 
-            # Add synthesized context if available
-            if synthesis:
+
+                # Frame the reply context for the AI
+                role_context = "your previous message" if ref_author == self.user else f"a message from {reply_author_name}" # Use the determined name
                 messages.append({
                     "role": "system",
-                    "content": f"Synthesized document context:\n{synthesis}"
+                    "content": f"The user is replying to {role_context}: \"{ref_content}\"{attachment_info}"
                 })
 
-            # Add raw document context as additional reference
-            raw_doc_context = "\n\n".join(raw_doc_contexts)
-            messages.append({
-                "role": "system",
-                "content": f"Raw document context (with citation links):\n{raw_doc_context}"
-            })
+            # Add raw document context from search results
+            if raw_doc_contexts:
+                raw_doc_context_combined = "\n\n".join(raw_doc_contexts)
+                # Truncate if excessively long to avoid huge prompts
+                max_raw_context_len = 15000 # Adjust as needed
+                if len(raw_doc_context_combined) > max_raw_context_len:
+                    raw_doc_context_combined = raw_doc_context_combined[:max_raw_context_len] + "\n... [Context Truncated]"
+                    logger.warning(f"Raw document context truncated to {max_raw_context_len} characters.")
+                messages.append({
+                    "role": "system",
+                    "content": f"Raw document context (with citation links):\n{raw_doc_context_combined}"
+                })
 
             # Add fetched Google Doc content if available
-            if google_doc_context:
+            if google_doc_context_str:
                 messages.append({
                     "role": "system",
-                    "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context)}"
+                    "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context_str)}"
                 })
 
-            # Add the query itself
+            # Add channel context
             messages.append({
                 "role": "system",
                 "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
-            
-            # Add image context if there are images from search or attachments
-            if image_ids or image_attachments:
-                total_images = len(image_ids) + len(image_attachments)
-                img_source = []
-                if image_ids:
-                    img_source.append(f"{len(image_ids)} from search results")
-                if image_attachments:
-                    img_source.append(f"{len(image_attachments)} from attachments")
-                    
+
+            # Add image context summary system message
+            total_api_images = len(image_ids) + len(all_api_image_attachments)
+            if total_api_images > 0:
+                img_source_parts = []
+                if image_ids: img_source_parts.append(f"{len(image_ids)} from search")
+                if direct_image_attachments: img_source_parts.append(f"{len(direct_image_attachments)} attached")
+                if referenced_image_attachments: img_source_parts.append(f"{len(referenced_image_attachments)} from reply")
                 messages.append({
                     "role": "system",
-                    "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
+                    "content": f"The query context includes {total_api_images} image{'s' if total_api_images > 1 else ''} ({', '.join(img_source_parts)}). Vision models will see these in the user message."
                 })
 
+            # Finally, add the user's actual message
             messages.append({
                 "role": "user",
-                "content": f"{nickname}: {original_question}"
+                "content": f"{nickname}: {original_question}" # Use original question here for clarity
             })
+            # --- End Preparing Messages ---
 
-            # Get friendly model name based on the model value
+            # Get friendly model name for status updates
             model_name = "Unknown Model"
-            if "deepseek/deepseek-r1" in preferred_model:
-                model_name = "DeepSeek-R1"
-            elif "deepseek/deepseek-chat-v3" in preferred_model:
-                model_name = "DeepSeek V3 0324"
-            elif preferred_model.startswith("google/"):
-                model_name = "Gemini 2.0 Flash"
-            elif preferred_model.startswith("nousresearch/"):
-                model_name = "Nous: Hermes 405B Instruct"
-            elif "claude-3.5-haiku" in preferred_model:
-                model_name = "Claude 3.5 Haiku"
-            elif "claude-3.5-sonnet" in preferred_model:
-                model_name = "Claude 3.5 Sonnet"
-            elif "claude-3.7-sonnet" in preferred_model:
-                model_name = "Claude 3.7 Sonnet"
-            elif "qwen/qwq-32b" in preferred_model:
-                model_name = "Qwen QwQ 32B"
-            elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
-                model_name = "Testing Model"
-            elif "latitudegames/wayfarer" in preferred_model:
-                model_name = "Wayfarer 70B"
-            elif "thedrummer/anubis-pro" in preferred_model:
-                model_name = "Anubis Pro 105B"
-            elif "microsoft/phi-4-multimodal-instruct" in preferred_model:
-                model_name = "Phi-4 Multimodal"
+            if "deepseek/deepseek-r1" in preferred_model: model_name = "DeepSeek-R1"
+            elif "deepseek/deepseek-chat" in preferred_model: model_name = "DeepSeek V3 0324"
+            elif preferred_model.startswith("google/"): model_name = "Gemini 2.0 Flash"
+            elif preferred_model.startswith("nousresearch/"): model_name = "Nous: Hermes 405B"
+            elif "claude-3.5-haiku" in preferred_model: model_name = "Claude 3.5 Haiku"
+            elif "claude-3.5-sonnet" in preferred_model: model_name = "Claude 3.5 Sonnet"
+            elif "claude-3.7-sonnet" in preferred_model: model_name = "Claude 3.7 Sonnet"
+            elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"
+            elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"
+            elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
+            elif "thedrummer/anubis-pro" in preferred_model: model_name = "Anubis Pro 105B"
+            # Note: "Testing Model" name is less clear, using specific names if possible.
 
-            # Add a note about vision capabilities if relevant
-            if (image_attachments or image_ids) and preferred_model not in self.vision_capable_models:
-                await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed)*")
-                # No model switching - continues with user's preferred model
-            else:
-                # Add a note about fetched Google Docs if any were processed
-                if google_doc_contents:
-                    await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...\n(fetched content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})*")
-                else:
-                    await thinking_msg.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
+            # Update thinking message before API call
+            status_update = f"*formulating response with enhanced neural mechanisms using {model_name}...*"
+            if total_api_images > 0 and preferred_model not in self.vision_capable_models:
+                status_update += f"\n(note: preferred model ({model_name}) doesn't support images. Text only.)"
+            elif google_doc_contents:
+                status_update += f"\n(using content from {len(google_doc_contents)} linked Google Doc{'s' if len(google_doc_contents) > 1 else ''})"
+            await thinking_msg.edit(content=status_update)
 
-            # Check if channel parsing is enabled for this user
-            channel_parsing_enabled, channel_parsing_count = self.user_preferences_manager.get_channel_parsing(
-                str(message.author.id)
-            )
-
-            # If enabled, fetch channel messages and add to context
-            if channel_parsing_enabled and channel_parsing_count > 0:
-                await thinking_msg.edit(content="*analyzing channel conversation context...*")
-                
-                # Fetch channel messages
-                channel_messages = await self.fetch_channel_messages(
-                    message.channel,
-                    limit=channel_parsing_count,
-                    max_message_length=500  # Limit each message to 500 characters
-                )
-                
-                if channel_messages:
-                    # Format channel messages for context
-                    channel_context = "Recent channel messages for context:\n\n"
-                    for msg in channel_messages:
-                        channel_context += f"{msg['author']}: {msg['content']}\n"
-                    
-                    # Limit total context size to 10000 characters
-                    if len(channel_context) > 10000:
-                        channel_context = channel_context[:10000] + "...\n(channel context truncated due to size)"
-                        logger.warning(f"Channel context truncated to 10000 characters")
-                    
-                    # Add to messages array
-                    messages.append({
-                        "role": "system",
-                        "content": channel_context
-                    })
-                    
-                    logger.info(f"Added {len(channel_messages)} channel messages to context")
-                    await thinking_msg.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
-
-            # Calculate dynamic temperature based on query and conversation history
+            # Calculate dynamic temperature
             temperature = self.calculate_dynamic_temperature(
-                question,
+                original_question, # Use original question for temperature calculation
                 conversation_messages
             )
-            
-            # Get AI response using user's preferred model
+
+            # Get AI response
             completion, actual_model = await self._try_ai_completion(
                 preferred_model,
                 messages,
-                image_ids=image_ids,
-                image_attachments=image_attachments,
+                image_ids=image_ids, # From search
+                image_attachments=all_api_image_attachments, # Combined direct + referenced
                 temperature=temperature
             )
 
+            # Process and send response
             if completion and completion.get('choices') and len(completion['choices']) > 0:
                 if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
                     response = completion['choices'][0]['message']['content']
@@ -1833,41 +1803,48 @@ class DiscordBot(commands.Bot):
                     logger.error(f"Unexpected response structure: {completion}")
                     await thinking_msg.edit(content="*neural circuit overload!* I received an unexpected response structure.")
                     return
-                
-                # Update conversation history
+
+                # Update conversation history with context notes
+                user_history_content = original_question
+                history_notes = []
+                if direct_image_attachments: history_notes.append("direct images")
+                if referenced_message: history_notes.append("reply context")
+                if referenced_image_attachments: history_notes.append("reply images")
+                if history_notes: user_history_content += f" [{', '.join(history_notes)}]"
+
                 self.conversation_manager.write_conversation(
-                    message.author.name,
-                    "user",
-                    original_question + (" [with image attachment(s)]" if image_attachments else ""),
-                    channel_name
+                    message.author.name, "user", user_history_content, channel_name
                 )
                 self.conversation_manager.write_conversation(
-                    message.author.name,
-                    "assistant",
-                    response,
-                    channel_name
+                    message.author.name, "assistant", response, channel_name
                 )
 
-                # Send the response, replacing thinking message with the first chunk
+                # Send the response, replacing thinking message
                 await self.send_split_message(
                     message.channel,
                     response,
                     reference=message,
                     mention_author=False,
-                    model_used=actual_model,  # Pass the actual model used, not just the preferred model
+                    model_used=actual_model,
                     user_id=str(message.author.id),
-                    existing_message=thinking_msg
+                    existing_message=thinking_msg # Pass the thinking message to edit/replace
                 )
             else:
                 await thinking_msg.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
         except Exception as e:
             logger.error(f"Error processing message: {e}")
+            import traceback
+            logger.error(traceback.format_exc()) # Log full traceback
             try:
-                await message.channel.send(
-                    "*neural circuit overload!* My brain is struggling and an error has occurred.",
-                    reference=message,
-                    mention_author=False
-                )
-            except:
-                pass  # If even sending the error message fails, just log and move on
+                # Try editing the thinking message first if it exists
+                if 'thinking_msg' in locals() and thinking_msg and isinstance(thinking_msg, discord.Message):
+                    await thinking_msg.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
+                else: # Fallback to sending a new message
+                    await message.channel.send(
+                        "*neural circuit overload!* My brain is struggling and an error has occurred.",
+                        reference=message,
+                        mention_author=False
+                    )
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to user: {send_error}")

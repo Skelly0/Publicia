@@ -35,9 +35,10 @@ class Config:
         self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '1'))  # Default to no change
 
         self.MODEL_TOP_K = {
-            # DeepSeek models 
-            "deepseek/deepseek-chat-v3-0324:free": 20,
-            "deepseek/deepseek-chat-v3-0324": 9,
+            # DeepSeek models
+            "deepseek/deepseek-chat-v3-0324:free": 10, # User specified value
+            "deepseek/deepseek-chat-v3-0324:floor": 10, # User specified value
+            "deepseek/deepseek-chat-v3-0324": 10, # User specified value
             "deepseek/deepseek-chat": 10,
             "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 10,

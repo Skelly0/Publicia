@@ -12,8 +12,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from utils.helpers import split_message
-from utils.helpers import check_permissions
+from utils.helpers import split_message, check_permissions # Consolidated import
 
 
 logger = logging.getLogger(__name__)
@@ -488,6 +487,22 @@ def register_commands(bot):
         except Exception as e:
             logger.error(f"Error retrieving file: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to retrieve the file.")
+
+    @bot.tree.command(name="refresh_docs", description="Manually refresh all tracked Google Docs (admin only)")
+    @app_commands.check(check_permissions)
+    async def refresh_docs(interaction: discord.Interaction):
+        """Manually trigger the refresh process for all tracked Google Docs."""
+        await interaction.response.defer()
+        try:
+            await interaction.followup.send("*neural pathways activating... initiating Google Docs refresh sequence...*")
+            
+            # Call the refresh method from the bot instance
+            await bot.refresh_google_docs()
+            
+            await interaction.followup.send("*neural synchronization complete!* Google Docs refresh finished.")
+        except Exception as e:
+            logger.error(f"Error during manual Google Docs refresh: {e}")
+            await interaction.followup.send(f"*neural circuit overload!* An error occurred during refresh: {str(e)}")
 
     @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document (admin only)")
     @app_commands.describe(
