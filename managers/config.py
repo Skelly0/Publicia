@@ -98,29 +98,6 @@ class Config:
         self.RERANKING_MIN_SCORE = float(os.getenv('RERANKING_MIN_SCORE', '0.5'))  # Minimum score threshold
 
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
-        
-        # Contextualization controls
-        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
-        self.CONTEXTUALIZATION_MAX_DAILY = int(os.getenv('CONTEXTUALIZATION_MAX_DAILY', '500'))
-        self.CONTEXTUALIZATION_MAX_DAILY_BUDGET = float(os.getenv('CONTEXTUALIZATION_MAX_DAILY_BUDGET', '1.0'))
-        self.CONTEXTUALIZATION_BATCH_SIZE = int(os.getenv('CONTEXTUALIZATION_BATCH_SIZE', '5'))
-
-        # Per-model costs (per 1000 tokens)
-        self.MODEL_COSTS = {
-            # Free models
-            "google/gemini-2.0-flash-thinking-exp:free": 0.0,
-            "google/gemma-3-27b-it:free": 0.0,
-            "google/gemini-2.0-flash-exp:free": 0.0,
-            
-            # Paid models with exact costs
-            "google/gemini-2.0-flash-001": 0.1, 
-            "google/gemini-2.0-flash-lite-001": 0.075,
-            "microsoft/phi-4": 0.05,
-            "cohere/command-r7b-12-2024": 0.0375,
-            
-            # Default fallback for unknown models
-            "default": 0.1
-        }
 
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
