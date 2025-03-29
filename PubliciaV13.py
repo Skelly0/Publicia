@@ -2324,7 +2324,12 @@ class DiscordBot(commands.Bot):
     
     def refresh_google_docs_wrapper(self):
         """Wrapper to run the async refresh_google_docs method."""
-        asyncio.create_task(self.refresh_google_docs())
+        future = asyncio.run_coroutine_threadsafe(self.refresh_google_docs(), self.loop)
+        try:
+            # Wait for completion if you want
+            future.result() 
+        except Exception as e:
+            logger.error(f"Error refreshing Google Docs: {e}")
 
     async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
         """Fetch recent messages from a channel.
@@ -3975,7 +3980,7 @@ class DiscordBot(commands.Bot):
                 model_name = "Unknown Model"
                 if "deepseek/deepseek-r1" in model:
                     model_name = "DeepSeek-R1"
-                elif "deepseek/deepseek-chat-v3-0324" in preferred_model:  # add this section
+                elif "deepseek/deepseek-chat-v3-0324" in model:  # add this section
                     model_name = "DeepSeek V3 0324"
                 elif model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
