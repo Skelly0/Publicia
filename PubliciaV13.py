@@ -4886,6 +4886,22 @@ class DiscordBot(commands.Bot):
             except Exception as e:
                 logger.error(f"Error adding Google Doc: {e}")
                 await interaction.followup.send(f"*my enhanced brain had a glitch!* couldn't add document: {str(e)}")
+        
+        @self.tree.command(name="refresh_googledocs", description="Manually refresh all tracked Google Docs (admin only)")
+        @app_commands.check(check_permissions)
+        async def refresh_googledocs(interaction: discord.Interaction):
+            await interaction.response.defer()
+            try:
+                status_message = await interaction.followup.send("*neural pathways connecting... refreshing Google Docs...*")
+                
+                # Call the refresh method
+                await self.refresh_google_docs()
+                
+                # Update the status message
+                await status_message.edit(content="*neural pathways reconfigured!* All Google Docs have been refreshed.")
+            except Exception as e:
+                logger.error(f"Error refreshing Google Docs: {e}")
+                await interaction.followup.send(f"*neural circuit overload!* Error refreshing Google Docs: {str(e)}")
 
         @self.tree.command(name="list_googledocs", description="List all tracked Google Docs")
         async def list_google_docs(interaction: discord.Interaction):
