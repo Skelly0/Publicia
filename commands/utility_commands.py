@@ -28,9 +28,9 @@ def register_commands(bot):
             
             categories = {
                 "Lore Queries": ["query"],
-                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel"],
+                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "help", "export_prompt", "reload_docs"],
+                "Utility": ["list_commands", "set_model", "get_model", "togCougle_debug", "help", "export_prompt"],
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"], 
                 "Moderation": ["ban_user", "unban_user"]
             }
@@ -328,6 +328,8 @@ def register_commands(bot):
             response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
             response += "• `/rename_document` - Rename a document in my database\n"
             response += "• `/search_docs` - Search directly in my document knowledge base\n"
+            response += "• `/summarize_doc` - Generate an AI summary of a document\n"
+            response += "• `/view_chunk` - View the specific text content of a document chunk\n"
             response += "• `/update_image_description` - Update the description for an image\n"
             response += "• `/reload_docs` - Reload all documents from disk (admin only)\n"
             response += "• `/archive_channel` - Archive messages from a Discord channel as a document (admin only)\n\n"

@@ -12,7 +12,8 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from utils.helpers import split_message, check_permissions # Consolidated import
+from utils.helpers import split_message, check_permissions, sanitize_discord_text # Consolidated import & added sanitize
+from prompts.system_prompt import SYSTEM_PROMPT # Added for summarization
 
 
 logger = logging.getLogger(__name__)
@@ -844,3 +845,206 @@ def register_commands(bot):
             import traceback
             logger.error(traceback.format_exc())
             await interaction.followup.send(f"*neural circuit overload!* An error occurred while archiving the channel: {str(e)}")
+
+    @bot.tree.command(name="summarize_doc", description="Generate a summary of a document")
+    @app_commands.describe(document_name="The name of the document to summarize")
+    async def summarize_document(interaction: discord.Interaction, document_name: str):
+        """Generates a summary of the specified document using an LLM."""
+        await interaction.response.defer()
+        try:
+            if not document_name:
+                await interaction.followup.send("*neural error detected!* Please provide a document name.")
+                return
+
+            # --- Find and read the document content ---
+            doc_content = None
+            doc_mgr = bot.document_manager
+            base_dir = doc_mgr.base_dir
+            lorebooks_dir = doc_mgr.get_lorebooks_path()
+            possible_paths = [
+                base_dir / document_name,
+                lorebooks_dir / document_name,
+                base_dir / f"{document_name}.txt",
+                lorebooks_dir / f"{document_name}.txt"
+            ]
+
+            found_path = None
+            for path in possible_paths:
+                if path.exists() and path.is_file():
+                    found_path = path
+                    break
+
+            if found_path:
+                logger.info(f"Found document file for summarization: {found_path}")
+                try:
+                    doc_content = found_path.read_text(encoding='utf-8-sig')
+                except Exception as read_err:
+                    logger.error(f"Error reading document file {found_path}: {read_err}")
+                    await interaction.followup.send(f"*neural error!* Failed to read the document file: {read_err}")
+                    return
+            else:
+                # Fallback: Concatenate chunks if file not found
+                logger.info(f"Document file not found for '{document_name}'. Attempting to concatenate chunks.")
+                if document_name in doc_mgr.chunks:
+                    doc_content = "\n\n".join(doc_mgr.chunks[document_name])
+                    logger.info(f"Concatenated {len(doc_mgr.chunks[document_name])} chunks for '{document_name}'.")
+                elif f"{document_name}.txt" in doc_mgr.chunks:
+                     # Try with .txt extension if original name failed
+                     doc_name_txt = f"{document_name}.txt"
+                     doc_content = "\n\n".join(doc_mgr.chunks[doc_name_txt])
+                     logger.info(f"Concatenated {len(doc_mgr.chunks[doc_name_txt])} chunks for '{doc_name_txt}'.")
+                else:
+                    await interaction.followup.send(f"*neural error!* Document '{document_name}' not found in my knowledge base or associated files.")
+                    return
+
+            if not doc_content or not doc_content.strip():
+                await interaction.followup.send(f"*neural analysis complete!* The document '{document_name}' appears to be empty.")
+                return
+
+            # --- Prepare for LLM call ---
+            status_message = await interaction.followup.send(f"*neural pathways activating... preparing summary for '{document_name}'...*")
+
+            # Use user's preferred model or default
+            preferred_model = bot.user_preferences_manager.get_preferred_model(
+                str(interaction.user.id),
+                default_model=bot.config.LLM_MODEL
+            )
+            # Select a capable model (prefer larger context if possible, but use preferred)
+            # For summarization, a model with good comprehension is needed.
+            summary_model = preferred_model # Use user's preference for consistency
+
+            # Construct the prompt
+            # Using a simplified system prompt for summarization task
+            summary_system_prompt = "You are an AI assistant tasked with summarizing documents accurately and concisely. Respond only with the summary."
+            prompt_messages = [
+                {"role": "system", "content": summary_system_prompt},
+                {"role": "user", "content": f"Please summarize the following document titled '{document_name}':\n\n<document_content>\n{doc_content}\n</document_content>\n\nProvide a concise summary of the key information."}
+            ]
+
+            await status_message.edit(content=f"*neural core processing... generating summary for '{document_name}' using {summary_model}...*")
+
+            # --- Call the LLM ---
+            # Use a moderate temperature for summarization
+            temperature = 0.3
+            completion, actual_model = await bot._try_ai_completion(
+                summary_model,
+                prompt_messages,
+                temperature=temperature
+            )
+
+            # --- Process and send the response ---
+            if completion and completion.get('choices') and len(completion['choices']) > 0:
+                if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                    summary_text = completion['choices'][0]['message']['content']
+                    response_header = f"**Summary for Document: {document_name}** (Generated by {actual_model})\n\n"
+                    
+                    # Delete the status message and send the final summary
+                    try:
+                        await status_message.delete()
+                    except discord.NotFound:
+                        pass # Message already deleted or interaction expired
+
+                    await bot.send_split_message(
+                        interaction.channel,
+                        response_header + summary_text,
+                        user_id=str(interaction.user.id) # Pass user_id for potential history logging if needed later
+                    )
+                else:
+                    logger.error(f"Unexpected summary response structure: {completion}")
+                    await status_message.edit(content="*neural circuit overload!* I received an unexpected response structure while summarizing.")
+            else:
+                await status_message.edit(content=f"*synaptic failure detected!* I apologize, but I couldn't generate a summary for '{document_name}' right now.")
+
+        except Exception as e:
+            logger.error(f"Error summarizing document '{document_name}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            try:
+                # Try to edit the status message first
+                if 'status_message' in locals() and status_message:
+                    await status_message.edit(content=f"*neural circuit overload!* An error occurred while summarizing: {str(e)}")
+                else:
+                    await interaction.followup.send(f"*neural circuit overload!* An error occurred while summarizing: {str(e)}")
+            except discord.NotFound:
+                 await interaction.followup.send(f"*neural circuit overload!* An error occurred while summarizing: {str(e)}")
+            except Exception as send_err:
+                 logger.error(f"Failed to send error message for summarize_doc: {send_err}")
+
+    @bot.tree.command(name="view_chunk", description="View the content of a specific document chunk")
+    @app_commands.describe(
+        document_name="The name of the document",
+        chunk_index="The index of the chunk to view (starting from 1)",
+        contextualized="View the contextualized version used for embeddings (default: False)"
+    )
+    async def view_chunk(interaction: discord.Interaction, document_name: str, chunk_index: int, contextualized: bool = False):
+        """Displays the content of a specific chunk from a document."""
+        await interaction.response.defer()
+        try:
+            if not document_name:
+                await interaction.followup.send("*neural error detected!* Please provide a document name.")
+                return
+            if chunk_index <= 0:
+                await interaction.followup.send("*neural error detected!* Chunk index must be 1 or greater.")
+                return
+
+            doc_mgr = bot.document_manager
+            target_doc_name = None
+            chunks_list = None
+            doc_exists = False
+
+            # Check for document existence (try exact name, then with .txt)
+            possible_names = [document_name]
+            if not document_name.endswith('.txt'):
+                possible_names.append(f"{document_name}.txt")
+
+            for name_attempt in possible_names:
+                if contextualized:
+                    if name_attempt in doc_mgr.contextualized_chunks:
+                        chunks_list = doc_mgr.contextualized_chunks[name_attempt]
+                        target_doc_name = name_attempt
+                        doc_exists = True
+                        break
+                    elif name_attempt in doc_mgr.chunks: # Fallback if contextualized doesn't exist but original does
+                         logger.warning(f"Contextualized chunk requested for {name_attempt}, but not found. Falling back to original.")
+                         chunks_list = doc_mgr.chunks[name_attempt]
+                         target_doc_name = name_attempt
+                         doc_exists = True
+                         contextualized = False # Mark as not contextualized
+                         break
+                else:
+                    if name_attempt in doc_mgr.chunks:
+                        chunks_list = doc_mgr.chunks[name_attempt]
+                        target_doc_name = name_attempt
+                        doc_exists = True
+                        break
+
+            if not doc_exists:
+                await interaction.followup.send(f"*neural error!* Document '{document_name}' not found in my knowledge base.")
+                return
+
+            # Convert 1-based index to 0-based
+            zero_based_index = chunk_index - 1
+
+            if not chunks_list or zero_based_index < 0 or zero_based_index >= len(chunks_list):
+                await interaction.followup.send(f"*neural error!* Invalid chunk index {chunk_index}. Document '{target_doc_name}' has {len(chunks_list) if chunks_list else 0} chunks.")
+                return
+
+            # Get the chunk content
+            chunk_content = chunks_list[zero_based_index]
+            chunk_type = "Contextualized" if contextualized else "Original"
+
+            response_header = f"**{chunk_type} Chunk {chunk_index}/{len(chunks_list)} from Document: {target_doc_name}**\n"
+            formatted_content = response_header + f"```\n{sanitize_discord_text(chunk_content)}\n```"
+
+            # Send the content, splitting if necessary
+            await bot.send_split_message(
+                interaction.channel,
+                formatted_content,
+                user_id=str(interaction.user.id) # Pass user_id for potential history logging
+            )
+
+        except Exception as e:
+            logger.error(f"Error viewing chunk {chunk_index} from '{document_name}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await interaction.followup.send(f"*neural circuit overload!* An error occurred while viewing the chunk: {str(e)}")
