@@ -440,6 +440,9 @@ class DocumentManager:
         # Store top_k as instance variable
         self.top_k = top_k
         self.config = config
+
+        self._contextualization_count = 0
+        self._contextualization_cost = 0.0
         
         # Initialize Google Generative AI embedding model
         try:
@@ -479,6 +482,203 @@ class DocumentManager:
         logger.info("Document loading completed")
 
         self.bm25_indexes = {}
+
+    def _load_contextualization_stats(self):
+        """Load usage statistics with daily auto-reset."""
+        # Skip if already loaded
+        if hasattr(self, '_contextualization_count') and hasattr(self, '_contextualization_cost'):
+            return
+        
+        stats_path = Path(self.base_dir) / 'contextualization_stats.json'
+        
+        try:
+            if stats_path.exists():
+                with open(stats_path, 'r') as f:
+                    stats = json.load(f)
+                    
+                # Check if we need to reset for a new day
+                last_reset = datetime.fromisoformat(stats.get('last_reset', '2000-01-01'))
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                
+                if last_reset < today:
+                    # New day - reset counters
+                    logger.info("New day detected, resetting contextualization counters")
+                    self._contextualization_count = 0
+                    self._contextualization_cost = 0.0
+                    self._save_contextualization_stats()
+                else:
+                    # Same day - load current counters
+                    self._contextualization_count = stats.get('count', 0)
+                    self._contextualization_cost = stats.get('cost', 0.0)
+            else:
+                # First run - initialize counters
+                self._contextualization_count = 0
+                self._contextualization_cost = 0.0
+                self._save_contextualization_stats()
+        except Exception as e:
+            logger.error(f"Error loading contextualization stats: {e}")
+            self._contextualization_count = 0
+            self._contextualization_cost = 0.0
+
+    def _save_contextualization_stats(self):
+        """Save usage statistics to disk."""
+        stats_path = Path(self.base_dir) / 'contextualization_stats.json'
+        try:
+            stats = {
+                'count': self._contextualization_count,
+                'cost': self._contextualization_cost,
+                'last_reset': datetime.now().replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+            }
+            
+            with open(stats_path, 'w') as f:
+                json.dump(stats, f)
+        except Exception as e:
+            logger.error(f"Error saving contextualization stats: {e}")
+
+
+    def _estimate_batch_cost(self, batch, document_content, model):
+        """Estimate cost based on document size, batch size, and specific model."""
+        # System prompt tokens (~150)
+        system_tokens = 150
+        
+        # Document content tokens (first 2000 chars)
+        doc_tokens = min(len(document_content[:2000].split()) * 1.3, 500)
+        
+        # Instructions/formatting tokens (~100 base + 25 per chunk)
+        instruction_tokens = 100 + (25 * len(batch))
+        
+        # Chunk content tokens (each chunk limited to 300 chars)
+        chunk_tokens = sum(len(chunk[:300].split()) * 1.3 for chunk in batch)
+        
+        # Expected output tokens (~40 per chunk)
+        output_tokens = 40 * len(batch)
+        
+        # Total estimate
+        total_tokens = system_tokens + doc_tokens + instruction_tokens + chunk_tokens + output_tokens
+        
+        # Get model-specific cost
+        cost_per_1k = self.config.MODEL_COSTS.get(model, self.config.MODEL_COSTS["default"])
+        
+        return (total_tokens / 1000) * cost_per_1k
+
+    def _get_actual_cost(self, tokens_used, model):
+        """Calculate actual cost based on tokens used and model."""
+        cost_per_1k = self.config.MODEL_COSTS.get(model, self.config.MODEL_COSTS["default"])
+        return (tokens_used / 1000) * cost_per_1k
+    
+    async def _generate_batch_contexts(self, document_content: str, chunks: List[str]) -> Tuple[List[str], str, int]:
+        """Generate contexts for multiple chunks in one API call, with model fallbacks."""
+        # Create batch prompt
+        system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. 
+    Your task is to provide short, succinct contexts that situate specific chunks within the overall document.
+    Output ONLY the contexts, one per line, in the same order as the chunks. No explanations or additional text."""
+        
+        user_prompt = f"""<document>\n{document_content[:2000]}\n</document>\n
+    I need contextual descriptions for the following {len(chunks)} chunks from this document.
+    Provide ONLY one line per chunk with a brief context that helps situate it within the document.
+    Do not number your responses. Just provide one context per line."""
+        
+        # Add each chunk to the prompt
+        for i, chunk in enumerate(chunks):
+            user_prompt += f"\nCHUNK {i+1}:\n{chunk[:300]}\n"
+        
+        # Prioritize models by cost (free first, then cheapest to most expensive)
+        fallback_models = [
+            # Free models first
+            #"google/gemini-2.0-flash-thinking-exp:free",
+            "google/gemini-2.0-flash-exp:free", 
+            "google/gemma-3-27b-it:free",
+            
+            # Then in order of increasing cost
+            "google/gemini-2.0-flash-lite-001",   # $0.075
+            "google/gemini-2.0-flash-001"         # $0.1
+            "cohere/command-r7b-12-2024",         # $0.0375
+            "microsoft/phi-4",                    # $0.05
+        ]
+        
+        # API headers
+        headers = {
+            "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
+            "HTTP-Referer": "https://discord.com", 
+            "X-Title": "Publicia - Batch Context",
+            "Content-Type": "application/json"
+        }
+        
+        # Try each model in sequence until one works
+        for model in fallback_models:
+            # Check if we can afford this model
+            estimated_cost = self._estimate_batch_cost(chunks, document_content, model)
+            remaining_budget = self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET - self._contextualization_cost
+            
+            # Skip paid models that would exceed budget
+            if estimated_cost > remaining_budget and self.config.MODEL_COSTS.get(model, 0) > 0:
+                logger.warning(f"Model {model} would exceed budget (est. ${estimated_cost:.2f}, remaining: ${remaining_budget:.2f})")
+                continue
+            
+            logger.info(f"Attempting batch context with model: {model} for {len(chunks)} chunks")
+            
+            # Prepare API payload
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": 0.1,
+                "max_tokens": 50 * len(chunks)  # ~50 tokens per context
+            }
+            
+            # API call and response processing
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=120  # Longer timeout for batches
+                    ) as response:
+                        if response.status != 200:
+                            error_text = await response.text()
+                            logger.error(f"API error with model {model}: {error_text}")
+                            continue
+                            
+                        completion = await response.json()
+                
+                # Process response
+                if completion and completion.get('choices') and len(completion['choices']) > 0:
+                    content = completion['choices'][0]['message']['content'].strip()
+                    
+                    # Split into lines to get individual contexts
+                    contexts = [line.strip() for line in content.split('\n') if line.strip()]
+                    
+                    # Get token usage for accurate costing
+                    tokens_used = completion.get('usage', {}).get('total_tokens', 0)
+                    
+                    # Estimate token count if not provided by API
+                    if not tokens_used:
+                        tokens_used = len(system_prompt.split()) + len(user_prompt.split()) + len(content.split())
+                        tokens_used = int(tokens_used * 1.3)  # Add 30% for tokenization
+                    
+                    # Handle mismatched context count
+                    if len(contexts) == len(chunks):
+                        logger.info(f"Successfully generated {len(contexts)} contexts with model {model}")
+                        return contexts, model, tokens_used
+                    
+                    logger.warning(f"Generated {len(contexts)} contexts but expected {len(chunks)}")
+                    
+                    # Try to salvage by padding or truncating
+                    if len(contexts) > len(chunks):
+                        return contexts[:len(chunks)], model, tokens_used
+                    else:
+                        return contexts + [None] * (len(chunks) - len(contexts)), model, tokens_used
+                
+            except Exception as e:
+                logger.error(f"Error with model {model}: {e}")
+                continue
+        
+        # If all models failed, return empty contexts
+        logger.error("All models failed to generate batch contexts")
+        return [None] * len(chunks), "none", 0
 
     def _create_bm25_index(self, chunks: List[str]) -> BM25Okapi:
         """Create a BM25 index from document chunks."""
@@ -747,22 +947,74 @@ class DocumentManager:
             return f"This chunk is from document dealing with {document_content[:50]}..."
     
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
-        """Generate context for each chunk and prepend to the chunk."""
-        contextualized_chunks = []
+        """Generate context for chunks with batch processing and budget controls."""
+        # Skip if disabled
+        if not self.config.CONTEXTUALIZATION_ENABLED:
+            logger.info(f"Contextualization disabled, skipping for document: {doc_name}")
+            return chunks
         
-        logger.info(f"Contextualizing {len(chunks)} chunks for document: {doc_name}")
-        for i, chunk in enumerate(chunks):
-            # Generate context
-            context = await self.generate_chunk_context(document_content, chunk)
+        # Load stats
+        self._load_contextualization_stats()
+        
+        # Check daily limits
+        if self._contextualization_count >= self.config.CONTEXTUALIZATION_MAX_DAILY:
+            logger.warning(f"Daily chunk limit reached ({self._contextualization_count}/{self.config.CONTEXTUALIZATION_MAX_DAILY})")
+            return chunks
+        
+        if self._contextualization_cost >= self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:
+            logger.warning(f"Daily budget limit reached (${self._contextualization_cost:.2f}/${self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:.2f})")
+            return chunks
+        
+        logger.info(f"Starting contextualization for {doc_name} with {len(chunks)} chunks")
+        
+        # Start with copies of original chunks
+        contextualized_chunks = chunks.copy()
+        
+        # Process in batches
+        batch_size = self.config.CONTEXTUALIZATION_BATCH_SIZE
+        for i in range(0, len(chunks), batch_size):
+            # Get current batch
+            batch = chunks[i:i+batch_size]
             
-            # Prepend context to chunk
-            contextualized_chunk = f"{context} {chunk}"
+            # Check remaining chunk limit
+            remaining_limit = self.config.CONTEXTUALIZATION_MAX_DAILY - self._contextualization_count
+            if len(batch) > remaining_limit:
+                logger.warning(f"Approaching daily limit, processing only {remaining_limit} chunks")
+                batch = batch[:remaining_limit]
+                
+            if not batch:
+                continue
             
-            contextualized_chunks.append(contextualized_chunk)
+            # Generate contexts for batch
+            contexts, model_used, tokens_used = await self._generate_batch_contexts(document_content, batch)
             
-            # Log progress for longer documents
-            if (i + 1) % 10 == 0:
-                logger.info(f"Contextualized {i + 1}/{len(chunks)} chunks for {doc_name}")
+            # If generation successful
+            if contexts and model_used != "none":
+                # Calculate actual cost based on model used
+                actual_cost = self._get_actual_cost(tokens_used, model_used)
+                
+                # Update running totals
+                self._contextualization_count += len(batch)
+                self._contextualization_cost += actual_cost
+                self._save_contextualization_stats()
+                
+                # Apply contexts to chunks
+                for j, context in enumerate(contexts):
+                    if context and i + j < len(contextualized_chunks):
+                        contextualized_chunks[i + j] = f"{context} {chunks[i + j]}"
+                
+                # Log progress
+                logger.info(f"Batch {i//batch_size + 1}/{(len(chunks) + batch_size - 1)//batch_size} " +
+                        f"using {model_used} cost: ${actual_cost:.4f}, running: ${self._contextualization_cost:.2f}")
+            
+            # Stop if limits reached
+            if self._contextualization_count >= self.config.CONTEXTUALIZATION_MAX_DAILY:
+                logger.warning("Daily chunk limit reached during processing, stopping")
+                break
+                
+            if self._contextualization_cost >= self.config.CONTEXTUALIZATION_MAX_DAILY_BUDGET:
+                logger.warning("Daily budget limit reached during processing, stopping")
+                break
         
         return contextualized_chunks
 
@@ -876,22 +1128,99 @@ class DocumentManager:
                 return
             
             # Check if document already exists and if content has changed
-            content_changed = True
+            content_changed = True  # Default to assuming content has changed
+            change_reason = "Document is new"  # Default reason for logging
+                    
             if name in self.chunks:
-                # Calculate hash of current content
-                import hashlib
-                current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-                
-                # Check if we have a stored hash
-                previous_hash = None
-                if name in self.metadata and 'content_hash' in self.metadata[name]:
-                    previous_hash = self.metadata[name]['content_hash']
-                
-                # Compare hashes to determine if content has changed
-                if previous_hash and previous_hash == current_hash:
-                    content_changed = False
-                    logger.info(f"Document {name} content has not changed, skipping contextualized chunks regeneration")
-            
+                try:
+                    # Calculate hash of current content with explicit encoding handling
+                    import hashlib
+                    try:
+                        # Try UTF-8 encoding
+                        current_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
+                    except UnicodeEncodeError:
+                        # Fallback to a more forgiving encoding
+                        current_hash = hashlib.sha256(content.encode('utf-8', errors='replace')).hexdigest()
+                    
+                    # Initialize metadata for this document if it doesn't exist
+                    if name not in self.metadata:
+                        self.metadata[name] = {}
+                        
+                    # Get existing metadata
+                    metadata = self.metadata[name]
+                    
+                    # PRIMARY CHECK: Hash comparison
+                    if 'content_hash' in metadata:
+                        previous_hash = metadata['content_hash']
+                        
+                        # Check if hash matches
+                        if previous_hash == current_hash:
+                            content_changed = False
+                            change_reason = f"Content hash unchanged ({current_hash[:8]}...)"
+                            logger.info(f"Document {name} {change_reason}")
+                        else:
+                            change_reason = f"Content hash changed: {previous_hash[:8]}... -> {current_hash[:8]}..."
+                            logger.info(f"Document {name} {change_reason}")
+                    
+                    # SECONDARY CHECK: Content length (additional validation)
+                    if 'content_length' in metadata:
+                        stored_length = metadata['content_length']
+                        current_length = len(content)
+                        
+                        # Log the length difference regardless
+                        length_diff = current_length - stored_length
+                        if length_diff != 0:
+                            secondary_reason = f"Content length changed: {stored_length} -> {current_length} chars ({length_diff:+d})"
+                            logger.info(f"Document {name} {secondary_reason}")
+                            
+                            # If hash check said no change but length changed dramatically, flag as changed
+                            if not content_changed and abs(length_diff) > min(100, stored_length * 0.05):
+                                logger.warning(f"Document {name} has same hash but length changed significantly, marking as changed")
+                                content_changed = True
+                                change_reason = secondary_reason
+                    
+                    # TERTIARY CHECK: Direct comparison for smaller documents (if still uncertain)
+                    if content_changed is None or (not content_changed and 'content_hash' not in metadata):
+                        doc_path = self.base_dir / name
+                        if doc_path.exists() and len(content) < 10000:  # Only for reasonably small docs
+                            try:
+                                with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                                    original_content = f.read()
+                                
+                                if original_content == content:
+                                    content_changed = False
+                                    change_reason = "Content unchanged via direct comparison"
+                                    logger.info(f"Document {name} {change_reason}")
+                                else:
+                                    content_changed = True
+                                    tertiary_reason = "Content differs via direct comparison"
+                                    logger.info(f"Document {name} {tertiary_reason}")
+                                    if change_reason == "Document is new":
+                                        change_reason = tertiary_reason
+                            except Exception as e:
+                                logger.warning(f"Error with direct content comparison for {name}: {e}")
+                                # Default to changed if we can't determine
+                                content_changed = True
+                                if change_reason == "Document is new":
+                                    change_reason = f"Unable to compare directly: {str(e)}"
+                    
+                    # Always update metadata with current values for future comparisons
+                    self.metadata[name]['content_hash'] = current_hash
+                    self.metadata[name]['content_length'] = len(content)
+                    self.metadata[name]['last_checked'] = datetime.now().isoformat()
+                    
+                except Exception as e:
+                    # If comparison fails, log and assume content changed
+                    logger.error(f"Error checking if content changed for {name}: {e}", exc_info=True)
+                    content_changed = True
+                    change_reason = f"Error during comparison: {str(e)}"
+
+            # Log the final decision
+            if content_changed:
+                logger.info(f"Document {name} needs update: {change_reason}")
+            else:
+                logger.info(f"Document {name} unchanged, skipping contextualized chunks regeneration")
+                        
             # Generate contextualized chunks only if content has changed or document is new
             if content_changed or name not in self.contextualized_chunks:
                 logger.info(f"Generating contextualized chunks for document {name}")
@@ -1625,6 +1954,29 @@ class Config:
 
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
+        # Contextualization controls
+        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+        self.CONTEXTUALIZATION_MAX_DAILY = int(os.getenv('CONTEXTUALIZATION_MAX_DAILY', '500'))
+        self.CONTEXTUALIZATION_MAX_DAILY_BUDGET = float(os.getenv('CONTEXTUALIZATION_MAX_DAILY_BUDGET', '1.0'))
+        self.CONTEXTUALIZATION_BATCH_SIZE = int(os.getenv('CONTEXTUALIZATION_BATCH_SIZE', '5'))
+
+        # Per-model costs (per 1000 tokens)
+        self.MODEL_COSTS = {
+            # Free models
+            "google/gemini-2.0-flash-thinking-exp:free": 0.0,
+            "google/gemma-3-27b-it:free": 0.0,
+            "google/gemini-2.0-flash-exp:free": 0.0,
+            
+            # Paid models with exact costs
+            "google/gemini-2.0-flash-001": 0.1, 
+            "google/gemini-2.0-flash-lite-001": 0.075,
+            "microsoft/phi-4": 0.05,
+            "cohere/command-r7b-12-2024": 0.0375,
+            
+            # Default fallback for unknown models
+            "default": 0.1
+        }
+
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
             logger.warning(f"Invalid temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")
@@ -2324,7 +2676,12 @@ class DiscordBot(commands.Bot):
     
     def refresh_google_docs_wrapper(self):
         """Wrapper to run the async refresh_google_docs method."""
-        asyncio.create_task(self.refresh_google_docs())
+        future = asyncio.run_coroutine_threadsafe(self.refresh_google_docs(), self.loop)
+        try:
+            # Wait for completion if you want
+            future.result() 
+        except Exception as e:
+            logger.error(f"Error refreshing Google Docs: {e}")
 
     async def fetch_channel_messages(self, channel, limit: int = 20, max_message_length: int = 500) -> List[Dict]:
         """Fetch recent messages from a channel.
@@ -3975,7 +4332,7 @@ class DiscordBot(commands.Bot):
                 model_name = "Unknown Model"
                 if "deepseek/deepseek-r1" in model:
                     model_name = "DeepSeek-R1"
-                elif "deepseek/deepseek-chat-v3-0324" in preferred_model:  # add this section
+                elif "deepseek/deepseek-chat-v3-0324" in model:  # add this section
                     model_name = "DeepSeek V3 0324"
                 elif model.startswith("google/"):
                     model_name = "Gemini 2.0 Flash"
