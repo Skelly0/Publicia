@@ -93,7 +93,7 @@ def register_commands(bot):
 
             # Use the hybrid search system
             await status_message.edit(content="*analyzing query and searching imperial databases...*")
-            search_results = bot.process_hybrid_query(
+            search_results = await bot.process_hybrid_query( # Await async call
                 question,
                 interaction.user.name,
                 max_results=bot.config.get_top_k_for_model(preferred_model),

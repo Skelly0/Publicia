@@ -236,7 +236,7 @@ class DiscordBot(commands.Bot):
             top_k = self.config.TOP_K
             
         # Use document_manager.search directly
-        return self.document_manager.search(query, top_k=top_k)
+        return await self.document_manager.search(query, top_k=top_k) # Await async call
                 
     async def split_query_into_sections(self, query: str) -> List[str]:
         """Simplified version that doesn't split the query."""
@@ -256,7 +256,7 @@ class DiscordBot(commands.Bot):
         else:
             top_k = self.config.TOP_K
             
-        search_results = self.document_manager.search(query, top_k=top_k)
+        search_results = await self.document_manager.search(query, top_k=top_k) # Await async call
         
         # No synthesis
         synthesis = ""
@@ -1375,21 +1375,32 @@ class DiscordBot(commands.Bot):
         
         return new_results
 
-    def generate_context_aware_embedding(self, query: str, context: str):
+    async def generate_context_aware_embedding(self, query: str, context: str): # Make async
         """Generate an embedding that combines current query with context."""
         if not context:
-            # No context, use normal embedding
-            return self.document_manager.generate_embeddings([query], is_query=True)[0]
-        
-        # Generate embeddings for different query variants
+            # No context, use normal embedding asynchronously
+            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True) # Await async call
+            if embedding_result.size == 0:
+                 logger.error("Failed to generate query embedding for context-aware search (no context).")
+                 return None # Indicate failure
+            return embedding_result[0]
+
+        # Generate embeddings for different query variants asynchronously
         query_variants = [
             query,                   # Original query (highest weight)
             f"{query} {context}",    # Query + context
             context                  # Just context (lowest weight)
         ]
-        
-        embeddings = self.document_manager.generate_embeddings(query_variants, is_query=True)
-        
+
+        embeddings = await self.document_manager.generate_embeddings(query_variants, is_query=True) # Await async call
+        if embeddings.size == 0 or embeddings.shape[0] != len(query_variants):
+            logger.error("Failed to generate embeddings for context-aware search variants.")
+            # Fallback to simple query embedding asynchronously
+            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True) # Await async call
+            if embedding_result.size == 0: return None # Indicate failure
+            return embedding_result[0]
+
+
         # Weight: 60% original query, 30% combined, 10% context
         weighted_embedding = 0.6 * embeddings[0] + 0.3 * embeddings[1] + 0.1 * embeddings[2]
         
@@ -1400,13 +1411,13 @@ class DiscordBot(commands.Bot):
             
         return weighted_embedding
 
-    def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True):
+    async def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True): # Make async
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
         # Skip context logic completely if use_context is False
         if not use_context:
-            # Just do regular search with reranking
-            search_results = self.document_manager.search(
-                question, 
+            # Just do regular search with reranking asynchronously
+            search_results = await self.document_manager.search( # Await async call
+                question,
                 top_k=max_results,
                 apply_reranking=self.config.RERANKING_ENABLED
             )
@@ -1423,9 +1434,9 @@ class DiscordBot(commands.Bot):
             # Determine whether to apply re-ranking
             apply_reranking = self.config.RERANKING_ENABLED
             
-            # Do regular search with re-ranking
-            search_results = self.document_manager.search(
-                question, 
+            # Do regular search with re-ranking asynchronously
+            search_results = await self.document_manager.search( # Await async call
+                question,
                 top_k=max_results,
                 apply_reranking=apply_reranking
             )
@@ -1454,9 +1465,18 @@ class DiscordBot(commands.Bot):
         if context:
             logger.info(f"Using context from conversation: '{context}'")
             
-            # Generate context-aware embedding
-            embedding = self.generate_context_aware_embedding(question, context)
-            
+            # Generate context-aware embedding asynchronously
+            embedding = await self.generate_context_aware_embedding(question, context) # Await async call
+            if embedding is None:
+                 logger.error("Failed to generate context-aware embedding, falling back to standard search.")
+                 # Fallback to normal search with re-ranking asynchronously
+                 search_results = await self.document_manager.search( # Await async call
+                     question,
+                     top_k=max_results,
+                     apply_reranking=self.config.RERANKING_ENABLED
+                 )
+                 return search_results
+
             # Search with this embedding and apply re-ranking
             apply_reranking = self.config.RERANKING_ENABLED
             
@@ -1467,20 +1487,20 @@ class DiscordBot(commands.Bot):
                     top_k=self.config.RERANKING_CANDIDATES
                 )
                 
-                # Apply re-ranking
+                # Apply re-ranking asynchronously
                 if initial_results:
                     logger.info(f"Applying re-ranking to {len(initial_results)} context-aware results")
-                    results = self.document_manager.rerank_results(question, initial_results, top_k=max_results)
+                    results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
                     return results
             
-            # If re-ranking is disabled or failed, use standard search
+            # If re-ranking is disabled or failed, use standard search (already got initial_results via custom_search_with_embedding)
             results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
             return results
         else:
-            # Fallback to normal search with re-ranking
+            # Fallback to normal search with re-ranking asynchronously
             logger.info("No context found, using standard search with re-ranking")
-            search_results = self.document_manager.search(
-                question, 
+            search_results = await self.document_manager.search( # Await async call
+                question,
                 top_k=max_results,
                 apply_reranking=self.config.RERANKING_ENABLED
             )
@@ -1608,9 +1628,9 @@ class DiscordBot(commands.Bot):
             # Update thinking message before search
             await thinking_msg.edit(content="*analyzing query and searching imperial databases...*")
 
-            # Use the new hybrid search system
+            # Use the new hybrid search system asynchronously
             # This now handles context checking and enhancement internally
-            search_results = self.process_hybrid_query(
+            search_results = await self.process_hybrid_query( # Await async call
                 question, # Pass the potentially non-enhanced question here
                 message.author.name,
                 max_results=self.config.get_top_k_for_model(preferred_model),

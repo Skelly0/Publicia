@@ -73,6 +73,55 @@ class DocumentManager:
         # For now we just initialize with empty data
         logger.info("Document loading will be done asynchronously")
 
+    async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None) -> Optional[np.ndarray]:
+        """Helper function to asynchronously get a single embedding from Google API."""
+        if not text or not text.strip():
+            logger.warning("Skipping empty text for embedding")
+            return None
+
+        api_key = self.config.GOOGLE_API_KEY
+        if not api_key:
+            logger.error("Google API Key not configured for async embedding.")
+            return None
+
+        # Construct the API URL
+        # The self.embedding_model variable already contains the "models/" prefix.
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/{self.embedding_model}:embedContent?key={api_key}"
+
+        payload = {
+            "content": {"parts": [{"text": text}]},
+            "task_type": task_type,
+        }
+        if title and task_type == "retrieval_document":
+            payload["title"] = title
+
+        headers = {"Content-Type": "application/json"}
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(api_url, headers=headers, json=payload, timeout=60) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        if "embedding" in result and "values" in result["embedding"]:
+                            embedding_vector = np.array(result["embedding"]["values"])
+                            # Truncate if dimensions is specified
+                            if self.embedding_dimensions and self.embedding_dimensions < len(embedding_vector):
+                                embedding_vector = embedding_vector[:self.embedding_dimensions]
+                            return embedding_vector
+                        else:
+                            logger.error(f"Unexpected embedding response structure: {result}")
+                            return None
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Google Embedding API error (Status {response.status}): {error_text}")
+                        return None
+        except asyncio.TimeoutError:
+            logger.error("Timeout calling Google Embedding API.")
+            return None
+        except Exception as e:
+            logger.error(f"Error calling Google Embedding API: {e}")
+            return None
+
     def _create_bm25_index(self, chunks: List[str]) -> BM25Okapi:
         """Create a BM25 index from document chunks."""
         # Tokenize chunks - simple whitespace tokenization
@@ -137,7 +186,7 @@ class DocumentManager:
         # Emergency fallback
         logger.error(f"Chunk not found: {doc_name}[{chunk_idx}]")
         return "Chunk not found"
-        
+
     def _combine_search_results(self, embedding_results: List[Tuple], bm25_results: List[Tuple], top_k: int = None) -> List[Tuple]:
         """Combine results from embedding and BM25 search using score-based fusion."""
         if top_k is None:
@@ -340,7 +389,7 @@ class DocumentManager:
             logger.error(f"Unhandled error generating chunk context: {e}")
             # Return a default context if generation fails
             return f"This chunk is from document dealing with {document_content[:50]}..."
-    
+
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
         """Generate context for each chunk and prepend to the chunk."""
         contextualized_chunks = []
@@ -358,57 +407,65 @@ class DocumentManager:
             # Log progress for longer documents
             if (i + 1) % 10 == 0:
                 logger.info(f"Contextualized {i + 1}/{len(chunks)} chunks for {doc_name}")
-        
+
         return contextualized_chunks
 
-    def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
-        """Generate embeddings for a list of text chunks using Google's Generative AI."""
-        try:
-            import google.generativeai as genai
-            
-            embeddings = []
-            task_type = "retrieval_query" if is_query else "retrieval_document"
-            
-            for i, text in enumerate(texts):
-                if not text or not text.strip():
-                    # If we've generated at least one embedding, use zeros with same dimension
-                    if embeddings:
-                        zero_embedding = np.zeros_like(embeddings[0])
-                        embeddings.append(zero_embedding)
-                        continue
-                    else:
-                        # Otherwise, skip this empty text
-                        logger.warning("Skipping empty text for embedding")
-                        continue
-                
-                # Prepare embedding request
-                params = {
-                    "model": self.embedding_model,
-                    "content": text,
-                    "task_type": task_type
-                }
-                
-                # Add title if available and it's a document (not a query)
-                if not is_query and titles and i < len(titles):
-                    params["title"] = titles[i]
-                
-                result = genai.embed_content(**params)
-                
-                # Extract the embedding from the result
-                embedding_vector = np.array(result["embedding"])
-                
-                # Truncate if dimensions is specified (MRL allows efficient truncation)
-                if self.embedding_dimensions and self.embedding_dimensions < len(embedding_vector):
-                    embedding_vector = embedding_vector[:self.embedding_dimensions]
-                
-                embeddings.append(embedding_vector)
-                
-            return np.array(embeddings)
-                
-        except Exception as e:
-            logger.error(f"Error generating embeddings: {e}")
-            raise
-    
+    async def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
+        """Asynchronously generate embeddings for a list of text chunks using Google's Generative AI via REST API."""
+        embeddings_list = []
+        task_type = "retrieval_query" if is_query else "retrieval_document"
+
+        # Create tasks for each text embedding generation
+        tasks = []
+        valid_indices = [] # Keep track of indices for non-empty texts
+        for i, text in enumerate(texts):
+            if text and text.strip():
+                title = titles[i] if titles and i < len(titles) and not is_query else None
+                tasks.append(self._get_google_embedding_async(text, task_type, title))
+                valid_indices.append(i)
+            else:
+                logger.warning(f"Skipping empty text at index {i} for embedding")
+
+        # Run tasks concurrently
+        results = await asyncio.gather(*tasks)
+
+        # Process results and handle potential None values (errors or empty inputs)
+        placeholder_embedding = None
+        final_embeddings = [None] * len(texts) # Initialize with None for all original texts
+
+        for i, result_embedding in enumerate(results):
+            original_index = valid_indices[i]
+            if result_embedding is not None:
+                final_embeddings[original_index] = result_embedding
+                if placeholder_embedding is None:
+                    placeholder_embedding = np.zeros_like(result_embedding) # Create placeholder based on first success
+            else:
+                # Error occurred for this text, will use placeholder later
+                logger.warning(f"Failed to get embedding for text at index {original_index}, will use placeholder.")
+
+        # Fill in placeholders for failed or empty texts
+        if placeholder_embedding is None and any(e is None for e in final_embeddings):
+             # If all failed and we couldn't create a placeholder, raise error or return empty
+             logger.error("Failed to generate any embeddings and couldn't create placeholder.")
+             # Depending on desired behavior, either raise or return empty array
+             # raise ValueError("Failed to generate any embeddings.")
+             return np.array([]) # Return empty array if all fail
+
+        for i in range(len(texts)):
+            if final_embeddings[i] is None:
+                if placeholder_embedding is not None:
+                    final_embeddings[i] = placeholder_embedding
+                else:
+                    # This case should ideally not happen if placeholder_embedding logic is correct
+                    # If it does, it means even the placeholder failed. Maybe return empty or raise.
+                    logger.error(f"Could not provide a placeholder for failed/empty embedding at index {i}")
+                    # Decide handling: return empty array, raise error, etc.
+                    return np.array([])
+
+
+        return np.array(final_embeddings)
+
+
     def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """Split text into overlapping chunks."""
         # Use config values if available, otherwise use defaults
@@ -476,36 +533,30 @@ class DocumentManager:
                 # Calculate hash of current content
                 import hashlib
                 current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-                
                 # Check if we have a stored hash
                 previous_hash = None
                 if name in self.metadata and 'content_hash' in self.metadata[name]:
                     previous_hash = self.metadata[name]['content_hash']
-                
                 # Compare hashes to determine if content has changed
                 if previous_hash and previous_hash == current_hash:
                     content_changed = False
                     logger.info(f"Document {name} content has not changed, skipping contextualized chunks regeneration")
-            
+            # End of 'if name in self.chunks' block
+
             # Generate contextualized chunks only if content has changed or document is new
             if content_changed or name not in self.contextualized_chunks:
                 logger.info(f"Generating contextualized chunks for document {name}")
                 contextualized_chunks = await self.contextualize_chunks(name, content, chunks)
-                
                 # Generate embeddings using contextualized chunks
-                # Use document name as title for all chunks to improve embedding quality
                 titles = [name] * len(contextualized_chunks)
-                embeddings = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
-                
+                embeddings = await self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles) # Await async call
                 # Store document data
                 self.chunks[name] = chunks  # Store original chunks
                 self.contextualized_chunks[name] = contextualized_chunks  # Store contextualized chunks
                 self.embeddings[name] = embeddings
-                
                 # Calculate and store content hash
                 import hashlib
                 content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-                
                 # Update metadata
                 self.metadata[name] = {
                     'added': datetime.now().isoformat(),
@@ -513,13 +564,13 @@ class DocumentManager:
                     'chunk_count': len(chunks),
                     'content_hash': content_hash
                 }
-                
                 # Create BM25 index for contextualized chunks
                 self.bm25_indexes[name] = self._create_bm25_index(contextualized_chunks)
             else:
                 # Update only the timestamp in metadata
                 self.metadata[name]['checked'] = datetime.now().isoformat()
-            
+            # End of 'if content_changed...' block
+
             # Save to disk only if requested
             if save_to_disk:
                 self._save_to_disk()
@@ -552,8 +603,8 @@ class DocumentManager:
             mapping[name] = doc_id
         
         return mapping
-    
-    def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
+
+    async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]: # Make async
         """
         Search for relevant document chunks with optional re-ranking.
         
@@ -576,10 +627,15 @@ class DocumentManager:
             if not query or not query.strip():
                 logger.warning("Empty query provided to search")
                 return []
-                
-            # Generate query embedding
-            query_embedding = self.generate_embeddings([query], is_query=True)[0]
-            
+
+            # Generate query embedding asynchronously
+            query_embedding_result = await self.generate_embeddings([query], is_query=True) # Await async call
+            if query_embedding_result.size == 0:
+                 logger.error("Failed to generate query embedding.")
+                 return []
+            query_embedding = query_embedding_result[0]
+
+
             # Determine how many initial results to retrieve
             initial_top_k = self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k
             initial_top_k = max(initial_top_k, top_k)  # Always get at least top_k results
@@ -596,9 +652,9 @@ class DocumentManager:
             combined_results = self._combine_search_results(embedding_results, bm25_results, top_k=initial_top_k)
             
             # Apply re-ranking if enabled and we have enough results
-            if apply_reranking and len(combined_results) > 1:  
+            if apply_reranking and len(combined_results) > 1:
                 logger.info(f"Applying re-ranking to {len(combined_results)} initial results")
-                return self.rerank_results(query, combined_results, top_k=top_k)
+                return await self.rerank_results(query, combined_results, top_k=top_k) # Await async call
             else:
                 # No re-ranking, return initial results
                 logger.info(f"Skipping re-ranking (enabled={apply_reranking}, results={len(combined_results)})")
@@ -665,9 +721,9 @@ class DocumentManager:
             logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk")
             
             logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
-        
+
         return results[:top_k]
-    
+
     def _save_to_disk(self):
         """Save document data to disk."""
         try:
@@ -695,31 +751,45 @@ class DocumentManager:
             logger.error(f"Error saving to disk: {e}")
             raise
 
-    def regenerate_all_embeddings(self):
+    async def regenerate_all_embeddings(self): # Make async
         """Regenerate all embeddings using the current embedding model."""
         try:
             logger.info("Starting regeneration of all embeddings")
-            
+
             # Iterate through all documents
             for doc_name, chunks in self.chunks.items():
                 logger.info(f"Regenerating embeddings for document: {doc_name}")
-                
-                # Generate new embeddings
-                titles = [doc_name] * len(chunks)
-                new_embeddings = self.generate_embeddings(chunks, titles=titles)
-                
+
+                # Get contextualized chunks (regenerate if needed, although ideally they exist)
+                if doc_name not in self.contextualized_chunks:
+                     logger.warning(f"Contextualized chunks missing for {doc_name}, regenerating...")
+                     doc_path = self.base_dir / doc_name
+                     if doc_path.exists():
+                         with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                             doc_content = f.read()
+                         self.contextualized_chunks[doc_name] = await self.contextualize_chunks(doc_name, doc_content, chunks)
+                     else:
+                         logger.error(f"Cannot find original file {doc_name} to regenerate contextualized chunks.")
+                         continue # Skip this document if original file is missing
+
+                contextualized_chunks_for_doc = self.contextualized_chunks.get(doc_name, chunks) # Fallback to original if still missing
+
+                # Generate new embeddings asynchronously
+                titles = [doc_name] * len(contextualized_chunks_for_doc)
+                new_embeddings = await self.generate_embeddings(contextualized_chunks_for_doc, is_query=False, titles=titles) # Await async call
+
                 # Update stored embeddings
                 self.embeddings[doc_name] = new_embeddings
-            
+
             # Save to disk
             self._save_to_disk()
-            
+
             logger.info("Completed regeneration of all embeddings")
             return True
         except Exception as e:
             logger.error(f"Error regenerating embeddings: {e}")
             return False
-    
+
     async def _load_documents(self, force_reload: bool = False):
         """Load document data from disk and add any new .txt files."""
         try:
@@ -772,11 +842,11 @@ class DocumentManager:
                         # Generate contextualized chunks
                         contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
                         self.contextualized_chunks[doc_name] = contextualized_chunks
-                        
-                        # Generate embeddings
+
+                        # Generate embeddings asynchronously
                         titles = [doc_name] * len(contextualized_chunks)
-                        self.embeddings[doc_name] = self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles)
-                        
+                        self.embeddings[doc_name] = await self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles) # Await async call
+
                         # Create BM25 index
                         self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
                         
@@ -855,7 +925,7 @@ class DocumentManager:
     async def reload_documents(self):
         """Reload all documents from disk, regenerating embeddings."""
         await self._load_documents(force_reload=True)
-            
+
     def get_lorebooks_path(self):
         """Get or create lorebooks directory path."""
         base_path = Path(self.base_dir).parent / "lorebooks"
@@ -1048,7 +1118,7 @@ class DocumentManager:
             logger.error(f"Error deleting document {name}: {e}")
             return False
 
-    def rerank_results(self, query: str, initial_results: List[Tuple], top_k: int = None) -> List[Tuple]:
+    async def rerank_results(self, query: str, initial_results: List[Tuple], top_k: int = None) -> List[Tuple]: # Make async
         """
         Re-rank search results using the Gemini embedding model for more nuanced relevance.
         
@@ -1074,15 +1144,29 @@ class DocumentManager:
         # Create specialized embedding queries for re-ranking
         # This approach creates embeddings that better capture relevance to the specific query
         
-        # 1. Generate a query-focused embedding that represents what we're looking for
+        # 1. Generate a query-focused embedding that represents what we're looking for asynchronously
         query_context = f"Question: {query}\nWhat information would fully answer this question?"
-        query_embedding = self.generate_embeddings([query_context], is_query=True)[0]
-        
-        # 2. Generate content-focused embeddings for each chunk
+        query_embedding_result = await self.generate_embeddings([query_context], is_query=True) # Await async call
+        if query_embedding_result.size == 0:
+            logger.error("Failed to generate query embedding for reranking.")
+            return initial_results # Return original results if embedding fails
+        query_embedding = query_embedding_result[0]
+
+
+        # 2. Generate content-focused embeddings for each chunk asynchronously
         content_texts = [f"This document contains the following information: {chunk}" for chunk in chunks]
-        content_embeddings = self.generate_embeddings(content_texts, is_query=False)
-        
+        content_embeddings = await self.generate_embeddings(content_texts, is_query=False) # Await async call
+        if content_embeddings.size == 0 or content_embeddings.shape[0] != len(content_texts):
+             logger.error("Failed to generate content embeddings for reranking or mismatch in count.")
+             return initial_results # Return original results if embedding fails
+
+
         # 3. Calculate relevance scores using these specialized embeddings
+        # Ensure embeddings are compatible for dot product
+        if query_embedding.shape[0] != content_embeddings.shape[1]:
+             logger.error(f"Embedding dimension mismatch for reranking: Query({query_embedding.shape[0]}) vs Content({content_embeddings.shape[1]})")
+             return initial_results
+
         relevance_scores = np.dot(content_embeddings, query_embedding)
         
         # 4. Create re-ranked results by combining original and new scores
