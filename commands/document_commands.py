@@ -925,7 +925,7 @@ def register_commands(bot):
 
             # --- Call the LLM ---
             # Use a moderate temperature for summarization
-            temperature = 0.3
+            temperature = 0.1
             completion, actual_model = await bot._try_ai_completion(
                 summary_model,
                 prompt_messages,
@@ -1033,19 +1033,61 @@ def register_commands(bot):
             chunk_content = chunks_list[zero_based_index]
             chunk_type = "Contextualized" if contextualized else "Original"
 
-            response_header = f"**{chunk_type} Chunk {chunk_index}/{len(chunks_list)} from Document: {target_doc_name}**\n"
-            # Use bot instance to call the method
-            formatted_content = response_header + f"```\n{bot.sanitize_discord_text(chunk_content)}\n```"
+            chunk_content = chunks_list[zero_based_index]
+            chunk_type = "Contextualized" if contextualized else "Original"
+            total_chunks = len(chunks_list)
 
-            # Send the content, splitting if necessary
-            await bot.send_split_message(
-                interaction.channel,
-                formatted_content,
-                user_id=str(interaction.user.id) # Pass user_id for potential history logging
-            )
+            response_header = f"**{chunk_type} Chunk {chunk_index}/{total_chunks} from Document: {target_doc_name}**"
+
+            # Sanitize the raw chunk content *before* splitting
+            # Assuming bot has sanitize_discord_text method, otherwise remove/adjust
+            sanitized_content = chunk_content # Default if sanitize method doesn't exist or causes issues
+            if hasattr(bot, 'sanitize_discord_text') and callable(bot.sanitize_discord_text):
+                 sanitized_content = bot.sanitize_discord_text(chunk_content)
+            else:
+                 logger.warning("bot.sanitize_discord_text method not found or not callable.")
+
+
+            # Split the sanitized content (leave room for code block backticks and newlines)
+            # Max length for content inside code block: 2000 - len("```\n\n```") = 1992. Use 1980 for safety.
+            content_parts = split_message(sanitized_content, max_length=1980)
+
+            # Send the header first using followup.send()
+            # This resolves the initial deferral.
+            await interaction.followup.send(response_header)
+
+            # Send each content part in its own code block using followup.send()
+            if not content_parts:
+                 await interaction.followup.send("```\n(Chunk content is empty)\n```")
+            else:
+                for part in content_parts:
+                    # Ensure part is not empty before sending
+                    if part and part.strip():
+                        await interaction.followup.send(f"```\n{part}\n```")
+                    else:
+                        # Send placeholder if part is empty/whitespace after split
+                        await interaction.followup.send("```\n(Empty part)\n```")
+
 
         except Exception as e:
             logger.error(f"Error viewing chunk {chunk_index} from '{document_name}': {e}")
             import traceback
             logger.error(traceback.format_exc())
-            await interaction.followup.send(f"*neural circuit overload!* An error occurred while viewing the chunk: {str(e)}")
+            # Always use followup.send for errors after deferral
+            error_message = f"*neural circuit overload!* An error occurred while viewing the chunk: {str(e)}"
+            try:
+                # Check if interaction is still valid before sending followup
+                if interaction.response.is_done():
+                     await interaction.followup.send(error_message)
+                else:
+                     # If somehow defer wasn't called or failed, edit original (less likely)
+                     await interaction.edit_original_response(content=error_message)
+            except discord.NotFound:
+                 logger.warning(f"Interaction or original message not found when trying to send error for view_chunk.")
+                 # Fallback: Try sending to channel if interaction failed
+                 try:
+                     await interaction.channel.send(f"{interaction.user.mention} {error_message}")
+                 except Exception as final_err:
+                     logger.error(f"Failed to send view_chunk error message via channel: {final_err}")
+            except Exception as send_err:
+                 logger.error(f"Failed to send error message for view_chunk via followup: {send_err}")
