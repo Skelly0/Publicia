@@ -60,7 +60,7 @@ class Config:
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
             "qwen/qwq-32b:free": 20,
-            "qwen/qwq-32b": 13, 
+            "qwen/qwq-32b": 14, 
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
             "eva-unit-01/eva-qwen-2.5-72b": 9,
@@ -86,6 +86,9 @@ class Config:
             },
             "eva-unit-01/eva-qwen-2.5-72b": {
                 "order": ["Parasail"]
+            },
+            "qwen/qwq-32b": {
+                "order": ["DeepInfra", "Nebius AI Studio", "Groq", "Hyberbolic"]
             },
             # Add any other model variants that need custom provider ordering
         }
