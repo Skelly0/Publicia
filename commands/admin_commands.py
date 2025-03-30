@@ -338,7 +338,7 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             status_message = await interaction.followup.send("*starting neural pathway recalibration...*")
-            success = bot.document_manager.regenerate_all_embeddings()
+            success = await bot.document_manager.regenerate_all_embeddings() # Added await
             if success:
                 await status_message.edit(content="*neural pathways successfully recalibrated!* All document embeddings have been regenerated.")
             else:

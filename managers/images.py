@@ -25,8 +25,8 @@ class ImageManager:
         
         # Load existing images
         self._load_images()
-    
-    def add_image(self, name: str, image_data: bytes, description: str = None):
+
+    async def add_image(self, name: str, image_data: bytes, description: str = None): # Changed to async def
         """Add a new image to the system with optional description."""
         try:
             # Generate a unique ID for the image
@@ -51,7 +51,7 @@ class ImageManager:
             # Add description as a document for search if provided
             if description and self.document_manager:
                 doc_name = f"image_{image_id}.txt"
-                self.document_manager.add_document(doc_name, description)
+                await self.document_manager.add_document(doc_name, description) # Added await
                 
                 # Add image reference to document metadata
                 if doc_name in self.document_manager.metadata:
@@ -167,8 +167,8 @@ class ImageManager:
         except Exception as e:
             logger.error(f"Error deleting image {image_id}: {e}")
             return False
-            
-    def update_description(self, image_id: str, description: str) -> bool:
+
+    async def update_description(self, image_id: str, description: str) -> bool: # Changed to async def
         """Update the description for an image."""
         if image_id not in self.metadata:
             return False
@@ -188,7 +188,7 @@ class ImageManager:
                     del self.document_manager.embeddings[doc_name]
                 
                 # Add new document
-                self.document_manager.add_document(doc_name, description)
+                await self.document_manager.add_document(doc_name, description) # Added await
                 
                 # Add image reference to document metadata
                 if doc_name in self.document_manager.metadata:

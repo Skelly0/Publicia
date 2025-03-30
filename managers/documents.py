@@ -73,6 +73,57 @@ class DocumentManager:
         # For now we just initialize with empty data
         logger.info("Document loading will be done asynchronously")
 
+        # Define the name for the internal document list
+        self._internal_list_doc_name = "_internal_document_list.txt"
+
+
+    async def _update_document_list_file(self):
+        """Creates or updates a special document listing all other documents."""
+        logger.info("Updating internal document list file...")
+        try:
+            # Get current document names, excluding the list file itself
+            current_doc_names = sorted([
+                name for name in self.metadata.keys()
+                if name != self._internal_list_doc_name
+            ])
+
+            # Format the content
+            if not current_doc_names:
+                content = "No documents are currently managed."
+            else:
+                content = "Managed Documents:\n\n" + "\n".join(f"- {name}" for name in current_doc_names)
+
+            # Check if the document exists and if content needs updating
+            needs_update = True
+            list_doc_path = self.base_dir / self._internal_list_doc_name
+            if list_doc_path.exists():
+                try:
+                    with open(list_doc_path, 'r', encoding='utf-8-sig') as f:
+                        existing_content = f.read()
+                    if existing_content == content:
+                        needs_update = False
+                        logger.info("Internal document list content is already up-to-date.")
+                except Exception as e:
+                    logger.warning(f"Could not read existing internal document list file: {e}. Will overwrite.")
+
+            if needs_update:
+                logger.info(f"Content for {self._internal_list_doc_name} requires update. Adding/updating document.")
+                # Use add_document to ensure it's processed like other docs (chunked, embedded)
+                # Pass _internal_call=True to prevent recursion
+                await self.add_document(self._internal_list_doc_name, content, save_to_disk=True, _internal_call=True)
+                logger.info(f"Successfully updated {self._internal_list_doc_name}.")
+            else:
+                 # Even if content didn't change, ensure metadata reflects check time
+                 if self._internal_list_doc_name in self.metadata:
+                     self.metadata[self._internal_list_doc_name]['checked'] = datetime.now().isoformat()
+                     # No need to save just for a timestamp check unless other changes happened
+
+        except Exception as e:
+            logger.error(f"Failed to update internal document list file: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+
     async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None) -> Optional[np.ndarray]:
         """Helper function to asynchronously get a single embedding from Google API."""
         if not text or not text.strip():
@@ -390,6 +441,7 @@ class DocumentManager:
             # Return a default context if generation fails
             return f"This chunk is from document dealing with {document_content[:50]}..."
 
+
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
         """Generate context for each chunk and prepend to the chunk."""
         contextualized_chunks = []
@@ -513,10 +565,25 @@ class DocumentManager:
             self._save_to_disk()
         
         return empty_docs
-    
-    async def add_document(self, name: str, content: str, save_to_disk: bool = True):
-        """Add a new document to the system with contextual retrieval."""
+
+    async def add_document(self, name: str, content: str, save_to_disk: bool = True, _internal_call: bool = False):
+        """
+        Add a new document to the system with contextual retrieval.
+
+        Args:
+            name (str): The name of the document.
+            content (str): The content of the document.
+            save_to_disk (bool): Whether to save changes immediately. Defaults to True.
+            _internal_call (bool): Flag to prevent recursive calls when updating the internal list doc. Defaults to False.
+        """
         try:
+            # Prevent direct modification of the internal list doc via this method if not internal call
+            if name == self._internal_list_doc_name and not _internal_call:
+                 logger.warning(f"Attempted to directly modify internal document '{name}'. Use specific commands or let the system manage it.")
+                 # Optionally, raise an error or return False
+                 # raise ValueError(f"Cannot directly modify internal document '{name}'")
+                 return # Or simply do nothing
+
             if not content or not content.strip():
                 logger.warning(f"Document {name} has no content. Skipping.")
                 return
@@ -574,15 +641,22 @@ class DocumentManager:
             # Save to disk only if requested
             if save_to_disk:
                 self._save_to_disk()
-            
+
             if content_changed or name not in self.chunks:
-                logger.info(f"Added/updated document: {name} with {len(chunks)} chunks and contextualized embeddings")
+                 logger.info(f"{'Internally added/updated' if _internal_call else 'Added/updated'} document: {name} with {len(chunks)} chunks")
             else:
-                logger.info(f"Document {name} verified unchanged")
-            
+                 logger.info(f"Document {name} verified unchanged")
+
+            # Update the document list file, unless this was an internal call to add the list file itself
+            if not _internal_call:
+                await self._update_document_list_file()
+
         except Exception as e:
             logger.error(f"Error adding document {name}: {e}")
-            raise
+            # Avoid raising if it's an internal call failing, maybe log differently?
+            if not _internal_call:
+                raise
+
 
     def get_googledoc_id_mapping(self):
         """Get mapping from document names to google doc IDs."""
@@ -912,7 +986,10 @@ class DocumentManager:
             else:
                 logger.info("No new .txt files to load")
 
-            # Save the updated state to disk
+            # Update the internal document list after loading everything
+            await self._update_document_list_file()
+
+            # Save the updated state to disk (including the potentially updated list doc)
             self._save_to_disk()
         except Exception as e:
             logger.error(f"Error loading documents: {e}")
@@ -969,9 +1046,17 @@ class DocumentManager:
             json.dump(tracked_docs, f)
         
         return f"Added Google Doc {doc_id} to tracked list"
-    
-    def rename_document(self, old_name: str, new_name: str) -> str:
+
+    async def rename_document(self, old_name: str, new_name: str) -> str: # Make async
         """Rename a document in the system (regular doc, Google Doc, or lorebook)."""
+        # Prevent renaming the internal list document
+        if old_name == self._internal_list_doc_name:
+            return f"Cannot rename the internal document list file '{old_name}'."
+        if new_name == self._internal_list_doc_name:
+             return f"Cannot rename a document to the internal list file name '{new_name}'."
+
+        result_message = f"Document '{old_name}' not found in the system" # Default message
+
         # Check if it's a regular document
         if old_name in self.metadata:
             # Add .txt extension to new_name if it doesn't have it and old_name does
@@ -991,9 +1076,11 @@ class DocumentManager:
             if old_file_path.exists():
                 new_file_path = self.base_dir / new_name
                 old_file_path.rename(new_file_path)
-                
-            return f"Document renamed from '{old_name}' to '{new_name}'"
-            
+
+            result_message = f"Document renamed from '{old_name}' to '{new_name}'"
+            await self._update_document_list_file() # Update list after rename
+            return result_message
+
         # Check if it's a Google Doc
         tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
         if tracked_file.exists():
@@ -1031,9 +1118,11 @@ class DocumentManager:
                     if old_file_path.exists():
                         new_file_path = self.base_dir / new_name
                         old_file_path.rename(new_file_path)
-                    
-                    return f"Google Doc renamed from '{old_name}' to '{new_name}'"
-        
+
+                    result_message = f"Google Doc renamed from '{old_name}' to '{new_name}'"
+                    await self._update_document_list_file() # Update list after rename
+                    return result_message
+
         # Check if it's a lorebook
         lorebooks_path = self.get_lorebooks_path()
         old_file_path = lorebooks_path / old_name
@@ -1044,15 +1133,24 @@ class DocumentManager:
             # Add .txt extension to new_name if it doesn't have it
             if old_file_path.name.endswith('.txt') and not new_name.endswith('.txt'):
                 new_name += '.txt'
-                
             new_file_path = lorebooks_path / new_name
             old_file_path.rename(new_file_path)
-            return f"Lorebook renamed from '{old_name}' to '{new_name}'"
-        
-        return f"Document '{old_name}' not found in the system"
+            result_message = f"Lorebook renamed from '{old_name}' to '{new_name}'"
+            # Note: Lorebooks aren't in self.metadata, so list won't update automatically here.
+            # This might be desired behavior, or _update_document_list_file needs adjustment
+            # if lorebooks should also be listed. For now, assuming they aren't listed.
+            return result_message
 
-    def delete_document(self, name: str) -> bool:
+        return result_message # Return default "not found" if no match
+
+    async def delete_document(self, name: str) -> bool: # Make async
         """Delete a document from the system."""
+        # Prevent deletion of the internal list document
+        if name == self._internal_list_doc_name:
+            logger.warning(f"Attempted to delete the internal document list file '{name}'. Operation aborted.")
+            return False
+
+        deleted = False
         try:
             # Check if it's a regular document
             if name in self.chunks:
@@ -1068,9 +1166,8 @@ class DocumentManager:
                 file_path = self.base_dir / name
                 if file_path.exists():
                     file_path.unlink()
-                    
-                return True
-                
+                deleted = True
+
             # Check if it's a lorebook
             lorebooks_path = self.get_lorebooks_path()
             lorebook_path = lorebooks_path / name
@@ -1078,10 +1175,10 @@ class DocumentManager:
             # Try with .txt extension if not found
             if not lorebook_path.exists() and not name.endswith('.txt'):
                 lorebook_path = lorebooks_path / f"{name}.txt"
-                
             if lorebook_path.exists():
                 lorebook_path.unlink()
-                return True
+                # Lorebooks aren't in self.metadata, so list won't update automatically.
+                deleted = True # Mark as deleted, but list won't change unless logic is added
 
             # Check if it's a tracked Google Doc and remove from tracking if so
             tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
@@ -1106,17 +1203,27 @@ class DocumentManager:
                         logger.info(f"Removed tracked Google Doc entry corresponding to '{name}'")
                         with open(tracked_file, 'w') as f:
                             json.dump(tracked_docs, f)
-                        # If we removed a tracked doc, we can assume success even if it wasn't in chunks/metadata
-                        return True 
-                            
+                        # If we removed a tracked doc, mark as deleted
+                        deleted = True
+
                 except Exception as track_e:
                     logger.error(f"Error updating tracked Google Docs file while deleting {name}: {track_e}")
                     # Don't fail the whole delete operation, just log the tracking error
 
-            return False # Return False if not found in regular docs, lorebooks, or tracked docs
+            if deleted:
+                 logger.info(f"Successfully deleted document/lorebook/tracking entry for '{name}'")
+                 # Update the list file only if a *managed* document was deleted
+                 if name in self.metadata: # Check if it was in metadata before deletion
+                     await self._update_document_list_file()
+                 return True
+            else:
+                 logger.warning(f"Document '{name}' not found for deletion.")
+                 return False # Return False if not found
+
         except Exception as e:
             logger.error(f"Error deleting document {name}: {e}")
             return False
+
 
     async def rerank_results(self, query: str, initial_results: List[Tuple], top_k: int = None) -> List[Tuple]: # Make async
         """

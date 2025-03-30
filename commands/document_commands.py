@@ -37,7 +37,7 @@ def register_commands(bot):
             txt_path = lorebooks_path / f"{name}.txt"
             txt_path.write_text(content, encoding='utf-8')
             
-            bot.document_manager.add_document(name, content)
+            await bot.document_manager.add_document(name, content) # Added await
             await interaction.followup.send(f"Added document: {name}\nSaved to: {txt_path}")
             
         except Exception as e:
@@ -132,7 +132,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural error detected!* Please provide a document name.")
                 return
                 
-            success = bot.document_manager.delete_document(name)
+            success = await bot.document_manager.delete_document(name) # Added await
             if success:
                 await interaction.followup.send(f"Removed document: {name} \n*google docs will also need to be removed from the tracked list*")
             else:
@@ -149,7 +149,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural error detected!* Please provide a search query.")
                 return
                 
-            results = bot.document_manager.search(query, top_k=5)
+            results = await bot.document_manager.search(query, top_k=5) # Added await
             if not results:
                 await interaction.followup.send("No relevant documents found.")
                 return
@@ -278,7 +278,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural error detected!* Both current name and new name are required.")
                 return
                 
-            result = bot.document_manager.rename_document(current_name, new_name)
+            result = await bot.document_manager.rename_document(current_name, new_name) # Added await
             await interaction.followup.send(f"*synaptic pathways reconfiguring...*\n{result}")
         except Exception as e:
             logger.error(f"Error renaming document: {e}")
@@ -348,7 +348,7 @@ def register_commands(bot):
             
             if local_file_path.exists():
                 try:
-                    success = bot.document_manager.delete_document(local_file_name)
+                    success = await bot.document_manager.delete_document(local_file_name) # Added await
                     if success:
                         file_removed = True
                     else:

@@ -254,7 +254,7 @@ def register_commands(bot):
                 await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
                 return
                 
-            success = bot.image_manager.update_description(image_id, description)
+            success = await bot.image_manager.update_description(image_id, description) # Added await
             
             if success:
                 await interaction.followup.send(f"*neural pathways reconfigured!* Updated description for image with ID: {image_id}")
