@@ -833,8 +833,8 @@ class DocumentManager:
                 json.dump(self.metadata, f)
                 
             # Save embedding provider info
-            with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
-                f.write("gemini")
+            #with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
+            #    f.write("gemini")
                 
         except PermissionError as pe:
             logger.error(f"Permission denied error saving data to {self.base_dir}. Check write permissions for the directory and its contents (e.g., embeddings.pkl). Error: {pe}")
