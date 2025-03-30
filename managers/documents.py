@@ -317,7 +317,7 @@ class DocumentManager:
             
             # List of models to try in order
             fallback_models = [
-                "google/gemini-2.0-flash-thinking-exp:free",
+                #"google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-flash-exp:free",
                 "google/gemma-3-27b-it:free",
                 "google/gemini-2.0-flash-lite-001",
