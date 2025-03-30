@@ -88,7 +88,7 @@ class Config:
                 "order": ["Parasail"]
             },
             "qwen/qwq-32b": {
-                "order": ["DeepInfra", "Nebius AI Studio", "Groq", "Hyberbolic"]
+                "order": ["DeepInfra", "Nebius", "Groq", "Hyberbolic"]
             },
             # Add any other model variants that need custom provider ordering
         }
