@@ -110,8 +110,11 @@ class DocumentManager:
                 logger.info(f"Content for {self._internal_list_doc_name} requires update. Adding/updating document.")
                 # Use add_document to ensure it's processed like other docs (chunked, embedded)
                 # Pass _internal_call=True to prevent recursion
-                await self.add_document(self._internal_list_doc_name, content, save_to_disk=True, _internal_call=True)
-                logger.info(f"Successfully updated {self._internal_list_doc_name}.")
+                success = await self.add_document(self._internal_list_doc_name, content, save_to_disk=True, _internal_call=True)
+                if success:
+                    logger.info(f"Successfully updated and saved {self._internal_list_doc_name}.")
+                else:
+                    logger.error(f"Failed to add/update {self._internal_list_doc_name} due to errors during processing or saving.")
             else:
                  # Even if content didn't change, ensure metadata reflects check time
                  if self._internal_list_doc_name in self.metadata:
@@ -368,7 +371,7 @@ class DocumentManager:
             
             # List of models to try in order
             fallback_models = [
-                "google/gemini-2.5-pro-exp-03-25:free", # Added new model
+                #"google/gemini-2.5-pro-exp-03-25:free", # Added new model
                 #"google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-flash-exp:free",
                 "google/gemma-3-27b-it:free",
@@ -566,7 +569,7 @@ class DocumentManager:
         
         return empty_docs
 
-    async def add_document(self, name: str, content: str, save_to_disk: bool = True, _internal_call: bool = False):
+    async def add_document(self, name: str, content: str, save_to_disk: bool = True, _internal_call: bool = False) -> bool:
         """
         Add a new document to the system with contextual retrieval.
 
@@ -575,6 +578,9 @@ class DocumentManager:
             content (str): The content of the document.
             save_to_disk (bool): Whether to save changes immediately. Defaults to True.
             _internal_call (bool): Flag to prevent recursive calls when updating the internal list doc. Defaults to False.
+
+        Returns:
+            bool: True if the document was added/updated successfully (including saving if requested), False otherwise.
         """
         try:
             # Prevent direct modification of the internal list doc via this method if not internal call
@@ -582,17 +588,17 @@ class DocumentManager:
                  logger.warning(f"Attempted to directly modify internal document '{name}'. Use specific commands or let the system manage it.")
                  # Optionally, raise an error or return False
                  # raise ValueError(f"Cannot directly modify internal document '{name}'")
-                 return # Or simply do nothing
+                 return False # Indicate failure
 
             if not content or not content.strip():
                 logger.warning(f"Document {name} has no content. Skipping.")
-                return
+                return True # Technically not a failure, just skipped
                 
             # Create chunks
             chunks = self._chunk_text(content)
             if not chunks:
                 logger.warning(f"Document {name} has no content to chunk. Skipping.")
-                return
+                return True # Technically not a failure, just skipped
             
             # Check if document already exists and if content has changed
             content_changed = True
@@ -635,12 +641,18 @@ class DocumentManager:
                 self.bm25_indexes[name] = self._create_bm25_index(contextualized_chunks)
             else:
                 # Update only the timestamp in metadata
-                self.metadata[name]['checked'] = datetime.now().isoformat()
+                if name in self.metadata: # Ensure metadata exists before updating
+                    self.metadata[name]['checked'] = datetime.now().isoformat()
+                else: # If metadata somehow missing, recreate basic entry
+                     self.metadata[name] = {
+                        'checked': datetime.now().isoformat(),
+                        'chunk_count': len(chunks) # Best guess
+                     }
             # End of 'if content_changed...' block
 
             # Save to disk only if requested
             if save_to_disk:
-                self._save_to_disk()
+                self._save_to_disk() # This will raise exceptions if it fails
 
             if content_changed or name not in self.chunks:
                  logger.info(f"{'Internally added/updated' if _internal_call else 'Added/updated'} document: {name} with {len(chunks)} chunks")
@@ -651,11 +663,14 @@ class DocumentManager:
             if not _internal_call:
                 await self._update_document_list_file()
 
+            return True # Indicate success
+
         except Exception as e:
             logger.error(f"Error adding document {name}: {e}")
             # Avoid raising if it's an internal call failing, maybe log differently?
-            if not _internal_call:
-                raise
+            # if not _internal_call: # Keep the original logic comment but don't raise here
+            #     raise
+            return False # Indicate failure
 
 
     def get_googledoc_id_mapping(self):
@@ -821,9 +836,12 @@ class DocumentManager:
             with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
                 f.write("gemini")
                 
+        except PermissionError as pe:
+            logger.error(f"Permission denied error saving data to {self.base_dir}. Check write permissions for the directory and its contents (e.g., embeddings.pkl). Error: {pe}")
+            raise # Re-raise after specific logging
         except Exception as e:
-            logger.error(f"Error saving to disk: {e}")
-            raise
+            logger.error(f"Error saving document data to disk: {e}")
+            raise # Re-raise other exceptions
 
     async def regenerate_all_embeddings(self): # Make async
         """Regenerate all embeddings using the current embedding model."""
@@ -979,6 +997,7 @@ class DocumentManager:
                     try:
                         with open(txt_file, 'r', encoding='utf-8-sig') as f:
                             content = f.read()
+                        # Use save_to_disk=False here to avoid saving after each file
                         await self.add_document(txt_file.name, content, save_to_disk=False)
                         logger.info(f"Loaded and processed {txt_file.name}")
                     except Exception as e:
@@ -989,7 +1008,7 @@ class DocumentManager:
             # Update the internal document list after loading everything
             await self._update_document_list_file()
 
-            # Save the updated state to disk (including the potentially updated list doc)
+            # Save the updated state to disk once after all loading/updates
             self._save_to_disk()
         except Exception as e:
             logger.error(f"Error loading documents: {e}")

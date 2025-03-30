@@ -7,7 +7,8 @@ from discord.ext import commands
 import logging
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone # Added timedelta, timezone
+from typing import List, Dict, Any # Added typing imports
 from utils.helpers import split_message
 from prompts.system_prompt import SYSTEM_PROMPT
 
@@ -30,7 +31,7 @@ def register_commands(bot):
                 "Lore Queries": ["query"],
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "togCougle_debug", "help", "export_prompt"],
+                "Utility": ["list_commands", "set_model", "get_model", "togCougle_debug", "help", "export_prompt", "whats_new"], # Added whats_new
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"], 
                 "Moderation": ["ban_user", "unban_user"]
             }
@@ -364,10 +365,11 @@ def register_commands(bot):
             
             # Customization
             response += "## **CUSTOMIZATION**\n\n"
-            response += "**⚙️ AI Model Selection**\n"
-            response += "• `/set_model` - Choose your preferred AI model:\n"
-            response += "• `/get_model` - Check which model you're currently using, as well as get a list of all available models and their descriptions\n"
-            response += "• `/toggle_debug` - Show/hide which model generated each response\n\n"
+            response += "**⚙️ AI Model Selection & Utility**\n" # Renamed section slightly
+            response += "• `/set_model` - Choose your preferred AI model\n"
+            response += "• `/get_model` - Check which model you're currently using and see available models\n"
+            response += "• `/toggle_debug` - Show/hide which model generated each response\n"
+            response += "• `/whats_new [days]` - Show documents/images added or updated recently (default: 7 days)\n\n" # Added whats_new description
             response += "I recommend using Gemini 2.0 Flash for factual queries, DeepSeek-R1 for times when you want good prose and creative writing, Claude 3.5 Haiku for roleplay and accuracy, and QwQ 32B when you want a balance.\n\n"
             
             # Add our new section here
@@ -611,3 +613,224 @@ def register_commands(bot):
             import traceback
             logger.error(traceback.format_exc())
             await interaction.followup.send("*neural circuit overload!* failed to export prompt due to an error.")
+
+    @bot.tree.command(name="whats_new", description="Shows documents and images added or updated recently")
+    @app_commands.describe(days="How many days back to check (default: 7)")
+    async def whats_new(interaction: discord.Interaction, days: int = 7):
+        """Summarizes recently added/updated documents and images."""
+        await interaction.response.defer() # Defer response
+
+        if days <= 0:
+            await interaction.followup.send("Please provide a positive number of days.")
+            return
+
+        # Access managers via the bot instance passed to register_commands
+        if not hasattr(bot, 'document_manager') or not hasattr(bot, 'image_manager'):
+             await interaction.followup.send("*critical system error!* Document or Image Manager not available.")
+             logger.error("whats_new command failed: Manager instances not found on bot.")
+             return
+
+        now = datetime.now(timezone.utc) # Use timezone-aware datetime
+        cutoff_time = now - timedelta(days=days)
+        recent_items = [] # Stores {'type': 'doc'/'image', 'name': ..., 'timestamp': ..., 'action': ..., 'id': ... (for images)}
+
+        doc_manager = bot.document_manager
+        img_manager = bot.image_manager
+
+        # --- Process Documents ---
+        try:
+            # Assuming managers load metadata on init or have a method to ensure it's loaded
+            if not doc_manager.metadata:
+                 logger.warning("Document metadata is empty during whats_new check.")
+
+            for doc_name, meta in doc_manager.metadata.items():
+                # Skip internal list document
+                if hasattr(doc_manager, '_internal_list_doc_name') and doc_name == doc_manager._internal_list_doc_name:
+                    continue
+
+                added_ts_str = meta.get('added')
+                updated_ts_str = meta.get('updated') # Check for 'updated' timestamp
+
+                # Parse timestamps safely
+                added_dt = None
+                if added_ts_str:
+                    try:
+                        # Handle potential 'Z' suffix if present
+                        if added_ts_str.endswith('Z'):
+                            added_ts_str = added_ts_str[:-1] + '+00:00'
+                        added_dt = datetime.fromisoformat(added_ts_str)
+                        # Ensure timezone aware (assume UTC if naive)
+                        if added_dt.tzinfo is None:
+                            added_dt = added_dt.replace(tzinfo=timezone.utc)
+                        else:
+                            added_dt = added_dt.astimezone(timezone.utc)
+                    except ValueError:
+                        logger.warning(f"Could not parse 'added' timestamp '{added_ts_str}' for doc '{doc_name}'")
+
+                updated_dt = None
+                if updated_ts_str:
+                     try:
+                         # Handle potential 'Z' suffix if present
+                         if updated_ts_str.endswith('Z'):
+                             updated_ts_str = updated_ts_str[:-1] + '+00:00'
+                         updated_dt = datetime.fromisoformat(updated_ts_str)
+                         # Ensure timezone aware (assume UTC if naive)
+                         if updated_dt.tzinfo is None:
+                             updated_dt = updated_dt.replace(tzinfo=timezone.utc)
+                         else:
+                             updated_dt = updated_dt.astimezone(timezone.utc)
+                     except ValueError:
+                         logger.warning(f"Could not parse 'updated' timestamp '{updated_ts_str}' for doc '{doc_name}'")
+
+                # Determine the most recent relevant timestamp and action
+                latest_dt = None
+                action = "unknown"
+                is_recent = False
+
+                # Prioritize 'updated' if it's recent
+                if updated_dt and updated_dt >= cutoff_time:
+                    latest_dt = updated_dt
+                    action = "updated"
+                    is_recent = True
+                # Otherwise, check 'added' if it's recent
+                elif added_dt and added_dt >= cutoff_time:
+                    latest_dt = added_dt
+                    action = "added"
+                    is_recent = True
+
+                if is_recent and latest_dt:
+                    is_image_doc = doc_name.startswith("image_") and doc_name.endswith(".txt")
+                    if not is_image_doc:
+                        # Regular document
+                        recent_items.append({
+                            'type': 'doc',
+                            'name': doc_name,
+                            'timestamp': latest_dt,
+                            'action': action
+                        })
+                    else:
+                        # Image description document update/add
+                        image_id = meta.get('image_id')
+                        image_name = meta.get('image_name', 'Unknown Image')
+                        if image_id:
+                            # Check if this image is already in the list from its own 'added' timestamp
+                            existing_item = next((item for item in recent_items if item.get('type') == 'image' and item.get('id') == image_id), None)
+                            if existing_item:
+                                # If description update is more recent, update the existing entry
+                                if latest_dt > existing_item['timestamp']:
+                                    existing_item['timestamp'] = latest_dt
+                                    existing_item['action'] = f'description {action}' # e.g., "description updated"
+                            else:
+                                # Add new entry for the image based on description update
+                                recent_items.append({
+                                    'type': 'image',
+                                    'id': image_id,
+                                    'name': image_name,
+                                    'timestamp': latest_dt,
+                                    'action': f'description {action}'
+                                })
+
+        except Exception as e:
+            logger.error(f"Error processing document metadata for whats_new: {e}", exc_info=True)
+            # Send error but continue to images
+            await interaction.followup.send(f"*neural pathway disruption!* An error occurred while checking documents: {e}", ephemeral=True)
+
+
+        # --- Process Images (for 'added' timestamp) ---
+        try:
+            if not img_manager.metadata:
+                 logger.warning("Image metadata is empty during whats_new check.")
+
+            for image_id, meta in img_manager.metadata.items():
+                added_ts_str = meta.get('added')
+                added_dt = None
+                if added_ts_str:
+                    try:
+                        # Handle potential 'Z' suffix if present
+                        if added_ts_str.endswith('Z'):
+                            added_ts_str = added_ts_str[:-1] + '+00:00'
+                        added_dt = datetime.fromisoformat(added_ts_str)
+                        # Ensure timezone aware (assume UTC if naive)
+                        if added_dt.tzinfo is None:
+                            added_dt = added_dt.replace(tzinfo=timezone.utc)
+                        else:
+                            added_dt = added_dt.astimezone(timezone.utc)
+                    except ValueError:
+                        logger.warning(f"Could not parse 'added' timestamp '{added_ts_str}' for image '{image_id}'")
+
+                if added_dt and added_dt >= cutoff_time:
+                    # Check if already added via document update
+                    existing_item = next((item for item in recent_items if item.get('type') == 'image' and item.get('id') == image_id), None)
+
+                    if existing_item:
+                        # If image was added *more* recently than description update, update timestamp/action
+                        if added_dt > existing_item['timestamp']:
+                            existing_item['timestamp'] = added_dt
+                            existing_item['action'] = 'added' # Overwrite "description updated" if direct add is newer
+                    else:
+                        # Image added recently, wasn't found via description update
+                        recent_items.append({
+                            'type': 'image',
+                            'id': image_id,
+                            'name': meta.get('name', 'Unknown Image'),
+                            'timestamp': added_dt,
+                            'action': 'added'
+                        })
+        except Exception as e:
+            logger.error(f"Error processing image metadata for whats_new: {e}", exc_info=True)
+            # Send error but continue to formatting
+            await interaction.followup.send(f"*visual cortex error!* An error occurred while checking images: {e}", ephemeral=True)
+
+
+        # --- Sort and Format Output ---
+        if not recent_items:
+            await interaction.followup.send(f"*database scan complete.* No documents or images were added or updated in the last {days} days.")
+            return
+
+        # Sort by timestamp descending
+        recent_items.sort(key=lambda x: x['timestamp'], reverse=True)
+
+        output_lines = [f"**What's New (Last {days} Days):**\n"]
+        added_docs_output = []
+        added_images_output = []
+
+        # Use a set to track unique items already added to prevent duplicates
+        output_tracker = set() # Store tuples like ('doc', 'doc_name') or ('image', 'image_id')
+
+        for item in recent_items:
+            # Format timestamp for display (e.g., "YYYY-MM-DD HH:MM UTC")
+            ts_formatted = item['timestamp'].strftime('%Y-%m-%d %H:%M UTC')
+            item_key = (item['type'], item.get('id') if item['type'] == 'image' else item['name'])
+
+            if item_key not in output_tracker:
+                if item['type'] == 'doc':
+                    added_docs_output.append(f"- `{item['name']}` ({item['action']} {ts_formatted})")
+                    output_tracker.add(item_key)
+                elif item['type'] == 'image':
+                    # Ensure name is fetched correctly
+                    img_name = item.get('name', 'Unknown Image')
+                    if img_name == 'Unknown Image' and item.get('id') in img_manager.metadata:
+                        img_name = img_manager.metadata[item['id']].get('name', 'Unknown Image')
+
+                    added_images_output.append(f"- `{img_name}` (ID: `{item['id']}`) ({item['action']} {ts_formatted})")
+                    output_tracker.add(item_key)
+
+
+        if added_docs_output:
+            output_lines.append("**Documents:**")
+            output_lines.extend(added_docs_output)
+            output_lines.append("") # Add spacing
+
+        if added_images_output:
+            output_lines.append("**Images:**")
+            output_lines.extend(added_images_output)
+
+        # Combine and send, handling potential message length limits
+        full_message = "\n".join(output_lines).strip() # Strip trailing whitespace
+        if not full_message or full_message == f"**What's New (Last {days} Days):**": # Check if only header remains
+             await interaction.followup.send(f"*database scan complete.* No relevant documents or images found in the last {days} days.")
+        elif len(full_message) > 2000:
+            # Simple truncation
+            await interaction.followup.send(full_message[:1990] + "\n... *(message truncated)*")
+        else:
+            await interaction.followup.send(full_message)
