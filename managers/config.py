@@ -87,7 +87,7 @@ class Config:
             "eva-unit-01/eva-qwen-2.5-72b": {
                 "order": ["Parasail"]
             },
-            "qwen/qwq-32b": {
+            "qwen/qwq-32b:floor": {
                 "order": ["DeepInfra", "Nebius", "Groq", "Hyberbolic"]
             },
             # Add any other model variants that need custom provider ordering
