@@ -513,65 +513,41 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error refreshing Google Docs: {e}")
 
     async def _has_google_doc_changed(self, doc_id: str, file_name: str) -> bool:
-        """Check if a Google Doc has changed since last refresh using content hashing."""
+        """Check if a Google Doc has changed since last refresh using content hashing
+           against the hash stored in the main DocumentManager metadata."""
         try:
-            # Get the stored hash if available
-            stored_hash = None
-            doc_metadata_path = self.document_manager.base_dir / f"{file_name}.metadata.json"
-            
-            if doc_metadata_path.exists():
-                with open(doc_metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                    stored_hash = metadata.get('content_hash')
-            
-            # Get the current document content
-            file_path = self.document_manager.base_dir / file_name
-            if not file_path.exists():
-                # If the file doesn't exist locally, it needs to be downloaded
-                return True
-            
-            with open(file_path, 'r', encoding='utf-8') as f:
-                current_content = f.read()
-                
-            # Compute hash of current content
-            import hashlib
-            current_hash = hashlib.md5(current_content.encode('utf-8')).hexdigest()
-            
-            # Download the latest version
+            # Get the stored hash from the main DocumentManager metadata
+            stored_hash = self.document_manager.metadata.get(file_name, {}).get('content_hash')
+
+            # Download the latest version from Google
             async with aiohttp.ClientSession() as session:
                 url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
                 async with session.get(url) as response:
                     if response.status != 200:
-                        # If we can't download, assume document has changed
-                        logger.warning(f"Failed to download {doc_id}, assuming document has changed")
-                        return True
-                    
+                        logger.warning(f"Failed to download {doc_id} for change check (Status: {response.status}). Assuming changed.")
+                        return True # Assume changed if download fails
                     new_content = await response.text()
-            
-            # Compute hash of new content
+
+            # Compute hash of the newly downloaded content
+            import hashlib
             new_hash = hashlib.md5(new_content.encode('utf-8')).hexdigest()
-            
-            # Save the new hash
-            metadata = {
-                'content_hash': new_hash
-            }
-            with open(doc_metadata_path, 'w') as f:
-                json.dump(metadata, f)
-            
-            # Compare hashes
-            if stored_hash is not None and stored_hash == new_hash:
+
+            # Compare the new hash with the stored hash
+            if stored_hash and stored_hash == new_hash:
+                # Hashes match, document has not changed
+                logger.debug(f"Google Doc {doc_id} ({file_name}) hash matched ({new_hash[:8]}...). No change detected.")
                 return False
-            
-            # If the content has actually changed
-            if current_hash != new_hash:
-                return True
             else:
-                # Content hasn't changed
-                return False
-                    
+                # Hashes differ or no stored hash exists, document has changed
+                if stored_hash:
+                    logger.info(f"Google Doc {doc_id} ({file_name}) hash mismatch. Stored: {stored_hash[:8]}..., New: {new_hash[:8]}.... Change detected.")
+                else:
+                    logger.info(f"Google Doc {doc_id} ({file_name}) has no stored hash. Assuming changed.")
+                return True
+
         except Exception as e:
-            logger.error(f"Error checking if Google Doc {doc_id} has changed: {e}")
-            # If there's an error, assume document has changed
+            logger.error(f"Error checking if Google Doc {doc_id} ({file_name}) has changed: {e}")
+            # If there's any error during the check, assume it has changed to be safe
             return True
             
     async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None) -> bool:

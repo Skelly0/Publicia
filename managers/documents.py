@@ -320,11 +320,10 @@ class DocumentManager:
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-flash-exp:free",
                 "google/gemma-3-27b-it:free",
-                "microsoft/phi-4-multimodal-instruct",
-                "cohere/command-r7b-12-2024",
-                "google/gemini-flash-1.5-8b",
                 "google/gemini-2.0-flash-lite-001",
                 "google/gemini-2.0-flash-001"
+                "cohere/command-r7b-12-2024",
+                "google/gemini-flash-1.5-8b",
             ]
             
             # Try each model in sequence until one works
