@@ -317,11 +317,12 @@ class DocumentManager:
             
             # List of models to try in order
             fallback_models = [
+                "google/gemini-2.5-pro-exp-03-25:free", # Added new model
                 #"google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-flash-exp:free",
                 "google/gemma-3-27b-it:free",
                 "google/gemini-2.0-flash-lite-001",
-                "google/gemini-2.0-flash-001"
+                "google/gemini-2.0-flash-001", # Fixed formatting
                 "cohere/command-r7b-12-2024",
                 "google/gemini-flash-1.5-8b",
             ]

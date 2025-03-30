@@ -48,6 +48,7 @@ class Config:
             # Gemini models 
             "google/gemini-2.0-flash-001": 17,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
+            "google/gemini-2.5-pro-exp-03-25:free": 20, # Added new model
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
             # Claude models

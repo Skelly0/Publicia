@@ -79,6 +79,7 @@ class DiscordBot(commands.Bot):
         self.vision_capable_models = [
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-pro-exp-02-05:free",
+            "google/gemini-2.5-pro-exp-03-25:free", # Added new vision model
             "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet:beta",
             "anthropic/claude-3.7-sonnet",
@@ -811,6 +812,7 @@ class DiscordBot(commands.Bot):
         # Google models
         elif model_family == "google":
             fallbacks = [
+                "google/gemini-2.5-pro-exp-03-25:free", # Add new model as a primary fallback
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "google/gemini-2.0-pro-exp-02-05:free",
                 "google/gemini-2.0-flash-001"
@@ -884,6 +886,7 @@ class DiscordBot(commands.Bot):
         
         # Add general fallbacks that aren't already in the list
         general_fallbacks = [
+            "google/gemini-2.5-pro-exp-03-25:free", # Add new model here too
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-flash-thinking-exp:free",
             "deepseek/deepseek-r1:free",
