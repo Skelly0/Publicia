@@ -12,7 +12,7 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from utils.helpers import split_message, check_permissions, sanitize_discord_text # Consolidated import & added sanitize
+from utils.helpers import split_message, check_permissions # Consolidated import & removed sanitize
 from prompts.system_prompt import SYSTEM_PROMPT # Added for summarization
 
 
@@ -1034,7 +1034,8 @@ def register_commands(bot):
             chunk_type = "Contextualized" if contextualized else "Original"
 
             response_header = f"**{chunk_type} Chunk {chunk_index}/{len(chunks_list)} from Document: {target_doc_name}**\n"
-            formatted_content = response_header + f"```\n{sanitize_discord_text(chunk_content)}\n```"
+            # Use bot instance to call the method
+            formatted_content = response_header + f"```\n{bot.sanitize_discord_text(chunk_content)}\n```"
 
             # Send the content, splitting if necessary
             await bot.send_split_message(
