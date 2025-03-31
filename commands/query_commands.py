@@ -153,14 +153,31 @@ def register_commands(bot):
                 # Truncate content if it's too long (first 2000 chars)
                 truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
                 google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
-            
+
+            # Fetch user pronouns
+            pronouns = bot.user_preferences_manager.get_pronouns(str(interaction.user.id))
+            pronoun_context_message = None
+            if pronouns:
+                logger.info(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
+                pronoun_context_message = {
+                    "role": "system",
+                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
+                }
+            else:
+                 logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
+
             # Prepare messages for model
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT
+                    "content": SYSTEM_PROMPT # Standard system prompt
                 }
+                # Pronoun context will be inserted here if available
             ]
+
+            # Insert pronoun context if it exists
+            if pronoun_context_message:
+                messages.insert(1, pronoun_context_message)
 
             # Add raw document context as additional reference
             raw_doc_context = "\n\n".join(raw_doc_contexts)

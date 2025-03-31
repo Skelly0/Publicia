@@ -206,3 +206,47 @@ class UserPreferencesManager:
             # In case of error, we can't be sure of the state, maybe return current state before toggle attempt?
             # For simplicity, returning False, but this could be handled differently.
             return False
+
+    def get_pronouns(self, user_id: str) -> str | None:
+        """Get the user's pronouns, default is None."""
+        file_path = self.get_file_path(user_id)
+        
+        if not os.path.exists(file_path):
+            return None
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                # Return None if the key doesn't exist
+                return preferences.get("pronouns", None)
+        except Exception as e:
+            logger.error(f"Error reading pronouns preference: {e}")
+            return None # Default to None on error
+
+    def set_pronouns(self, user_id: str, pronouns: str) -> bool:
+        """Set the user's pronouns."""
+        try:
+            file_path = self.get_file_path(user_id)
+            
+            # Load existing preferences or create new ones
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        preferences = json.load(file)
+                    except json.JSONDecodeError:
+                        preferences = {}
+            else:
+                preferences = {}
+            
+            # Update pronouns
+            preferences["pronouns"] = pronouns
+            
+            # Write back to file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            
+            return True
+                
+        except Exception as e:
+            logger.error(f"Error setting pronouns preference: {e}")
+            return False

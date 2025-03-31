@@ -1673,14 +1673,35 @@ class DiscordBot(commands.Bot):
             selected_system_prompt = INFORMATIONAL_SYSTEM_PROMPT if use_informational_prompt else SYSTEM_PROMPT
             logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt for user {message.author.id}")
 
+            # Fetch user pronouns
+            pronouns = self.user_preferences_manager.get_pronouns(str(message.author.id))
+            pronoun_context_message = None
+            if pronouns:
+                logger.info(f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}")
+                pronoun_context_message = {
+                    "role": "system",
+                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
+                }
+            else:
+                 logger.info(f"User {message.author.id} ({nickname}) has no pronouns set.")
+
+
             # --- Prepare messages for AI Model ---
             messages = [
                 {
                     "role": "system",
                     "content": selected_system_prompt # Use the selected prompt
-                },
-                *conversation_messages # Add previous messages from history
+                }
+                # Pronoun context will be inserted here if available
             ]
+
+            # Insert pronoun context if it exists
+            if pronoun_context_message:
+                messages.insert(1, pronoun_context_message)
+
+            # Add conversation history *after* potential pronoun context
+            messages.extend(conversation_messages)
+
 
             if referenced_message:
                 # Get the author object from the referenced message

@@ -31,7 +31,7 @@ def register_commands(bot):
                 "Lore Queries": ["query"],
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "help", "export_prompt", "whats_new"], # Added toggle_prompt_mode, fixed toggle_debug typo
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "export_prompt", "whats_new"], # Added pronouns
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
                 "Moderation": ["ban_user", "unban_user"]
             }
@@ -385,6 +385,7 @@ def register_commands(bot):
             response += "**⚙️ AI Model Selection & Utility**\n" # Renamed section slightly
             response += "• `/set_model` - Choose your preferred AI model\n"
             response += "• `/get_model` - Check which model you're currently using and see available models\n"
+            response += "• `/pronouns` - Set your preferred pronouns (e.g., she/her, they/them)\n" # Added pronouns command
             response += "• `/toggle_debug` - Show/hide which model generated each response\n"
             response += "• `/toggle_prompt_mode` - Switch between standard (immersive) and informational (concise) prompts\n" # Added toggle_prompt_mode description
             response += "• `/whats_new [days]` - Show documents/images added or updated recently (default: 7 days)\n\n" # Added whats_new description
@@ -852,3 +853,30 @@ def register_commands(bot):
             await interaction.followup.send(full_message[:1990] + "\n... *(message truncated)*")
         else:
             await interaction.followup.send(full_message)
+
+    @bot.tree.command(name="pronouns", description="Set your preferred pronouns (e.g., she/her, they/them, he/him)")
+    @app_commands.describe(pronouns="Your preferred pronouns")
+    async def set_pronouns_command(interaction: discord.Interaction, pronouns: str):
+        """Sets the user's preferred pronouns."""
+        await interaction.response.defer()
+        try:
+            user_id = str(interaction.user.id)
+            # Basic validation/sanitization could be added here if needed
+            # For now, just store what the user provides. Use strip() to remove leading/trailing whitespace.
+            pronouns_stripped = pronouns.strip()
+            if not pronouns_stripped: # Prevent setting empty pronouns
+                 await interaction.followup.send("*invalid input!* Pronouns cannot be empty.")
+                 return
+
+            success = bot.user_preferences_manager.set_pronouns(user_id, pronouns_stripped)
+
+            if success:
+                await interaction.followup.send(f"*preference updated!* Your pronouns have been set to **{pronouns_stripped}**.")
+                logger.info(f"User {interaction.user.name} ({user_id}) set pronouns to: {pronouns_stripped}")
+            else:
+                await interaction.followup.send("*synaptic error detected!* Failed to set your pronouns. Please try again later.")
+                logger.error(f"Failed to set pronouns for user {interaction.user.name} ({user_id})")
+
+        except Exception as e:
+            logger.error(f"Error in /pronouns command for user {interaction.user.name} ({interaction.user.id}): {e}", exc_info=True)
+            await interaction.followup.send("*neural circuit overload!* An error occurred while setting your pronouns.")
