@@ -1528,7 +1528,7 @@ class DiscordBot(commands.Bot):
                     logger.error(f"Error fetching replied-to message (ID: {message.reference.message_id}): {e}")
 
 
-            logger.info(f"Processing message from {message.author.name}: {shorten(message.content, width=100, placeholder='...')}")
+            logger.info(f"Processing message from {message.author.name} (ID: {message.author.id}): {shorten(message.content, width=100, placeholder='...')}")
 
             # Extract the question from the message (remove mentions)
             question = message.content

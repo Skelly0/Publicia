@@ -35,18 +35,21 @@ def register_commands(bot):
                 logger.warning("Interaction expired before we could defer")
                 return  # Exit gracefully
             except Exception as e:
-                logger.error(f"Error deferring interaction: {e}")
+                logger.error(f"Error deferring interaction: {e}") # Correctly indented under inner except
                 return  # Exit on any other error
 
-            if not question:
-                await interaction.followup.send("*neural error detected!* Please provide a question.")
-                return
+            # Log user info after successful deferral
+            logger.info(f"Query received from user: {interaction.user.name} (ID: {interaction.user.id})") # Correctly indented under outer try
+
+            if not question: # Correctly indented under outer try
+                await interaction.followup.send("*neural error detected!* Please provide a question.") # Correctly indented under if
+                return # Correctly indented under if
 
             # Get channel name and user info
-            channel_name = interaction.channel.name if interaction.guild else "DM"
-            nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
+            channel_name = interaction.channel.name if interaction.guild else "DM" # Correctly indented under outer try
+            nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name # Correctly indented under outer try
             
-            # Process image URL if provided
+            # Process image URL if provided # Keep this line for context matching
             image_attachments = []
             status_message = None
             
