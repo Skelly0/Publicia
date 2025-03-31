@@ -24,7 +24,7 @@ from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import sys
 
-from prompts.system_prompt import SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # Added INFORMATIONAL_SYSTEM_PROMPT
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message
 from utils.logging import sanitize_for_logging
@@ -1668,11 +1668,16 @@ class DiscordBot(commands.Bot):
             # Get nickname or username
             nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
 
+            # Determine which system prompt to use based on user preference
+            use_informational_prompt = self.user_preferences_manager.get_informational_prompt_mode(str(message.author.id))
+            selected_system_prompt = INFORMATIONAL_SYSTEM_PROMPT if use_informational_prompt else SYSTEM_PROMPT
+            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt for user {message.author.id}")
+
             # --- Prepare messages for AI Model ---
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT # Base system prompt
+                    "content": selected_system_prompt # Use the selected prompt
                 },
                 *conversation_messages # Add previous messages from history
             ]

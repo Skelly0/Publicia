@@ -158,3 +158,51 @@ class UserPreferencesManager:
         except Exception as e:
             logger.error(f"Error toggling debug mode: {e}")
             return False
+
+    def get_informational_prompt_mode(self, user_id: str) -> bool:
+        """Get the user's informational prompt mode preference, default is False."""
+        file_path = self.get_file_path(user_id)
+        
+        if not os.path.exists(file_path):
+            return False
+            
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                # Default to False if the key doesn't exist
+                return preferences.get("use_informational_prompt", False)
+        except Exception as e:
+            logger.error(f"Error reading informational prompt mode preference: {e}")
+            return False # Default to False on error
+
+    def toggle_informational_prompt_mode(self, user_id: str) -> bool:
+        """Toggle the user's informational prompt mode preference and return the new state."""
+        try:
+            file_path = self.get_file_path(user_id)
+            
+            # Load existing preferences or create new ones
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        preferences = json.load(file)
+                    except json.JSONDecodeError:
+                        preferences = {}
+            else:
+                preferences = {}
+            
+            # Toggle informational prompt mode, defaulting to False if not present
+            current_mode = preferences.get("use_informational_prompt", False)
+            preferences["use_informational_prompt"] = not current_mode
+            
+            # Write back to file
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            
+            # Return the new state
+            return preferences["use_informational_prompt"]
+                
+        except Exception as e:
+            logger.error(f"Error toggling informational prompt mode: {e}")
+            # In case of error, we can't be sure of the state, maybe return current state before toggle attempt?
+            # For simplicity, returning False, but this could be handled differently.
+            return False

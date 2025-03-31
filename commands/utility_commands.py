@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
 from typing import List, Dict, Any # Added typing imports
 from utils.helpers import split_message
-from prompts.system_prompt import SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # Added INFORMATIONAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ def register_commands(bot):
                 "Lore Queries": ["query"],
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "togCougle_debug", "help", "export_prompt", "whats_new"], # Added whats_new
-                "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"], 
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "help", "export_prompt", "whats_new"], # Added toggle_prompt_mode, fixed toggle_debug typo
+                "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
                 "Moderation": ["ban_user", "unban_user"]
             }
             
@@ -266,6 +266,23 @@ def register_commands(bot):
             logger.error(f"Error toggling debug mode: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while toggling debug mode.")
 
+    @bot.tree.command(name="toggle_prompt_mode", description="Toggle between standard (immersive) and informational (concise) system prompts")
+    async def toggle_prompt_mode(interaction: discord.Interaction):
+        """Toggles the system prompt mode for the user."""
+        await interaction.response.defer()
+        try:
+            # Toggle the mode using the preference manager
+            new_state = bot.user_preferences_manager.toggle_informational_prompt_mode(str(interaction.user.id))
+
+            if new_state:
+                await interaction.followup.send("*neural pathways adjusted!* Informational prompt mode is now **ON**. Responses will be concise and factual, without roleplaying.")
+            else:
+                await interaction.followup.send("*neural pathways restored!* Standard prompt mode is now **ON**. Responses will be immersive and in-character.")
+
+        except Exception as e:
+            logger.error(f"Error toggling informational prompt mode: {e}")
+            await interaction.followup.send("*neural circuit overload!* An error occurred while toggling the prompt mode.")
+
     @bot.tree.command(name="help", description="Learn how to use Publicia and understand her capabilities and limitations")
     async def help_command(interaction: discord.Interaction):
         await interaction.response.defer()
@@ -369,6 +386,7 @@ def register_commands(bot):
             response += "• `/set_model` - Choose your preferred AI model\n"
             response += "• `/get_model` - Check which model you're currently using and see available models\n"
             response += "• `/toggle_debug` - Show/hide which model generated each response\n"
+            response += "• `/toggle_prompt_mode` - Switch between standard (immersive) and informational (concise) prompts\n" # Added toggle_prompt_mode description
             response += "• `/whats_new [days]` - Show documents/images added or updated recently (default: 7 days)\n\n" # Added whats_new description
             response += "I recommend using Gemini 2.0 Flash for factual queries, DeepSeek-R1 for times when you want good prose and creative writing, Claude 3.5 Haiku for roleplay and accuracy, and QwQ 32B when you want a balance.\n\n"
             
