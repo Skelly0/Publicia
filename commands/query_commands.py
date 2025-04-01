@@ -13,7 +13,8 @@ import json
 import os
 from datetime import datetime
 from utils.helpers import split_message
-from prompts.system_prompt import SYSTEM_PROMPT
+# Import both system prompts
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -166,11 +167,16 @@ def register_commands(bot):
             else:
                  logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
 
-            # Prepare messages for model
+            # Determine which system prompt to use based on user preference
+            use_informational_prompt = bot.user_preferences_manager.get_informational_prompt_mode(str(interaction.user.id))
+            selected_system_prompt = INFORMATIONAL_SYSTEM_PROMPT if use_informational_prompt else SYSTEM_PROMPT
+            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt for user {interaction.user.id} in /query command")
+
+            # Prepare messages for model using the selected prompt
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT # Standard system prompt
+                    "content": selected_system_prompt # Use the selected prompt
                 }
                 # Pronoun context will be inserted here if available
             ]
