@@ -376,6 +376,7 @@ class DocumentManager:
                 #"google/gemini-2.0-flash-exp:free",
                 #"google/gemma-3-27b-it:free",
                 "cohere/command-r7b-12-2024",
+                "microsoft/phi-4-multimodal-instruct",
                 "qwen/qwen-turbo",
                 "google/gemma-3-12b-it",
                 "google/gemini-2.0-flash-lite-001",
