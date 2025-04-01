@@ -4,7 +4,7 @@ Publicia maintains a conversation history with each user to provide context for 
 
 ## Overview
 
-Conversation history is stored in individual JSON files for each user. The `ConversationManager` class handles the storage, retrieval, and management of these conversations. The `DiscordBot` class integrates with the `ConversationManager` to store messages and use conversation history when processing user queries.
+Conversation history is stored in individual JSON files for each user. The `ConversationManager` class handles the storage, retrieval, and management of these conversations. The `DiscordBot` class integrates with the `ConversationManager` to store messages and crucially uses this history to enhance context-dependent queries for the hybrid search system.
 
 ## Storage
 
@@ -45,13 +45,16 @@ The `ConversationManager` class provides the following methods:
 -   The `DiscordBot` class initializes a `ConversationManager` instance in its `__init__` method.
 -   **`on_message`:**
     -   Calls `self.conversation_manager.write_conversation` to store both user and bot messages after processing a user's query.
-- **`process_hybrid_query`:**
-    - Calls `self.is_context_dependent_query` to check if the current query is a follow up.
-    - Calls `self.conversation_manager.get_conversation_messages` to retrieve conversation history.
-    - Calls `self.get_conversation_context` to extract relevant context from the conversation history, which is used to enhance context-dependent queries.
-- **`get_conversation_context`:**
-    - Calls `self.conversation_manager.get_conversation_messages` to retrieve the conversation history.
-    - Extracts the last substantive user query and the last assistant response to use as context.
+-   **`process_hybrid_query`:**
+    -   Calls `self.is_context_dependent_query` to check if the current query is likely a follow-up.
+    -   If it is a follow-up:
+        -   Calls `self.get_conversation_context` to extract relevant prior messages (e.g., last user query, last bot response).
+        -   Calls `self.enhance_context_dependent_query` to rewrite the current query, incorporating the extracted context.
+        -   Calls `self.generate_context_aware_embedding` to create a specialized embedding for this enhanced query, improving search relevance.
+    -   Uses the potentially enhanced query and its embedding for the hybrid search (`DocumentManager.search`).
+-   **`get_conversation_context`:**
+    -   Calls `self.conversation_manager.get_conversation_messages` to retrieve the recent history.
+    -   Extracts key turns (like the last substantive user query and the last assistant response) to provide context for query enhancement.
 
 ## Workflow
 

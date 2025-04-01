@@ -16,12 +16,13 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 
 ### Key Capabilities
 
-- **Document Search & Retrieval**: Uses vector embeddings and BM25 with contextual retrieval for highly accurate information retrieval
-- **Image Analysis**: Can process, store, and analyze images related to the lore
-- **Conversation Memory**: Remembers conversation history for contextual responses
-- **Multiple AI Models**: Supports various AI models with automatic fallback mechanisms
-- **Google Doc Integration**: Can fetch and index content from Google Docs with change detection
-- **Role-Playing**: Maintains character as Publicia while providing information
+- **Document Search & Retrieval**: Uses an advanced hybrid system (vector embeddings + BM25 keyword matching) with AI-generated contextual retrieval and sophisticated reranking for highly accurate information retrieval.
+- **Image Analysis**: Can process, store, and analyze images related to the lore using vision-capable models.
+- **Conversation Memory**: Remembers conversation history for contextual responses and context-aware searching.
+- **Multiple AI Models**: Supports various AI models with automatic fallback and retry mechanisms.
+- **Google Doc Integration**: Can fetch and index content from Google Docs, automatically detecting changes using content hashing.
+- **Role-Playing**: Maintains character as Publicia while providing information.
+- **File Management**: Allows listing and retrieving stored documents and lorebooks.
 
 ### Lore Context
 
@@ -60,7 +61,7 @@ Publicia is built on Python using discord.py, with several specialized component
 ### Key Classes
 
 1. **DiscordBot**: Main bot class that handles Discord integration and commands
-2. **DocumentManager**: Manages document storage, embedding generation, BM25 indexing, contextual retrieval, and search
+2. **DocumentManager**: Manages document storage, embedding generation (including contextualized embeddings), BM25 indexing, hybrid search (vector + BM25 with score fusion), contextual retrieval, and reranking.
 3. **ImageManager**: Handles image storage, retrieval, and description generation
 4. **ConversationManager**: Maintains conversation history for users
 5. **UserPreferencesManager**: Handles user preferences like AI model selection
@@ -69,9 +70,9 @@ Publicia is built on Python using discord.py, with several specialized component
 ### Data Flow
 
 1. User sends a query (message or command)
-2. Bot processes the query using a direct search approach (simplified from earlier versions)
-3. Enhanced search finds relevant documents and images using both embedding similarity and BM25 keyword matching
-4. Search results with contextual enhancements are prepared as context
+2. Bot determines if the query is context-dependent (follow-up) and enhances it with conversation history if needed.
+3. Performs a hybrid search using context-aware embeddings (if applicable), combining semantic similarity (vectors) and keyword matching (BM25) via score-based fusion.
+4. Search results, including AI-generated contextual enhancements for each chunk, are prepared as context.
 5. User's conversation history is added for continuity
 6. AI model generates response based on all context
 7. Response is sent back to user, potentially with images
@@ -79,22 +80,24 @@ Publicia is built on Python using discord.py, with several specialized component
 
 ## Features
 
-### Document Management
+### Document Management & Hybrid Search
 
-The bot uses an advanced hybrid search system combining vector embeddings and BM25:
+The bot uses an advanced hybrid search system combining vector embeddings and BM25 keyword matching:
 
 - Documents are chunked into smaller sections for precise retrieval
-- Each chunk is enhanced with AI-generated contextual information
-- Contextualized chunks are converted to vector embeddings using Google's Generative AI
-- BM25 (Best Matching 25) provides complementary keyword-based matching
-- Score-based fusion combines embedding and BM25 results for optimal retrieval
+- Documents are chunked into smaller sections for precise retrieval.
+- **Contextual Retrieval**: Before embedding, each chunk is enhanced with AI-generated context explaining its relationship to the whole document. This significantly improves relevance.
+- Contextualized chunks are converted to vector embeddings using Google's Generative AI (`models/text-embedding-004`).
+- **BM25 Indexing**: A separate BM25 index is maintained for efficient keyword matching.
+- **Hybrid Search Execution**: Queries are processed using both the vector embeddings (for semantic meaning) and the BM25 index (for keywords).
+- **Score-Based Fusion**: Results from both search methods are combined using a weighted scoring system (e.g., 60% embedding score, 40% BM25 score) to produce a final relevance ranking.
 - Queries are matched to the most relevant document chunks
 - Similarity scores determine the best matches
 - Documents can be added, removed, or searched directly
 
-### Contextual Retrieval
+### Contextual Retrieval (Integrated into Document Management)
 
-A sophisticated approach to improve search accuracy and content understanding:
+This sophisticated approach improves search accuracy and content understanding:
 
 - AI generates context for each document chunk to explain its relationship to the whole document
 - Context is prepended to chunks before embedding and indexing
@@ -127,9 +130,9 @@ The bot maintains conversation history for each user:
 
 Unique capability to work with Google Docs:
 
-- Track Google Docs with custom names
-- Automatically refresh content on schedule
-- Uses content hashing to only update documents that have actually changed
+- Track Google Docs with custom names.
+- Automatically refresh content on a schedule.
+- **Efficient Change Detection**: Uses content hashing to compare the current document content with the stored version, only processing and re-indexing if actual changes are detected.
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Support renaming and removing tracked documents
@@ -151,18 +154,21 @@ Users can choose their preferred AI model:
 
 Each model has different strengths, fallback mechanisms ensure reliability.
 
-### Search and Retrieval
+### Search and Retrieval Process
 
-The enhanced search system combines multiple techniques:
+The enhanced search system follows these steps:
 
-1. **Query Processing**: Direct semantic search using embeddings
-2. **Hybrid Search**: Combination of embedding similarity and BM25 keyword matching
-3. **Score-Based Fusion**: Weighted combination of semantic and lexical search results
-4. **Search Results**: Top k results based on combined scores
-5. **Reranking**: Sophisticated reranking of results with fallback mechanism
-6. **Contextual Enhancement**: AI-generated context is included with search results
-7. **Response Generation**: Creates roleplayed response with citations
-8. **Empty Response Handling**: Automatic retry system when models return blank responses
+1.  **Context Dependence Check**: Determines if the query is a follow-up question requiring conversation history.
+2.  **Query Enhancement (if needed)**: Rewrites the query using conversation context for better relevance.
+3.  **Context-Aware Embedding Generation (if needed)**: Creates a query embedding that incorporates conversation context.
+4.  **Hybrid Search**: Executes both embedding-based semantic search and BM25 keyword search using the (potentially context-enhanced) query.
+5.  **Score Fusion**: Combines results from both search methods using weighted scores (e.g., 60% embedding, 40% BM25).
+6.  **Result Caching**: Stores search results to speed up potential follow-up queries.
+7.  **Reranking (Optional)**: Applies a sophisticated reranking algorithm to the fused results for further refinement, with a fallback mechanism.
+8.  **Contextual Enhancement**: Retrieves the AI-generated context associated with each resulting document chunk.
+9.  **Prompt Assembly**: Constructs the final prompt for the LLM, including the contextualized chunks, conversation history, and the original query.
+10. **Response Generation**: The LLM generates a response based on the provided context.
+11. **Empty Response Handling**: Includes an automatic retry system if the LLM returns a blank or very short response.
 
 ### Embedding System
 
@@ -173,16 +179,17 @@ The bot uses Google's Generative AI for embeddings:
 - Automatically handles truncation for storage efficiency
 - Provides better semantic understanding than previous embedding systems
 
-### Hybrid Search System
+### Hybrid Search System Details
 
-The bot combines multiple search techniques for optimal results:
+The core search mechanism combines multiple techniques:
 
-- Vector embeddings for semantic understanding (60% weight)
-- BM25 (Best Matching 25) for keyword-based matching (40% weight)
-- Score-based fusion combines both approaches for better results
-- Handles follow-up queries with context-aware search
-- Caches search results for efficient handling of related queries
-- Automatically enhances context-dependent queries with conversation history
+-   **Vector Embeddings**: Uses Google's `models/text-embedding-004` for semantic understanding (default 60% weight in fusion). Embeddings are generated on *contextualized* chunks.
+-   **BM25 (Best Matching 25)**: Provides robust keyword-based matching (default 40% weight in fusion). Operates on the original chunk text.
+-   **Score-Based Fusion**: Merges results from vector and BM25 searches using normalized, weighted scores for a comprehensive ranking.
+-   **Context-Aware Search**: Detects follow-up questions and automatically:
+    -   Enhances the query with relevant conversation history.
+    -   Generates a *context-aware embedding* for the enhanced query.
+-   **Search Result Caching**: Stores results from a query to efficiently provide additional, non-overlapping results for subsequent related queries (e.g., "tell me more").
 
 ### Dynamic Response Temperature
 
@@ -312,18 +319,18 @@ The bot will display a startup banner and initialize all components.
 
 - `/rename_document`: Rename a document
   - **Parameters**: `current_name`, `new_name`
-  
+
 - `/list_files`: List all files in Publicia's knowledge base
   - **Parameters**: `file_type` (Documents, Images, Lorebooks, or All), `search_term` (optional)
-  - Shows available files that can be retrieved directly
-  - Categorizes results by file type with helpful prefixes
-  - Includes search functionality to find specific files
+  - Shows available files that can be retrieved directly.
+  - Categorizes results by file type with helpful prefixes.
+  - Includes search functionality to find specific files.
 
 - `/retrieve_file`: Retrieve a file from Publicia's storage
   - **Parameters**: `file_name` (Name of the file), `file_type` (Document or Lorebook)
-  - Downloads the requested file as a Discord attachment
-  - Uses smart matching to find files (case-insensitive, extension handling)
-  - Works in conjunction with `/list_files` to discover available files
+  - Downloads the requested file as a Discord attachment.
+  - Uses smart matching to find files (case-insensitive, extension handling).
+  - Works in conjunction with `/list_files` to discover available files.
 
 #### Image Management
 
@@ -438,19 +445,17 @@ The bot will automatically fall back to available models if your preferred model
 
 Configure the hybrid search system for optimal performance:
 
-- Adjust embedding vs. BM25 weights (default: 60% embedding, 40% BM25)
-- Modify RERANKING settings to control result filtering
-- Consider customizing the contextual retrieval prompt for your specific domain
-- Tune the fusion parameters if results aren't meeting expectations
-- Use `/export_prompt` to see how context is being added to chunks
+-   **Fusion Weights**: Adjust the balance between semantic (embedding) and keyword (BM25) search in the `.env` file (defaults usually 0.6 for embedding, 0.4 for BM25).
+-   **Reranking Settings**: Modify `RERANKING_ENABLED`, `RERANKING_CANDIDATES`, `RERANKING_MIN_SCORE`, and `RERANKING_FILTER_MODE` in `.env` to fine-tune result filtering.
+-   **Contextual Retrieval Prompt**: While not directly configurable via `.env`, the prompt used for generating chunk context (`prompts/context_prompt.py` - *verify path*) influences retrieval. Modifications require code changes.
+-   **Context-Aware Search**: This is largely automatic but relies on good conversation history management.
+-   **Debugging**: Use `/export_prompt` to inspect how context is generated and added to chunks, and how queries are enhanced.
 
 ### Contextual Retrieval Best Practices
 
-- Keep original documents well-structured for better context generation
-- Use descriptive section headings and clear organization
-- If context seems inadequate, consider manually enhancing document structure
-- Remember that context is generated once during document addition
-- For critical documents, consider regenerating embeddings after code updates
+-   **Document Structure**: Keep original documents well-structured with clear headings and logical flow, as this aids the AI in generating useful context for chunks.
+-   **Review Context**: Use `/export_prompt` to occasionally review the AI-generated context for important documents to ensure it's accurate and helpful.
+-   **Regeneration**: Remember that context is generated *once* when a document is added or updated. If you significantly restructure a document or the context generation logic improves, use `/regenerate_embeddings` for the specific document (or all documents) to apply the changes.
 
 ### Backup Strategies
 
@@ -472,10 +477,11 @@ Configure the hybrid search system for optimal performance:
 
 ### Debug Tools
 
-- Use `/export_prompt` to understand how prompts are constructed and see contextual enhancements
-- Toggle debug mode with `/toggle_debug` to see which model generated responses
-- Check logs for detailed operation information
-- Use admin commands for maintenance when needed
+-   **`/export_prompt`**: Essential for understanding how prompts are constructed, including contextual enhancements, conversation history, and the final query sent to the LLM.
+-   **`/toggle_debug`**: Shows the specific AI model used for each response and potentially other metadata.
+-   **Logs**: Check `bot_detailed.log` for detailed operational information, errors, and search process steps.
+-   **`/list_files`**: Useful for verifying the contents and names of documents, images, and lorebooks currently indexed by the bot.
+-   **Admin Commands**: `/reload_docs`, `/regenerate_embeddings` are crucial for maintenance and applying configuration changes.
 
 ### Custom Temperature Settings
 
@@ -505,13 +511,12 @@ Customize search result reranking with these settings:
 - Verify internet connection and API access
 
 #### Search Not Finding Relevant Results
-- Add more detailed documents to knowledge base
-- Use more specific queries
-- Check document formatting and content
-- Adjust TOP_K value in .env
-- Configure RERANKING settings for better results
-- Adjust embedding_weight and bm25_weight for fusion (default: 0.6/0.4)
-- Consider regenerating embeddings with `/regenerate_embeddings`
+-   **Query Specificity**: Try more specific queries.
+-   **Document Content**: Ensure relevant information exists and is well-structured in the knowledge base.
+-   **Hybrid Search Weights**: Adjust the embedding vs. BM25 weights in `.env` if results seem skewed towards semantic or keyword matches inappropriately.
+-   **Reranking Settings**: Experiment with `RERANKING_MIN_SCORE` and `RERANKING_FILTER_MODE`. A `strict` filter might be too aggressive, while `topk` might return irrelevant results.
+-   **Contextual Retrieval**: Use `/export_prompt` to check if the AI-generated context for relevant chunks is accurate. If not, consider regenerating embeddings for those documents.
+-   **Embeddings**: Consider regenerating embeddings (`/regenerate_embeddings`) if you suspect issues or after significant code changes.
 
 #### Model Errors
 - Ensure OpenRouter API key is valid
@@ -545,10 +550,10 @@ Customize search result reranking with these settings:
 - Check if your query is too complex or ambiguous
 
 #### Contextual Retrieval Issues
-- If context seems inadequate, check document structure
-- Use `/export_prompt` to verify context is being generated and included
-- Make sure OpenRouter API is configured correctly
-- Consider adjusting the context prompt template
+-   **Check Document Structure**: Poorly structured documents lead to poor context generation.
+-   **Verify with `/export_prompt`**: This is the best way to see the actual context being generated and included in prompts.
+-   **API Key/Model Access**: Ensure the model used for context generation (e.g., Gemini Flash) is accessible via your OpenRouter key.
+-   **Regenerate Embeddings**: If context is consistently poor for a document, try regenerating its embeddings.
 
 ### Logging and Debugging
 

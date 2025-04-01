@@ -11,10 +11,15 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Analyzes and processes images with vision-capable AI models
 - Remembers conversations with individual users for contextual responses
 - Imports documents from text files or Google Docs with automatic refresh
+- Answers questions about Ledus Banum 77 and Imperial lore with in-character responses
+- Analyzes and processes images with vision-capable AI models
+- Remembers conversations with individual users for contextual responses
+- Imports documents from text files or Google Docs with automatic refresh and change detection
 - Uses multiple AI models with fallback mechanisms for reliability
-- Performs semantic search with advanced reranking for improved relevance
+- Performs advanced hybrid search (semantic + keyword) with contextual retrieval and reranking
 - Supports user-selectable AI models for different interaction styles
 - Features dynamic temperature control for better response quality
+- Manages files within the knowledge base (list, retrieve)
 
 ## Setup & Installation
 
@@ -156,6 +161,8 @@ Comprehensive tools to help troubleshoot issues:
 | `/list_googledocs` | List all tracked Google Docs |
 | `/remove_googledoc` | Remove a tracked Google Doc |
 | `/rename_document` | Rename a document |
+| `/list_files` | List files in the knowledge base (Documents, Images, Lorebooks) |
+| `/retrieve_file` | Retrieve a specific file (Document or Lorebook) |
 
 #### Image Management
 | Command | Description |
@@ -185,13 +192,28 @@ Comprehensive tools to help troubleshoot issues:
 
 ## Recent Updates
 
-### Version 13.5 (March 2025)
-- Fixed "user object has no attribute nickname" error for better user mentions handling
-- Added retry system when models return blank or extremely short responses
-- Made TOP_K act as a maximum limit for chunks parsed in
-- Enhanced reranking system with improved filter modes for better search relevance
-- Added better error handling for edge cases
-- Improved message splitting for longer responses
+### Version 13.8 (March 2025)
+- Enhanced hybrid search with context-aware embedding generation and caching.
+- Improved Google Docs change detection using efficient content hashing.
+- Added weighted context-aware embedding generation.
+- Improved error handling for message sending and rate limits.
+
+### Version 13.7 (March 2025)
+- Implemented BM25 keyword search alongside vector search (hybrid search).
+- Added contextual retrieval: AI generates context for document chunks before embedding.
+- Switched to score-based fusion for combining search results.
+- Enhanced `/export_prompt` to show contextual enhancements.
+
+### Version 13.6 (March 2025)
+- Fixed user mention errors ("user object has no attribute nickname").
+- Added retry system for blank/short model responses.
+- Improved reranking filter modes and made TOP_K a maximum limit.
+
+### Version 13.5 (February 2025)
+- Added model-specific TOP_K configuration.
+- Implemented dynamic provider selection and model-specific fallbacks.
+- Added support for multimodal content in vision models.
+- Improved handling of image attachments and search results.
 
 ### Version 13 (February 2025)
 - Updated to use Google's Generative AI for embeddings
