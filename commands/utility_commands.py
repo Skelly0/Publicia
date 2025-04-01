@@ -276,8 +276,8 @@ def register_commands(bot):
 
             if new_state:
                 await interaction.followup.send("*neural pathways adjusted!* Informational prompt mode is now **ON**. Responses will be concise and factual, without roleplaying.")
-            else:
-                await interaction.followup.send("*neural pathways restored!* Standard prompt mode is now **ON**. Responses will be immersive and in-character.")
+            else: # Informational mode is OFF (Standard mode is ON)
+                await interaction.followup.send("*neural pathways restored!* Standard prompt mode is now **ON** (Informational mode is **OFF**). Responses will be immersive and in-character.")
 
         except Exception as e:
             logger.error(f"Error toggling informational prompt mode: {e}")

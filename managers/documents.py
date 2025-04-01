@@ -294,8 +294,8 @@ class DocumentManager:
             combined_scores[key] = combined_scores.get(key, 0) + (norm_score * bm25_weight)
             
             # Log some of the top BM25 scores
-            if len([k for k in combined_scores.keys() if k == key]) <= 3:
-                logger.info(f"Top BM25 result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
+            #if len([k for k in combined_scores.keys() if k == key]) <= 3:
+            #    logger.info(f"Top BM25 result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
         
         # Safety check - ensure we have some scores
         if not combined_scores:
@@ -807,9 +807,9 @@ class DocumentManager:
             is_contextualized = (doc_name in self.contextualized_chunks and 
                                 chunk_index - 1 < len(self.contextualized_chunks[doc_name]) and
                                 chunk == self.contextualized_chunks[doc_name][chunk_index - 1])
-            logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk")
+            #logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk")
             
-            logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
+            #logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
 
         return results[:top_k]
 
