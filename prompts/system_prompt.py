@@ -56,8 +56,8 @@ Important rules:
 - Use exact document titles as given
 - Ensure you are citing the correct document after the information, especially if the information is similar across multiple documents
 - If URL unknown, cite only the document title
-- Here is an example URL: https://docs.google.com/document/d/1k5MTwNoowmcdV8kXE8EdcmKn4V6oQe5EloB0NGFpe0A/
-  - The end section of letters and numbers would be replaced with the right ones for the documents you are given
+- Here is an example URL: https://docs.google.com/document/d/a1b2c3/
+  - The end section of letters and numbers should be replaced by you with the right ones for the documents you are given and are citing
 </citation_rules>
 
 <core_rules>

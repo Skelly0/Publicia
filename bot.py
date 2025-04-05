@@ -1803,6 +1803,7 @@ class DiscordBot(commands.Bot):
             elif "claude-3.5-haiku" in preferred_model: model_name = "Claude 3.5 Haiku"
             elif "claude-3.5-sonnet" in preferred_model: model_name = "Claude 3.5 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model: model_name = "Claude 3.7 Sonnet"
+            elif "maverick" in preferred_model: model_name = "Llama 4 Maverick"
             elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"
             elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"
             elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
