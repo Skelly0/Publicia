@@ -228,6 +228,8 @@ def register_commands(bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
+            elif "meta-llama/llama-4-maverick" in preferred_model:
+                model_name = "Llama 4 Maverick"
             elif "deepseek/deepseek-chat-v3" in preferred_model:
                 model_name = "DeepSeek V3 0324"
             elif preferred_model.startswith("google/"):

@@ -71,6 +71,10 @@ class Config:
             "models/text-embedding-004": 20,  # Optimized for larger chunks
             # Microsoft Models
             "microsoft/phi-4-multimodal-instruct": 15,
+            # Meta-Llama Maverick and fallbacks
+            "meta-llama/llama-4-maverick:floor": 9,
+            "meta-llama/llama-4-maverick": 9,
+            "meta-llama/llama-4-scout": 9,
         }
         
         # Validate required environment variables

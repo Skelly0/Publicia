@@ -98,6 +98,7 @@ def register_commands(bot):
         app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
         app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
         app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
+        app_commands.Choice(name="Llama 4 Maverick", value="meta-llama/llama-4-maverick:floor"),
         #app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
     ])
     async def set_model(interaction: discord.Interaction, model: str):
@@ -121,6 +122,8 @@ def register_commands(bot):
                 model_name = "DeepSeek V3 0324"
             elif "deepseek/deepseek-r1" in model:
                 model_name = "DeepSeek-R1"
+            elif "meta-llama/llama-4-maverick" in model:
+                model_name = "Llama 4 Maverick"
             elif model == "google/gemini-2.5-pro-exp-03-25:free":
                 model_name = "Gemini 2.5 Pro Exp"
             elif model.startswith("google/"): # Keep this as a fallback for other google models
@@ -164,7 +167,8 @@ def register_commands(bot):
                     f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     f"**Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
-                    #f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. It's not a good model. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
+                f"**Llama 4 Maverick**: Vision-language model optimized for multimodal tasks, instruction-tuned for assistant-like behavior, image reasoning, and general-purpose multimodal interaction. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
+                #f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. It's not a good model. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
                 ]
                 
                 response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -196,6 +200,8 @@ def register_commands(bot):
                 model_name = "DeepSeek V3 0324"
             elif "deepseek/deepseek-r1" in preferred_model:
                 model_name = "DeepSeek-R1"
+            elif "meta-llama/llama-4-maverick" in preferred_model:
+                model_name = "Llama 4 Maverick"
             elif preferred_model == "google/gemini-2.5-pro-exp-03-25:free":
                 model_name = "Gemini 2.5 Pro Exp"
             elif preferred_model.startswith("google/"): # Keep this as a fallback for other google models

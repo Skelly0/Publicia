@@ -87,7 +87,8 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-sonnet",
             "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku",
-            "anthropic/claude-3-haiku:beta"
+            "anthropic/claude-3-haiku:beta",
+            "meta-llama/llama-4-maverick:floor"
         ]
 
     def sanitize_discord_text(self, text: str) -> str:
