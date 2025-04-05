@@ -801,6 +801,14 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        elif "meta-llama/llama-4-maverick" in model:
+            # DeepSeek Chat (non-v3) fallbacks
+            fallbacks = [
+                "meta-llama/llama-4-maverick:floor",
+                "meta-llama/llama-4-maverick",
+                "meta-llama/llama-4-scout",
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
         # Qwen models
         elif model_family == "qwen":
             fallbacks = [
