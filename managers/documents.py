@@ -600,7 +600,7 @@ class DocumentManager:
 
             # Calculate word count
             word_count = len(content.split())
-            max_words_for_context = 20000 # Define the limit
+            max_words_for_context = 30000 # Define the limit
             logger.info(f"Document '{name}' word count: {word_count}")
 
             # Create original chunks (always needed)
