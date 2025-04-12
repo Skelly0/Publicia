@@ -75,6 +75,8 @@ class Config:
             "meta-llama/llama-4-maverick:floor": 9,
             "meta-llama/llama-4-maverick": 9,
             "meta-llama/llama-4-scout": 9,
+            # X AI Models
+            "x-ai/grok-3-mini-beta": 6,
         }
         
         # Validate required environment variables

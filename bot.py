@@ -1808,6 +1808,7 @@ class DiscordBot(commands.Bot):
             elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"
             elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model: model_name = "Anubis Pro 105B"
+            elif "grok" in preferred_model: model_name = "Grok 3 Mini"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call
