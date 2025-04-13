@@ -11,13 +11,16 @@ import asyncio
 from datetime import datetime
 from pathlib import Path
 import google.generativeai as genai
-from google.generativeai import types as genai_types
+# Import HarmCategory and HarmBlockThreshold enums
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+from google.generativeai import types as genai_types # Keep alias for other types if needed
 from PIL import Image
 from io import BytesIO
 import base64
 
 from utils.helpers import split_message, is_image
-from prompts.system_prompt import SYSTEM_PROMPT # Import system prompt for context if needed, though likely not directly used for image gen prompt
+# No longer need system prompt import here
+# from prompts.system_prompt import SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -290,64 +293,54 @@ def register_commands(bot):
             logger.error(f"Error updating image description: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while updating the image description.")
 
-    # --- Gemini Image Generation Command ---
+    """# --- Gemini Image Generation Command ---
     @bot.tree.command(name="generate_gemini_image", description="Generate an image using Gemini 2.0 Flash based on a text prompt.")
     @app_commands.describe(prompt="The text prompt to generate an image from.")
     async def generate_gemini_image_cmd(interaction: discord.Interaction, prompt: str):
-        """Generates an image using Gemini based on the provided prompt, potentially using document context."""
+        #Generates an image using Gemini based on the provided prompt.
         await interaction.response.defer()
-        status_msg = await interaction.followup.send("*neural pathways activating... analyzing prompt and searching knowledge base...*")
+        # Revert status message to simpler version
+        status_msg = await interaction.followup.send("*neural pathways activating... contacting Gemini for image generation...*")
 
         try:
-            # --- Fetch Document Context ---
-            preferred_model = bot.user_preferences_manager.get_preferred_model(
-                str(interaction.user.id),
-                default_model=bot.config.LLM_MODEL # Use default LLM for context search config
-            )
-            max_results = bot.config.get_top_k_for_model(preferred_model) # Use config for consistency
-
-            logger.info(f"Fetching context for image generation prompt (max_results={max_results}): {prompt}")
-            search_results = await bot.process_hybrid_query(
-                prompt,
-                interaction.user.name,
-                max_results=max_results,
-                use_context=False # Keep this False for slash commands
-            )
-
-            doc_context = ""
-            if search_results:
-                logger.info(f"Found {len(search_results)} relevant document sections for image prompt.")
-                # Simple formatting for image prompt context
-                context_chunks = [chunk for doc, chunk, score, image_id, chunk_index, total_chunks in search_results if not image_id] # Exclude image descriptions themselves
-                if context_chunks:
-                    doc_context = "Relevant Context:\n" + "\n\n".join(context_chunks)
-                    doc_context = doc_context[:3000] # Limit context size for prompt
-                    await status_msg.edit(content=f"*neural pathways activating... found {len(context_chunks)} relevant text sections... contacting Gemini for image generation...*")
-                else:
-                     await status_msg.edit(content="*neural pathways activating... no relevant text sections found... contacting Gemini for image generation...*")
-
-            else:
-                logger.info("No relevant document sections found for image prompt.")
-                await status_msg.edit(content="*neural pathways activating... contacting Gemini for image generation...*")
-
-
             # --- Initialize Gemini Client ---
             gemini_client = _get_gemini_client(bot.config)
             if not gemini_client:
                 await status_msg.edit(content="*neural circuit error!* Failed to initialize Gemini client. Check API key configuration.")
                 return
 
-            # --- Prepare Final Prompt ---
-            final_prompt = f"{doc_context}\n\nUser Prompt: {prompt}" if doc_context else prompt
-            logger.info(f"Generating Gemini image with final prompt:\n{final_prompt}")
+            # --- Use Original Prompt Again, Keep Safety Settings ---
+            # Revert to using the original prompt directly, without the prefix.
+            final_prompt = prompt
+            logger.info(f"Generating Gemini image with original prompt and safety settings: {final_prompt}")
 
-            # Call Gemini API
-            response = await gemini_client.generate_content_async( # Use async version
-                contents=[final_prompt], # Use the combined prompt
-                # generation_config=genai_types.GenerationConfig(
-                #     response_modalities=['Text', 'Image'] # REMOVED: Causes error
-                # )
-                # No specific generation config needed for basic image generation here unless tuning parameters
+            # Define safety settings to reduce blocking
+            safety_settings = {
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+                # Note: CIVIC_INTEGRITY might not be directly available or applicable in all API versions/models
+                # HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY: HarmBlockThreshold.BLOCK_NONE,
+            }
+            logger.info(f"Using safety settings: {safety_settings}")
+
+            # Define generation config based on user request
+            config = genai_types.GenerationConfig(
+                temperature=1.0,
+                top_p=0.95,
+                top_k=40,
+                max_output_tokens=8192,
+                #response_mime_type="text/plain", # Omitting as likely incorrect for image model
+                #response_modalities=["Text", "Image"], # Omitting as likely handled by model/API structure
+            )
+            #logger.info(f"Using generation config: {generation_config}")
+
+            # Call Gemini API with safety and generation settings
+            response = await gemini_client.generate_content_async(
+                contents=[final_prompt],
+                safety_settings=safety_settings,
+                config=config
             )
 
             generated_text = ""
@@ -375,17 +368,29 @@ def register_commands(bot):
                         logger.error(f"Failed to decode base64 image data from Gemini: {b64_err}")
                     except Exception as decode_err:
                          logger.error(f"An unexpected error occurred during image decoding: {decode_err}")
-
+                elif part.inline_data is not None:
+                    image = Image.open(BytesIO((part.inline_data.data)))
+                    image.save('gemini-native-image.png')
+                    image.show()
 
             if not image_data:
-                await status_msg.edit(content=f"*neural pathway incomplete!* Gemini did not return a valid image.\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}")
+                # Truncate the Gemini text response if it's too long for Discord
+                max_discord_msg_len = 2000
+                base_error_msg = "*neural pathway incomplete!* Gemini did not return a valid image.\n\n**Gemini's Text Response:**\n"
+                available_len = max_discord_msg_len - len(base_error_msg) - 10 # Leave some buffer
+
+                truncated_gemini_text = generated_text[:available_len] + "..." if len(generated_text) > available_len else generated_text
+                if not truncated_gemini_text:
+                    truncated_gemini_text = "No text response."
+
+                await status_msg.edit(content=f"{base_error_msg}{truncated_gemini_text}")
                 return
 
             # Save the image using ImageManager
             await status_msg.edit(content="*neural pathways stabilizing... saving generated image...*")
             image_name = f"gemini_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            context_note = "(Used document context)" if doc_context else "(No document context used)"
-            description = f"Generated by Gemini {context_note} with prompt: '{prompt}'\n\nGemini Text: {generated_text if generated_text else 'None'}"
+            # Remove context note from description
+            description = f"Generated by Gemini with prompt: '{prompt}'\n\nGemini Text: {generated_text if generated_text else 'None'}"
 
             image_id = await bot.image_manager.add_image(image_name, image_data, description)
 
@@ -393,8 +398,8 @@ def register_commands(bot):
             image_path = Path(bot.image_manager.metadata[image_id]['path'])
             with open(image_path, 'rb') as f:
                 file = discord.File(f, filename=f"{image_name}.png")
-                context_used_msg = " using relevant document context" if doc_context else ""
-                response_text = f"*neural synthesis complete!* Generated image (ID: {image_id}){context_used_msg} based on prompt: '{prompt}'\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}"
+                # Remove context message from response text
+                response_text = f"*neural synthesis complete!* Generated image (ID: {image_id}) based on prompt: '{prompt}'\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}"
                 # Split message if needed
                 for chunk in split_message(response_text):
                      await interaction.followup.send(chunk) # Send text chunks first
@@ -428,7 +433,7 @@ def register_commands(bot):
         prompt="The text prompt describing the edits."
     )
     async def edit_gemini_image_cmd(interaction: discord.Interaction, image_id: str, prompt: str):
-        """Edits an existing image using Gemini based on the provided prompt and image ID."""
+        #Edits an existing image using Gemini based on the provided prompt and image ID.
         await interaction.response.defer()
         status_msg = await interaction.followup.send("*neural pathways activating... retrieving image and contacting Gemini for editing...*")
 
@@ -475,10 +480,9 @@ def register_commands(bot):
 
             # 4. Call Gemini API
             response = await gemini_client.generate_content_async( # Use async version
-                contents=contents,
-                generation_config=genai_types.GenerationConfig(
-                    response_modalities=['Text', 'Image']
-                )
+                contents=[final_prompt], # Use the original user prompt
+                safety_settings=safety_settings
+                # Removed empty generation_config
             )
 
             generated_text = ""
@@ -547,3 +551,4 @@ def register_commands(bot):
                  await interaction.followup.send(f"*neural circuit overload!* An error occurred during Gemini image editing: {e}")
             except Exception as final_err:
                  logger.error(f"Failed to send error message: {final_err}")
+        """
