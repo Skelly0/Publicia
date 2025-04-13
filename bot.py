@@ -1850,7 +1850,7 @@ class DiscordBot(commands.Bot):
             if raw_doc_contexts:
                 raw_doc_context_combined = "\n\n".join(raw_doc_contexts)
                 # Truncate if excessively long to avoid huge prompts
-                max_raw_context_len = 15000 # Adjust as needed
+                max_raw_context_len = 32000 # Adjust as needed
                 if len(raw_doc_context_combined) > max_raw_context_len:
                     raw_doc_context_combined = raw_doc_context_combined[:max_raw_context_len] + "\n... [Context Truncated]"
                     logger.warning(f"Raw document context truncated to {max_raw_context_len} characters.")
