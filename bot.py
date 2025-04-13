@@ -1293,8 +1293,10 @@ class DiscordBot(commands.Bot):
         
         return ""
 
+    # Note: This function exists but is not actively used in the primary context-aware search flow,
+    # which now relies on generate_context_aware_embedding.
     def enhance_context_dependent_query(self, query: str, context: str) -> str:
-        """Enhance a context-dependent query with conversation context."""
+        """(Legacy/Unused) Enhance a context-dependent query text with conversation context string."""
         if not context:
             return query
             
@@ -1366,41 +1368,61 @@ class DiscordBot(commands.Bot):
         
         return new_results
 
-    async def generate_context_aware_embedding(self, query: str, context: str): # Make async
-        """Generate an embedding that combines current query with context."""
-        if not context:
-            # No context, use normal embedding asynchronously
-            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True) # Await async call
+    async def generate_context_aware_embedding(self, query: str, conversation_history: List[Dict]): # Accept history list
+        """Generate an embedding that combines current query with weighted conversation history."""
+
+        # 1. Select relevant history (e.g., last 5 messages, excluding the current query if present)
+        # Ensure history is ordered chronologically (oldest to newest)
+        relevant_history = conversation_history[-6:-1] # Get up to 5 messages before the last one (which is often the current query context)
+        if not relevant_history:
+            # No history, use normal query embedding
+            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True)
             if embedding_result.size == 0:
-                 logger.error("Failed to generate query embedding for context-aware search (no context).")
-                 return None # Indicate failure
+                 logger.error("Failed to generate query embedding (no history).")
+                 return None
             return embedding_result[0]
 
-        # Generate embeddings for different query variants asynchronously
-        query_variants = [
-            query,                   # Original query (highest weight)
-            f"{query} {context}",    # Query + context
-            context                  # Just context (lowest weight)
-        ]
+        # 2. Prepare texts for embedding (query + history messages content)
+        texts_to_embed = [query] + [msg.get("content", "") for msg in relevant_history]
 
-        embeddings = await self.document_manager.generate_embeddings(query_variants, is_query=True) # Await async call
-        if embeddings.size == 0 or embeddings.shape[0] != len(query_variants):
-            logger.error("Failed to generate embeddings for context-aware search variants.")
-            # Fallback to simple query embedding asynchronously
-            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True) # Await async call
-            if embedding_result.size == 0: return None # Indicate failure
+        # 3. Generate embeddings for all texts at once
+        embeddings = await self.document_manager.generate_embeddings(texts_to_embed, is_query=True)
+        if embeddings.size == 0 or embeddings.shape[0] != len(texts_to_embed):
+            logger.error("Failed to generate embeddings for context-aware search (history variants).")
+            # Fallback to simple query embedding
+            embedding_result = await self.document_manager.generate_embeddings([query], is_query=True)
+            if embedding_result.size == 0: return None
             return embedding_result[0]
 
+        query_embedding = embeddings[0]
+        history_embeddings = embeddings[1:]
 
-        # Weight: 60% original query, 30% combined, 10% context
-        weighted_embedding = 0.6 * embeddings[0] + 0.3 * embeddings[1] + 0.1 * embeddings[2]
-        
-        # Normalize the embedding
-        norm = np.linalg.norm(weighted_embedding)
+        # 4. Define weighting scheme (e.g., exponential decay)
+        decay_factor = 0.8  # Newer messages get higher weight
+        weights = np.array([decay_factor**i for i in range(len(history_embeddings) - 1, -1, -1)]) # Weights: [..., 0.8^2, 0.8^1, 0.8^0]
+        if np.sum(weights) > 0: # Avoid division by zero if weights sum to 0
+            weights /= np.sum(weights) # Normalize weights
+        else:
+            weights = np.ones(len(history_embeddings)) / len(history_embeddings) # Fallback to equal weights
+
+        # 5. Calculate weighted average of history embeddings
+        weighted_history_embedding = np.sum(history_embeddings * weights[:, np.newaxis], axis=0)
+
+        # 6. Combine query embedding and weighted history embedding
+        # Adjust weights as needed, e.g., 70% query, 30% history context
+        combined_embedding = 0.7 * query_embedding + 0.3 * weighted_history_embedding
+
+        # 7. Normalize the final embedding
+        norm = np.linalg.norm(combined_embedding)
         if norm > 0:
-            weighted_embedding = weighted_embedding / norm
-            
-        return weighted_embedding
+            final_embedding = combined_embedding / norm
+        else:
+            # Fallback to query embedding if norm is zero
+            final_embedding = query_embedding
+            logger.warning("Combined embedding norm was zero, falling back to query embedding.")
+
+        logger.info(f"Generated context-aware embedding using {len(relevant_history)} history messages.")
+        return final_embedding
 
     async def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True): # Make async
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
@@ -1415,87 +1437,162 @@ class DiscordBot(commands.Bot):
             
             # Still cache results for consistency
             self.cache_search_results(username, question, search_results)
-            return search_results
+            return search_results # Added return statement here
 
-        is_followup = self.is_context_dependent_query(question)
-        original_question = question
-        
-        # For standard non-follow-up queries
-        if not is_followup:
-            # Determine whether to apply re-ranking
-            apply_reranking = self.config.RERANKING_ENABLED
-            
-            # Do regular search with re-ranking asynchronously
-            search_results = await self.document_manager.search( # Await async call
-                question,
-                top_k=max_results,
-                apply_reranking=apply_reranking
+        # --- Simplified Logic: Always attempt context-aware embedding ---
+        # The generate_context_aware_embedding function handles the fallback
+        # to standard query embedding if no relevant history exists.
+
+        logger.info("Attempting context-aware search using conversation history (will fallback if no history)")
+
+        # Get conversation history list
+        # Fetch slightly more history as context for the embedding generation
+        conversation_history = self.conversation_manager.get_conversation_messages(username, limit=10)
+
+        # Generate context-aware embedding (or standard embedding if no history)
+        embedding = await self.generate_context_aware_embedding(question, conversation_history)
+
+        if embedding is None:
+             logger.error("Failed to generate any embedding, falling back to basic keyword search (if implemented) or empty results.")
+             # TODO: Implement a basic keyword search fallback?
+             # For now, return empty results if embedding fails completely.
+             return [] # Return empty list if embedding generation failed
+
+        # Search with the generated embedding (context-aware or standard)
+        apply_reranking = self.config.RERANKING_ENABLED
+
+        if apply_reranking:
+            # Get more initial results for re-ranking
+            initial_results = self.document_manager.custom_search_with_embedding(
+                embedding,
+                top_k=self.config.RERANKING_CANDIDATES
             )
-            
-            # Cache for future follow-ups
-            self.cache_search_results(username, question, search_results)
-            return search_results
-        
-        # For follow-up queries
-        logger.info(f"Detected follow-up query: '{question}'")
-        
-        # Try to get more results from previous search
-        cached_results = self.get_additional_results(username, top_k=max_results)
-        
-        if cached_results:
-            # We have unused results, no need for new search
-            logger.info(f"Using {len(cached_results)} cached results")
-            return cached_results
-        
-        # No cached results, use context-aware search
-        logger.info("No cached results, performing context-aware search")
-        
-        # Get conversation context
-        context = self.get_conversation_context(username, question)
-        
-        if context:
-            logger.info(f"Using context from conversation: '{context}'")
-            
-            # Generate context-aware embedding asynchronously
-            embedding = await self.generate_context_aware_embedding(question, context) # Await async call
-            if embedding is None:
-                 logger.error("Failed to generate context-aware embedding, falling back to standard search.")
-                 # Fallback to normal search with re-ranking asynchronously
-                 search_results = await self.document_manager.search( # Await async call
-                     question,
-                     top_k=max_results,
-                     apply_reranking=self.config.RERANKING_ENABLED
-                 )
-                 return search_results
 
-            # Search with this embedding and apply re-ranking
-            apply_reranking = self.config.RERANKING_ENABLED
-            
-            if apply_reranking:
-                # Get more initial results for re-ranking
-                initial_results = self.document_manager.custom_search_with_embedding(
-                    embedding, 
-                    top_k=self.config.RERANKING_CANDIDATES
-                )
-                
-                # Apply re-ranking asynchronously
-                if initial_results:
-                    logger.info(f"Applying re-ranking to {len(initial_results)} context-aware results")
-                    results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
-                    return results
-            
-            # If re-ranking is disabled or failed, use standard search (already got initial_results via custom_search_with_embedding)
-            results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
-            return results
+            # Apply re-ranking asynchronously
+            if initial_results:
+                logger.info(f"Applying re-ranking to {len(initial_results)} results")
+                results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
+            else:
+                results = [] # No initial results to rerank
         else:
-            # Fallback to normal search with re-ranking asynchronously
-            logger.info("No context found, using standard search with re-ranking")
-            search_results = await self.document_manager.search( # Await async call
-                question,
-                top_k=max_results,
-                apply_reranking=self.config.RERANKING_ENABLED
-            )
-            return search_results
+            # If re-ranking is disabled, perform direct search with the embedding
+            results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
+
+        # Cache results (optional, but kept for potential future use)
+        # Note: The immediate utility for follow-ups is reduced as context is always checked now.
+        self.cache_search_results(username, question, results)
+
+        return results
+        # --- End Simplified Logic ---
+
+        # --- Old Logic (Commented out for reference) ---
+        # is_followup = self.is_context_dependent_query(question)
+        # original_question = question
+        #
+        # # # For standard non-follow-up queries
+        # # if not is_followup:
+        # #     # Determine whether to apply re-ranking
+        # #     apply_reranking = self.config.RERANKING_ENABLED
+        # #
+        # #     # Do regular search with re-ranking asynchronously
+        # #     search_results = await self.document_manager.search( # Await async call
+        # #         question,
+        # #         top_k=max_results,
+        # #         apply_reranking=apply_reranking
+        # #     )
+        # #
+        # #     # Cache for future follow-ups
+        # #     self.cache_search_results(username, question, search_results)
+        # #     return search_results
+        # #
+        # # # For follow-up queries
+        # # logger.info(f"Detected follow-up query: '{question}'")
+        # #
+        # # # Try to get more results from previous search
+        # # cached_results = self.get_additional_results(username, top_k=max_results)
+        # #
+        # # if cached_results:
+        # #     # We have unused results, no need for new search
+        # #     logger.info(f"Using {len(cached_results)} cached results")
+        # #     return cached_results
+        # #
+        # # # No cached results, use context-aware search
+        # # logger.info("No cached results, performing context-aware search using conversation history")
+        # #
+        # # # Get conversation history list
+        # # conversation_history = self.conversation_manager.get_conversation_messages(username, limit=10) # Get more history for embedding
+        # # if conversation_history:
+        # #     logger.info(f"Using {len(conversation_history)} messages for context-aware embedding")
+        # #     # Generate context-aware embedding using history list
+        # #     embedding = await self.generate_context_aware_embedding(question, conversation_history) # Pass history list
+        # #
+        # #     if embedding is None:
+        # #          logger.error("Failed to generate context-aware embedding, falling back to standard search.")
+        # #          # Fallback to normal search with re-ranking asynchronously
+        # #          search_results = await self.document_manager.search( # Await async call
+        # #              question,
+        # #              top_k=max_results,
+        # #              apply_reranking=self.config.RERANKING_ENABLED
+        # #          )
+        # #          return search_results
+        # #
+        # #     # Search with this embedding and apply re-ranking
+        # #     apply_reranking = self.config.RERANKING_ENABLED
+        # #
+        # #     if apply_reranking:
+        # #         # Get more initial results for re-ranking
+        # #         initial_results = self.document_manager.custom_search_with_embedding(
+        # #             embedding,
+        # #             top_k=self.config.RERANKING_CANDIDATES
+        # #         )
+        # #
+        # #         # Apply re-ranking asynchronously
+        # #         if initial_results:
+        # #             logger.info(f"Applying re-ranking to {len(initial_results)} context-aware results")
+        # #             results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
+        # #             return results
+        # #
+        # #     # If re-ranking is disabled or failed, use standard search (already got initial_results via custom_search_with_embedding)
+        # #     results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results)
+        # #     return results
+        # # else:
+        # #     # Fallback to normal search with re-ranking asynchronously
+        # #     logger.info("No context found, using standard search with re-ranking")
+        # #     search_results = await self.document_manager.search( # Await async call
+        # #         question,
+        # #         top_k=max_results,
+        # #         apply_reranking=self.config.RERANKING_ENABLED
+        # #     )
+        # #     return search_results
+        #
+        #     # Search with this embedding and apply re-ranking
+        #     # apply_reranking = self.config.RERANKING_ENABLED # Part of old logic
+        #     #
+        #     # if apply_reranking: # Part of old logic
+        #     #     # Get more initial results for re-ranking
+        #     #     initial_results = self.document_manager.custom_search_with_embedding( # Part of old logic
+        #     #         embedding,
+        #     #         top_k=self.config.RERANKING_CANDIDATES
+        #     #     )
+        #     #
+        #     #     # Apply re-ranking asynchronously
+        #     #     if initial_results: # Part of old logic
+        #     #         logger.info(f"Applying re-ranking to {len(initial_results)} context-aware results")
+        #     #         results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
+        #     #         return results
+        #     #
+        #     # # If re-ranking is disabled or failed, use standard search (already got initial_results via custom_search_with_embedding)
+        #     # results = self.document_manager.custom_search_with_embedding(embedding, top_k=max_results) # Part of old logic
+        #     # return results
+        # # else: # Part of old logic (fallback when no history)
+        # #     # Fallback to normal search with re-ranking asynchronously
+        # #     logger.info("No context found, using standard search with re-ranking") # Part of old logic
+        # #     search_results = await self.document_manager.search( # Await async call # Part of old logic
+        # #         question,
+        # #         top_k=max_results,
+        # #         apply_reranking=self.config.RERANKING_ENABLED
+        # #     )
+        # #     return search_results # Part of old logic
 
     async def on_message(self, message: discord.Message):
         """Handle incoming messages, ignoring banned users."""
