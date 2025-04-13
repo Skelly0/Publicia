@@ -10,9 +10,33 @@ import aiohttp
 import asyncio
 from datetime import datetime
 from pathlib import Path
+import google.generativeai as genai
+from google.generativeai import types as genai_types
+from PIL import Image
+from io import BytesIO
+import base64
+
 from utils.helpers import split_message, is_image
 
 logger = logging.getLogger(__name__)
+
+# --- Gemini Helper ---
+def _get_gemini_client(config):
+    """Initializes and returns a Gemini client."""
+    try:
+        # Use the GOOGLE_API_KEY from the bot's config
+        api_key = config.GOOGLE_API_KEY
+        if not api_key:
+            logger.error("GOOGLE_API_KEY not found in configuration.")
+            return None
+        # Configure the client directly with the API key
+        genai.configure(api_key=api_key)
+        # Create and return the client instance
+        client = genai.GenerativeModel(model_name="gemini-2.0-flash-exp-image-generation") # Use GenerativeModel directly
+        return client
+    except Exception as e:
+        logger.error(f"Failed to initialize Gemini client: {e}")
+        return None
 
 def register_commands(bot):
     """Register all image handling commands with the bot."""
@@ -249,18 +273,238 @@ def register_commands(bot):
             if not description:
                 await interaction.followup.send("*neural error detected!* Description cannot be empty.")
                 return
-                
+
             if image_id not in bot.image_manager.metadata:
                 await interaction.followup.send(f"*neural error detected!* Could not find image with ID: {image_id}")
                 return
-                
+
             success = await bot.image_manager.update_description(image_id, description) # Added await
-            
+
             if success:
                 await interaction.followup.send(f"*neural pathways reconfigured!* Updated description for image with ID: {image_id}")
             else:
                 await interaction.followup.send(f"*neural error detected!* Could not update image description for ID: {image_id}")
-                
+
         except Exception as e:
             logger.error(f"Error updating image description: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while updating the image description.")
+
+    # --- Gemini Image Generation Command ---
+    @bot.tree.command(name="generate_gemini_image", description="Generate an image using Gemini 2.0 Flash based on a text prompt.")
+    @app_commands.describe(prompt="The text prompt to generate an image from.")
+    async def generate_gemini_image_cmd(interaction: discord.Interaction, prompt: str):
+        """Generates an image using Gemini based on the provided prompt."""
+        await interaction.response.defer()
+        status_msg = await interaction.followup.send("*neural pathways activating... contacting Gemini for image generation...*")
+
+        try:
+            gemini_client = _get_gemini_client(bot.config)
+            if not gemini_client:
+                await status_msg.edit(content="*neural circuit error!* Failed to initialize Gemini client. Check API key configuration.")
+                return
+
+            logger.info(f"Generating Gemini image with prompt: {prompt}")
+
+            # Call Gemini API
+            response = await gemini_client.generate_content_async( # Use async version
+                contents=[prompt], # Contents should be a list
+                generation_config=genai_types.GenerationConfig(
+                    response_modalities=['Text', 'Image']
+                )
+            )
+
+            generated_text = ""
+            image_data = None
+
+            # Process response parts
+            for part in response.candidates[0].content.parts:
+                if part.text:
+                    generated_text += part.text + "\n"
+                elif hasattr(part, 'inline_data') and part.inline_data: # Check for inline_data attribute
+                    # Decode base64 image data
+                    try:
+                        image_bytes = base64.b64decode(part.inline_data.data)
+                        # Validate if it's actually image data using PIL
+                        try:
+                            img_test = Image.open(BytesIO(image_bytes))
+                            img_test.verify() # Verify image data integrity
+                            image_data = image_bytes # Store the valid bytes
+                            logger.info("Successfully decoded and validated Gemini image data.")
+                        except (Image.UnidentifiedImageError, SyntaxError, IOError) as img_err:
+                            logger.error(f"Gemini returned invalid image data: {img_err}")
+                            # Optionally log the first few bytes of the data for debugging
+                            logger.debug(f"Invalid image data (first 100 bytes): {part.inline_data.data[:100]}")
+                    except base64.binascii.Error as b64_err:
+                        logger.error(f"Failed to decode base64 image data from Gemini: {b64_err}")
+                    except Exception as decode_err:
+                         logger.error(f"An unexpected error occurred during image decoding: {decode_err}")
+
+
+            if not image_data:
+                await status_msg.edit(content=f"*neural pathway incomplete!* Gemini did not return a valid image.\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}")
+                return
+
+            # Save the image using ImageManager
+            await status_msg.edit(content="*neural pathways stabilizing... saving generated image...*")
+            image_name = f"gemini_generated_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            description = f"Generated by Gemini with prompt: '{prompt}'\n\nGemini Text: {generated_text if generated_text else 'None'}"
+
+            image_id = await bot.image_manager.add_image(image_name, image_data, description)
+
+            # Send the result
+            image_path = Path(bot.image_manager.metadata[image_id]['path'])
+            with open(image_path, 'rb') as f:
+                file = discord.File(f, filename=f"{image_name}.png")
+                response_text = f"*neural synthesis complete!* Generated image (ID: {image_id}) based on prompt: '{prompt}'\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}"
+                # Split message if needed
+                for chunk in split_message(response_text):
+                     await interaction.followup.send(chunk) # Send text chunks first
+                await interaction.followup.send(file=file) # Then send the file
+
+            # Clean up original status message if possible and needed (followup sends new messages)
+            try:
+                await status_msg.delete()
+            except discord.NotFound:
+                pass # Ignore if already deleted
+            except Exception as del_err:
+                logger.warning(f"Could not delete original status message: {del_err}")
+
+
+        except Exception as e:
+            logger.error(f"Error generating Gemini image: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            try:
+                await status_msg.edit(content=f"*neural circuit overload!* An error occurred during Gemini image generation: {e}")
+            except discord.NotFound:
+                 await interaction.followup.send(f"*neural circuit overload!* An error occurred during Gemini image generation: {e}")
+            except Exception as final_err:
+                 logger.error(f"Failed to send error message: {final_err}")
+
+
+    # --- Gemini Image Editing Command ---
+    @bot.tree.command(name="edit_gemini_image", description="Edit an existing image using Gemini 2.0 Flash based on a text prompt.")
+    @app_commands.describe(
+        image_id="The ID of the image in Publicia's knowledge base to edit.",
+        prompt="The text prompt describing the edits."
+    )
+    async def edit_gemini_image_cmd(interaction: discord.Interaction, image_id: str, prompt: str):
+        """Edits an existing image using Gemini based on the provided prompt and image ID."""
+        await interaction.response.defer()
+        status_msg = await interaction.followup.send("*neural pathways activating... retrieving image and contacting Gemini for editing...*")
+
+        try:
+            # 1. Retrieve the image from ImageManager
+            if image_id not in bot.image_manager.metadata:
+                await status_msg.edit(content=f"*neural error detected!* Could not find image with ID: {image_id}")
+                return
+
+            try:
+                input_image_data, _ = bot.image_manager.get_image(image_id)
+                # Validate input image data
+                try:
+                    img_test = Image.open(BytesIO(input_image_data))
+                    img_test.verify()
+                except (Image.UnidentifiedImageError, SyntaxError, IOError) as img_err:
+                    logger.error(f"Input image {image_id} is corrupted or invalid: {img_err}")
+                    await status_msg.edit(content=f"*neural error detected!* The input image (ID: {image_id}) appears to be corrupted or invalid.")
+                    return
+            except FileNotFoundError:
+                await status_msg.edit(content=f"*neural error detected!* Image file not found for ID: {image_id}")
+                return
+            except Exception as retrieve_err:
+                 logger.error(f"Error retrieving image {image_id}: {retrieve_err}")
+                 await status_msg.edit(content=f"*neural error detected!* Failed to retrieve input image (ID: {image_id}).")
+                 return
+
+            # 2. Initialize Gemini Client
+            gemini_client = _get_gemini_client(bot.config)
+            if not gemini_client:
+                await status_msg.edit(content="*neural circuit error!* Failed to initialize Gemini client. Check API key configuration.")
+                return
+
+            logger.info(f"Editing Gemini image {image_id} with prompt: {prompt}")
+
+            # 3. Prepare API Contents (Prompt + Image)
+            # Determine MIME type (assuming PNG as saved by ImageManager)
+            mime_type = "image/png"
+            contents = [
+                prompt, # Text prompt first
+                # Then the image data
+                {'mime_type': mime_type, 'data': base64.b64encode(input_image_data).decode('utf-8')}
+            ]
+
+            # 4. Call Gemini API
+            response = await gemini_client.generate_content_async( # Use async version
+                contents=contents,
+                generation_config=genai_types.GenerationConfig(
+                    response_modalities=['Text', 'Image']
+                )
+            )
+
+            generated_text = ""
+            edited_image_data = None
+
+            # 5. Process response parts
+            for part in response.candidates[0].content.parts:
+                if part.text:
+                    generated_text += part.text + "\n"
+                elif hasattr(part, 'inline_data') and part.inline_data:
+                     # Decode base64 image data
+                    try:
+                        image_bytes = base64.b64decode(part.inline_data.data)
+                        # Validate if it's actually image data using PIL
+                        try:
+                            img_test = Image.open(BytesIO(image_bytes))
+                            img_test.verify() # Verify image data integrity
+                            edited_image_data = image_bytes # Store the valid bytes
+                            logger.info("Successfully decoded and validated Gemini edited image data.")
+                        except (Image.UnidentifiedImageError, SyntaxError, IOError) as img_err:
+                            logger.error(f"Gemini returned invalid edited image data: {img_err}")
+                            logger.debug(f"Invalid edited image data (first 100 bytes): {part.inline_data.data[:100]}")
+                    except base64.binascii.Error as b64_err:
+                        logger.error(f"Failed to decode base64 edited image data from Gemini: {b64_err}")
+                    except Exception as decode_err:
+                         logger.error(f"An unexpected error occurred during edited image decoding: {decode_err}")
+
+
+            if not edited_image_data:
+                await status_msg.edit(content=f"*neural pathway incomplete!* Gemini did not return a valid edited image.\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}")
+                return
+
+            # 6. Save the *new* edited image using ImageManager
+            await status_msg.edit(content="*neural pathways stabilizing... saving edited image...*")
+            original_name = bot.image_manager.metadata[image_id]['name']
+            new_image_name = f"gemini_edit_of_{original_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            description = f"Edited by Gemini from image ID '{image_id}' with prompt: '{prompt}'\n\nGemini Text: {generated_text if generated_text else 'None'}"
+
+            new_image_id = await bot.image_manager.add_image(new_image_name, edited_image_data, description)
+
+            # 7. Send the result
+            new_image_path = Path(bot.image_manager.metadata[new_image_id]['path'])
+            with open(new_image_path, 'rb') as f:
+                file = discord.File(f, filename=f"{new_image_name}.png")
+                response_text = f"*neural synthesis complete!* Edited image (Original ID: {image_id}, New ID: {new_image_id}) based on prompt: '{prompt}'\n\n**Gemini's Text Response:**\n{generated_text if generated_text else 'No text response.'}"
+                 # Split message if needed
+                for chunk in split_message(response_text):
+                     await interaction.followup.send(chunk) # Send text chunks first
+                await interaction.followup.send(file=file) # Then send the file
+
+            # Clean up original status message
+            try:
+                await status_msg.delete()
+            except discord.NotFound:
+                pass
+            except Exception as del_err:
+                logger.warning(f"Could not delete original status message: {del_err}")
+
+        except Exception as e:
+            logger.error(f"Error editing Gemini image: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            try:
+                await status_msg.edit(content=f"*neural circuit overload!* An error occurred during Gemini image editing: {e}")
+            except discord.NotFound:
+                 await interaction.followup.send(f"*neural circuit overload!* An error occurred during Gemini image editing: {e}")
+            except Exception as final_err:
+                 logger.error(f"Failed to send error message: {final_err}")

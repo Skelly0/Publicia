@@ -27,7 +27,7 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Python 3.8 or higher
 - Discord bot token (from Discord Developer Portal)
 - OpenRouter API key (for access to multiple AI models)
-- Google API key (for embeddings generation)
+- Google API key (for embeddings generation and Gemini image features)
 - Access to language models via OpenRouter
 
 ### Installation Steps
@@ -51,8 +51,9 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
 
 # Optional (defaults shown)
-LLM_MODEL=google/gemini-2.0-flash-001
-EMBEDDING_MODEL=models/text-embedding-004
+LLM_MODEL=google/gemini-2.0-flash-001 # Default model for text generation
+EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
+# GOOGLE_API_KEY is also used for Gemini image generation/editing features
 EMBEDDING_DIMENSIONS=1024
 TOP_K=10
 TOP_K_MULTIPLIER=0.5
@@ -171,6 +172,8 @@ Comprehensive tools to help troubleshoot issues:
 | `/view_image` | View an image from knowledge base |
 | `/remove_image` | Remove an image |
 | `/update_image_description` | Update an image description |
+| `/generate_gemini_image` | Generate an image using Gemini 2.0 Flash |
+| `/edit_gemini_image` | Edit an existing image using Gemini 2.0 Flash |
 
 #### Settings and Utilities
 | Command | Description |
