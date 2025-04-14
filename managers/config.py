@@ -75,6 +75,9 @@ class Config:
             "meta-llama/llama-4-maverick:floor": 9,
             "meta-llama/llama-4-maverick": 9,
             "meta-llama/llama-4-scout": 9,
+            # OpenAI Models
+            "openai/gpt-4.1-mini": 11,
+            "openai/gpt-4.1-nano": 17,
             # X AI Models
             "x-ai/grok-3-mini-beta": 6,
         }

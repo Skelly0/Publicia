@@ -256,6 +256,12 @@ def register_commands(bot):
                 model_name = "Phi-4"
             elif "microsoft/phi-3.5-mini-128k-instruct" in preferred_model:
                 model_name = "Phi-3.5 Mini"
+            elif "grok" in preferred_model:
+                model_name = "Grok 3 Mini"
+            elif preferred_model == "openai/gpt-4.1-mini":
+                model_name = "OpenAI GPT-4.1 Mini"
+            elif preferred_model == "openai/gpt-4.1-nano":
+                model_name = "OpenAI GPT-4.1 Nano"
 
             if (image_attachments or image_ids) and preferred_model not in bot.vision_capable_models:
                 await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")

@@ -801,8 +801,12 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-r1"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+        elif "grok" in model:
+            fallbacks = [
+                "x-ai/grok-3-mini-beta",
+            ]
+            models.extend([fb for fb in fallbacks if fb not in models])
         elif "meta-llama/llama-4-maverick" in model:
-            # DeepSeek Chat (non-v3) fallbacks
             fallbacks = [
                 "meta-llama/llama-4-maverick:floor",
                 "meta-llama/llama-4-maverick",
@@ -893,6 +897,18 @@ class DiscordBot(commands.Bot):
                 "microsoft/phi-3.5-mini-128k-instruct"
             ]
             models.extend([fb for fb in fallbacks if fb not in models])
+
+        elif model_family == "openai":
+            if "4.1-mini" in model:
+                fallbacks = [
+                    "openai/gpt-4.1-mini",
+                ]
+                models.extend([fb for fb in fallbacks if fb not in models])
+            elif "4.1-nano" in model:
+                fallbacks = [
+                    "openai/gpt-4.1-nano",
+                ]
+                models.extend([fb for fb in fallbacks if fb not in models])
         
         # Add general fallbacks that aren't already in the list
         general_fallbacks = [
@@ -1906,6 +1922,10 @@ class DiscordBot(commands.Bot):
             elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model: model_name = "Anubis Pro 105B"
             elif "grok" in preferred_model: model_name = "Grok 3 Mini"
+            elif "4.1-mini" in preferred_model:
+                model_name = "4.1 Mini"
+            elif "4.1-nano" in preferred_model:
+                model_name = "4.1 Nano"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call

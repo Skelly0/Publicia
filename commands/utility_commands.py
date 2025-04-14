@@ -100,6 +100,8 @@ def register_commands(bot):
         app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
         #app_commands.Choice(name="Llama 4 Maverick", value="meta-llama/llama-4-maverick:floor"),
         app_commands.Choice(name="Grok 3 Mini", value="x-ai/grok-3-mini-beta"),
+        app_commands.Choice(name="OpenAI GPT-4.1 Mini", value="openai/gpt-4.1-mini"),
+        app_commands.Choice(name="OpenAI GPT-4.1 Nano", value="openai/gpt-4.1-nano"),
         #app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
     ])
     async def set_model(interaction: discord.Interaction, model: str):
@@ -153,6 +155,10 @@ def register_commands(bot):
                 model_name = "Phi-4"
             elif "microsoft/phi-3.5-mini-128k-instruct" in model:
                 model_name = "Phi-3.5 Mini"
+            elif model == "openai/gpt-4.1-mini":
+                model_name = "OpenAI GPT-4.1 Mini"
+            elif model == "openai/gpt-4.1-nano":
+                model_name = "OpenAI GPT-4.1 Nano"
             
             if success:
                 # Create a description of all model strengths
@@ -172,6 +178,8 @@ def register_commands(bot):
                     f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     f"**Grok 3 Mini**: A smaller, faster Grok model known for its unique personality and conversational style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
+                    f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
                 #f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. It's not a good model. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
                 ]
                 
@@ -234,6 +242,10 @@ def register_commands(bot):
                 model_name = "Phi-4"
             elif "microsoft/phi-3.5-mini-128k-instruct" in preferred_model:
                 model_name = "Phi-3.5 Mini"
+            elif preferred_model == "openai/gpt-4.1-mini":
+                model_name = "OpenAI GPT-4.1 Mini"
+            elif preferred_model == "openai/gpt-4.1-nano":
+                model_name = "OpenAI GPT-4.1 Nano"
             
             # Create a description of all model strengths
             model_descriptions = [
@@ -251,6 +263,8 @@ def register_commands(bot):
                     f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Vision-language model optimized for multimodal tasks, instruction-tuned for assistant-like behavior, image reasoning, and general-purpose multimodal interaction. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     f"**Grok 3 Mini**: A smaller, faster Grok model known for its unique personality and conversational style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
+                    f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
                 #f"**Phi-4 Multimodal**: Microsoft's latest multimodal model with vision capabilities. It's not a good model. Uses ({bot.config.get_top_k_for_model('microsoft/phi-4-multimodal-instruct')}) search results.",
             ]
             
