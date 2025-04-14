@@ -89,6 +89,8 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-haiku",
             "anthropic/claude-3-haiku:beta",
             "meta-llama/llama-4-maverick:floor"
+            "openai/gpt-4.1-mini",
+            "openai/gpt-4.1-nano",
         ]
 
     def sanitize_discord_text(self, text: str) -> str:
