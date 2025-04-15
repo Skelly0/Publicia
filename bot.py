@@ -469,12 +469,15 @@ class DiscordBot(commands.Bot):
             for doc in tracked_docs:
                 try:
                     doc_id = doc['id']
-                    file_name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
-                    if not file_name.endswith('.txt'):
-                        file_name += '.txt'
-                    
-                    # Check if document has changed
-                    changed = await self._has_google_doc_changed(doc_id, file_name)
+                    # Determine original and sanitized names
+                    original_name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
+                    if not original_name.endswith('.txt'):
+                        original_name += '.txt'
+                    sanitized_name = self.document_manager._sanitize_name(original_name)
+                    logger.info(f"Refresh: Processing Google Doc ID {doc_id}: Original='{original_name}', Sanitized='{sanitized_name}'")
+
+                    # Check if document has changed using sanitized name for metadata lookup
+                    changed = await self._has_google_doc_changed(doc_id, sanitized_name)
                     
                     if changed:
                         logger.info(f"Google Doc {doc_id} has changed, updating")
@@ -486,26 +489,27 @@ class DiscordBot(commands.Bot):
                                     logger.error(f"Failed to download {doc_id}: {response.status}")
                                     continue
                                 content = await response.text()
-                        
-                        file_path = self.document_manager.base_dir / file_name
-                        with open(file_path, 'w', encoding='utf-8') as f:
-                            f.write(content)
-                            
-                        logger.info(f"Updated Google Doc {doc_id} as {file_name}")
-                        
-                        if file_name in self.document_manager.chunks:
-                            del self.document_manager.chunks[file_name]
-                            del self.document_manager.embeddings[file_name]
-                            if file_name in self.document_manager.contextualized_chunks:
-                                del self.document_manager.contextualized_chunks[file_name]
-                            if file_name in self.document_manager.bm25_indexes:
-                                del self.document_manager.bm25_indexes[file_name]
-                            
-                        # Add document without saving to disk yet
-                        await self.document_manager.add_document(file_name, content, save_to_disk=False)
-                        updated_docs = True
+
+                        # Save to file using SANITIZED name
+                        file_path = self.document_manager.base_dir / sanitized_name
+                        try:
+                            with open(file_path, 'w', encoding='utf-8') as f:
+                                f.write(content)
+                            logger.info(f"Refresh: Saved Google Doc {doc_id} content to file: '{file_path}'")
+                        except Exception as write_err:
+                            logger.error(f"Refresh: Failed to write Google Doc content to '{file_path}': {write_err}", exc_info=True)
+                            continue # Skip to next doc if write fails
+
+                        # Add/Update document in manager using ORIGINAL name
+                        logger.info(f"Refresh: Adding/Updating document in manager with original name: '{original_name}'")
+                        # Use save_to_disk=False to batch the final save
+                        add_success = await self.document_manager.add_document(original_name, content, save_to_disk=False)
+                        if add_success:
+                            updated_docs = True
+                        else:
+                             logger.error(f"Refresh: Document manager failed to add/update document for '{original_name}'")
                     else:
-                        logger.info(f"Google Doc {doc_id} has not changed, skipping")
+                        logger.info(f"Refresh: Google Doc {doc_id} ('{original_name}') has not changed, skipping")
                         
                 except Exception as e:
                     logger.error(f"Error refreshing doc {doc_id}: {e}")
@@ -567,13 +571,17 @@ class DiscordBot(commands.Bot):
                     old_filename = filename
                     break
             
-            # Determine file name
-            file_name = custom_name or f"googledoc_{doc_id}.txt"
-            if not file_name.endswith('.txt'):
-                file_name += '.txt'
-            
-            # Check if document has changed
-            changed = await self._has_google_doc_changed(doc_id, file_name)
+            # Determine the intended original file name
+            original_name = custom_name or f"googledoc_{doc_id}.txt"
+            if not original_name.endswith('.txt'):
+                original_name += '.txt'
+
+            # Determine the sanitized name for file system operations
+            sanitized_name = self.document_manager._sanitize_name(original_name)
+            logger.info(f"Processing Google Doc ID {doc_id}: Original Name='{original_name}', Sanitized Name='{sanitized_name}'")
+
+            # Check if document has changed using the sanitized name for metadata lookup
+            changed = await self._has_google_doc_changed(doc_id, sanitized_name)
             
             if not changed:
                 logger.info(f"Google Doc {doc_id} has not changed, skipping")
@@ -588,42 +596,36 @@ class DiscordBot(commands.Bot):
                         return False
                     content = await response.text()
             
-            # Save to file
-            file_path = self.document_manager.base_dir / file_name
-            with open(file_path, 'w', encoding='utf-8') as f:
-                f.write(content)
-                
-            logger.info(f"Downloaded Google Doc {doc_id} as {file_name}")
-            
-            # If name changed, remove old document data
-            if old_filename and old_filename in self.document_manager.chunks:
-                logger.info(f"Removing old document data for {old_filename}")
-                del self.document_manager.chunks[old_filename]
-                del self.document_manager.embeddings[old_filename]
-                if old_filename in self.document_manager.contextualized_chunks:
-                    del self.document_manager.contextualized_chunks[old_filename]
-                if old_filename in self.document_manager.bm25_indexes:
-                    del self.document_manager.bm25_indexes[old_filename]
-                if old_filename in self.document_manager.metadata:
-                    del self.document_manager.metadata[old_filename]
-                
-                # Remove old file if it exists
-                old_file_path = self.document_manager.base_dir / old_filename
-                if old_file_path.exists():
-                    old_file_path.unlink()
-                    logger.info(f"Deleted old file {old_filename}")
-            
-            # Remove current document data if it exists
-            if file_name in self.document_manager.chunks:
-                del self.document_manager.chunks[file_name]
-                del self.document_manager.embeddings[file_name]
-                if file_name in self.document_manager.contextualized_chunks:
-                    del self.document_manager.contextualized_chunks[file_name]
-                if file_name in self.document_manager.bm25_indexes:
-                    del self.document_manager.bm25_indexes[file_name]
-                
-            # Add document and save to disk
-            await self.document_manager.add_document(file_name, content)
+            # Save to file using the SANITIZED name
+            file_path = self.document_manager.base_dir / sanitized_name
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                logger.info(f"Saved Google Doc {doc_id} content to file: '{file_path}'")
+            except Exception as write_err:
+                 logger.error(f"Failed to write Google Doc content to '{file_path}': {write_err}", exc_info=True)
+                 return False # Abort if file write fails
+
+            # If the custom name changed, we might need to remove data associated with the OLD sanitized name
+            # Note: old_filename here is the *original* name from the mapping before the change
+            if old_filename:
+                 old_sanitized_name = self.document_manager._sanitize_name(old_filename)
+                 if old_sanitized_name != sanitized_name and old_sanitized_name in self.document_manager.metadata:
+                     logger.info(f"Removing old document data for previous name '{old_filename}' (sanitized: {old_sanitized_name})")
+                     # Use delete_document with the OLD ORIGINAL name to handle removal cleanly
+                     await self.document_manager.delete_document(old_filename) # Let delete handle file removal too
+
+            # Add/Update document in the manager using the ORIGINAL name
+            # add_document will handle internal sanitization and metadata correctly
+            logger.info(f"Adding/Updating document in manager with original name: '{original_name}'")
+            success = await self.document_manager.add_document(original_name, content) # Let add_document handle saving
+
+            if not success:
+                 logger.error(f"Document manager failed to add/update document for '{original_name}'")
+                 # Clean up the file we just saved if add failed? Maybe not necessary if add_document handles errors well.
+                 return False
+
+            return True
             
             return True
                 

@@ -1083,260 +1083,253 @@ class DocumentManager:
             return False
 
     async def _load_documents(self, force_reload: bool = False):
-        """Load document data from disk and add any new .txt files."""
+        """Load document data from disk, run migration, and add any new .txt files."""
         # Wrap the entire loading process in a try/except
         try:
-            # Check if embeddings provider has changed
-            embeddings_provider_file = self.base_dir / 'embeddings_provider.txt'
-            provider_changed = False
-            
-            if embeddings_provider_file.exists():
-                with open(embeddings_provider_file, 'r') as f:
-                    stored_provider = f.read().strip()
-                    if stored_provider != "gemini":
-                        logger.warning(f"Embedding provider changed from {stored_provider} to gemini")
-                        logger.warning("All embeddings will be regenerated to ensure compatibility")
-                        provider_changed = True
-            
-            if not force_reload and not provider_changed and (self.base_dir / 'chunks.pkl').exists():
-                # Load existing processed data
-                with open(self.base_dir / 'chunks.pkl', 'rb') as f:
-                    self.chunks = pickle.load(f)
-                
-                # Load contextualized chunks if available
-                if (self.base_dir / 'contextualized_chunks.pkl').exists():
-                    with open(self.base_dir / 'contextualized_chunks.pkl', 'rb') as f:
-                        self.contextualized_chunks = pickle.load(f)
-                else:
-                    # If no contextualized chunks, initialize empty
-                    self.contextualized_chunks = {}
-                    logger.info("No contextualized chunks found, will generate when needed")
-                
-                if provider_changed:
-                    # If provider changed, only load chunks and regenerate embeddings
-                    logger.info("Provider changed, regenerating embeddings for all documents")
-                    self.embeddings = {}
-                    self.metadata = {}
-                    self.bm25_indexes = {}
-
-                    # Regenerate embeddings for all documents using sanitized names (s_name)
-                    for s_name, chunks in self.chunks.items():
-                        original_name = self._get_original_name(s_name) # Get original name early
-                        logger.info(f"Regenerating embeddings for document: '{original_name}' (sanitized: {s_name}) due to provider change")
-
-                        # Get original document content if available using sanitized name for path
-                        doc_path = self.base_dir / s_name
-                        if doc_path.exists():
-                            with open(doc_path, 'r', encoding='utf-8-sig') as f:
-                                doc_content = f.read()
-                        else:
-                            # If original not available, concatenate chunks
-                            logger.warning(f"Original file not found for '{original_name}' (sanitized: {s_name}), using concatenated chunks.")
-                            doc_content = " ".join(chunks)
-
-                        # Generate contextualized chunks using original name for title?
-                        contextualized_chunks = await self.contextualize_chunks(original_name, doc_content, chunks)
-                        self.contextualized_chunks[s_name] = contextualized_chunks # Store with sanitized key
-
-                        # Generate embeddings asynchronously using ORIGINAL name as title
-                        titles = [original_name] * len(contextualized_chunks)
-                        self.embeddings[s_name] = await self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles) # Store with sanitized key
-
-                        # Create BM25 index using sanitized key
-                        self.bm25_indexes[s_name] = self._create_bm25_index(contextualized_chunks)
-
-                        # Update metadata using sanitized key, store original name
-                        self.metadata[s_name] = {
-                            'original_name': original_name,
-                            'added': datetime.now().isoformat(), # Reset added time? Or try to preserve?
-                            'updated': datetime.now().isoformat(),
-                            'chunk_count': len(chunks),
-                            'content_hash': self.metadata.get(s_name, {}).get('content_hash'), # Preserve hash if possible
-                            'contextualized': True # Assume contextualized after regeneration
-                        }
-                else:
-                    # Normal load if provider hasn't changed
-                    with open(self.base_dir / 'embeddings.pkl', 'rb') as f:
-                        self.embeddings = pickle.load(f)
-                    with open(self.base_dir / 'metadata.json', 'r') as f:
-                        self.metadata = json.load(f)
-                    
-                    # Create BM25 indexes for all documents
-                    self.bm25_indexes = {}
-                    for doc_name, chunks in self.chunks.items():
-                        # Use contextualized chunks if available, otherwise use original chunks
-                        if doc_name in self.contextualized_chunks:
-                            self.bm25_indexes[doc_name] = self._create_bm25_index(self.contextualized_chunks[doc_name])
-                        else:
-                            logger.warning(f"Contextualized chunks missing for existing document '{doc_name}' during BM25 index rebuild. Checking word count before regenerating.")
-                            # Generate contextualized chunks only if within limit
-                            doc_path = self.base_dir / doc_name
-                            doc_content = ""
-                            if doc_path.exists():
-                                try:
-                                    with open(doc_path, 'r', encoding='utf-8-sig') as f:
-                                        doc_content = f.read()
-                                except Exception as e:
-                                     logger.error(f"Error reading document file {doc_name} for contextualization check: {e}")
-                                     # Fallback to original chunks if file read fails
-                                     self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
-                                     continue # Skip to next document
-
-                            else:
-                                # If original file not available, concatenate chunks for word count check
-                                logger.warning(f"Original file {doc_name} not found. Using concatenated chunks for word count check.")
-                                doc_content = " ".join(chunks)
-
-                            # Perform the word count check here
-                            word_count = len(doc_content.split())
-                            max_words_for_context = 20000 # Use the same limit
-                            should_contextualize_rebuild = word_count <= max_words_for_context
-                            logger.info(f"BM25 rebuild check for '{doc_name}': word_count={word_count}, max_words={max_words_for_context}, should_contextualize={should_contextualize_rebuild}")
-
-                            if should_contextualize_rebuild:
-                                logger.info(f"Document '{doc_name}' is within limit. Regenerating contextualized chunks for BM25 index.")
-                                contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
-                                self.contextualized_chunks[doc_name] = contextualized_chunks
-                                self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
-                                # Update metadata flag if possible
-                                if doc_name in self.metadata:
-                                    self.metadata[doc_name]['contextualized'] = True
-                            else:
-                                logger.warning(f"Document '{doc_name}' exceeds limit ({word_count} words). Using original chunks for BM25 index rebuild.")
-                                self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
-                                # Ensure no stale contextualized chunks exist
-                                if doc_name in self.contextualized_chunks:
-                                    del self.contextualized_chunks[doc_name]
-                                # Update metadata flag if possible
-                                if doc_name in self.metadata:
-                                    self.metadata[doc_name]['contextualized'] = False
-                    
-                    logger.info(f"Loaded {len(self.chunks)} documents from processed data")
-            else:
-                # Start fresh if force_reload is True or no processed data exists
-                self.chunks = {}
-                self.contextualized_chunks = {}
-                self.embeddings = {}
-                self.metadata = {}
+            logger.info("--- Starting Document Load/Migration Process ---")
+            # Reset in-memory state initially
+            self.chunks = {}
+            self.contextualized_chunks = {}
+            self.embeddings = {}
+            self.metadata = {}
             self.bm25_indexes = {}
-            logger.info("Starting fresh or force reloading documents")
 
-            # --- Migration Step for Existing Data ---
-            migrated_count = 0
-            keys_to_migrate = list(self.metadata.keys()) # Iterate over a copy of keys
-            needs_save_after_migration = False
-
-            logger.info("Checking existing document metadata for necessary migrations...")
-            for current_key in keys_to_migrate:
-                # Add a try-except block for individual entry migration
+            # --- Step 1: Attempt to load existing metadata for migration ---
+            loaded_metadata_for_migration = {}
+            metadata_path = self.base_dir / 'metadata.json'
+            if metadata_path.exists() and not force_reload:
                 try:
-                    meta = self.metadata.get(current_key)
-                    if not meta:
-                        continue # Skip if metadata somehow missing for this key
-
-                    original_name_in_meta = meta.get('original_name')
-                    # Calculate what the key *should* be if the current_key was the original name
-                    expected_sanitized_key_if_current_is_orig = self._sanitize_name(current_key)
-
-                    # Scenario 1: Key is unsanitized (doesn't match its sanitized version)
-                    # Scenario 2: Key is sanitized, but 'original_name' field is missing (old format)
-                    needs_migration = False
-                    original_name_to_set = None
-
-                    if current_key != expected_sanitized_key_if_current_is_orig:
-                        # Key itself is likely the old, unsanitized name
-                        needs_migration = True
-                        original_name_to_set = current_key # The key *is* the original name
-                        logger.warning(f"Found potentially unsanitized key '{current_key}'. Preparing migration.")
-                    elif original_name_in_meta is None:
-                        # Key is sanitized, but metadata is old format (missing original_name)
-                        needs_migration = True
-                        original_name_to_set = current_key # Assume the key was the intended original name
-                        logger.warning(f"Found old metadata format for key '{current_key}' (missing 'original_name'). Preparing update.")
-
-                    if needs_migration and original_name_to_set:
-                        new_sanitized_key = self._sanitize_name(original_name_to_set)
-
-                        # Check for conflict: If the new key exists and is not the current key
-                        if new_sanitized_key in self.metadata and new_sanitized_key != current_key:
-                            logger.error(f"Migration conflict! Cannot migrate '{current_key}' to '{new_sanitized_key}' because the target key already exists. Skipping migration for this entry.")
-                            continue # Skip this problematic entry
-
-                        logger.info(f"Migrating entry: '{current_key}' -> '{new_sanitized_key}' (Original: '{original_name_to_set}')")
-
-                        # Move data to new key only if the key is actually changing
-                        if new_sanitized_key != current_key:
-                            if current_key in self.chunks: self.chunks[new_sanitized_key] = self.chunks.pop(current_key)
-                            if current_key in self.contextualized_chunks: self.contextualized_chunks[new_sanitized_key] = self.contextualized_chunks.pop(current_key)
-                            if current_key in self.embeddings: self.embeddings[new_sanitized_key] = self.embeddings.pop(current_key)
-                            if current_key in self.bm25_indexes: self.bm25_indexes[new_sanitized_key] = self.bm25_indexes.pop(current_key)
-                            # Move metadata last
-                            meta_to_move = self.metadata.pop(current_key)
-                            meta_to_move['original_name'] = original_name_to_set # Ensure original name is set
-                            self.metadata[new_sanitized_key] = meta_to_move
-                        else:
-                            # Key isn't changing, just update metadata in place
-                            self.metadata[current_key]['original_name'] = original_name_to_set
-
-                        # Attempt to rename file on disk
-                        old_file_path = self.base_dir / current_key # Path based on the old key
-                        new_file_path = self.base_dir / new_sanitized_key # Path based on the new key
-                        if old_file_path.exists() and old_file_path != new_file_path:
-                            try:
-                                old_file_path.rename(new_file_path)
-                                logger.info(f"Successfully renamed file: {old_file_path} -> {new_file_path}")
-                            except Exception as rename_err:
-                                logger.error(f"Failed to rename file during migration {old_file_path} -> {new_file_path}: {rename_err}")
-                        elif not old_file_path.exists() and new_sanitized_key != current_key:
-                             logger.warning(f"Old file path '{old_file_path}' not found during migration, cannot rename.")
-
-
-                        migrated_count += 1
-                        needs_save_after_migration = True
-
-                # Add except block for the inner try (catches errors during individual entry processing)
-                except Exception as migration_entry_error:
-                     logger.error(f"Error migrating entry for key '{current_key}': {migration_entry_error}")
-                     # Continue to the next key even if one fails
-
-            if migrated_count > 0:
-                logger.info(f"Completed migration check. Migrated/updated {migrated_count} entries.")
+                    with open(metadata_path, 'r') as f:
+                        loaded_metadata_for_migration = json.load(f)
+                    logger.info(f"Loaded existing metadata from {metadata_path} for migration check.")
+                except json.JSONDecodeError:
+                    logger.error(f"Failed to decode existing metadata file {metadata_path}. Proceeding as if empty.", exc_info=True)
+                except Exception as e:
+                    logger.error(f"Error loading existing metadata file {metadata_path}: {e}", exc_info=True)
             else:
-                 logger.info("No metadata entries required migration.")
+                 logger.info("No existing metadata file found or force_reload=True. Skipping metadata load for migration.")
 
-            # Save changes immediately if migration occurred
-            if needs_save_after_migration:
-                 logger.info("Saving migrated data structures to disk...")
-                 self._save_to_disk()
+            # --- Step 2: Run Migration based on loaded metadata ---
+            migrated_count = 0
+            keys_to_migrate = list(loaded_metadata_for_migration.keys()) # Use the loaded metadata
+            needs_save_after_migration = False
+            temp_metadata_after_migration = loaded_metadata_for_migration.copy() # Work on a copy
+
+            if temp_metadata_after_migration: # Only run if metadata was loaded
+                logger.info("Checking existing document metadata for necessary migrations...")
+                for current_key in keys_to_migrate:
+                    try:
+                        meta = temp_metadata_after_migration.get(current_key)
+                        if not meta: continue
+
+                        original_name_in_meta = meta.get('original_name')
+                        expected_sanitized_key_if_current_is_orig = self._sanitize_name(current_key)
+
+                        needs_migration = False
+                        original_name_to_set = None
+
+                        if current_key != expected_sanitized_key_if_current_is_orig:
+                            needs_migration = True
+                            original_name_to_set = current_key
+                            logger.warning(f"Migration: Found potentially unsanitized key '{current_key}'.")
+                        elif original_name_in_meta is None:
+                            needs_migration = True
+                            original_name_to_set = current_key
+                            logger.warning(f"Migration: Found old metadata format for key '{current_key}' (missing 'original_name').")
+
+                        if needs_migration and original_name_to_set:
+                            new_sanitized_key = self._sanitize_name(original_name_to_set)
+
+                            if new_sanitized_key in temp_metadata_after_migration and new_sanitized_key != current_key:
+                                logger.error(f"Migration conflict! Cannot migrate '{current_key}' to '{new_sanitized_key}' because the target key already exists in metadata. Skipping migration for this entry.")
+                                continue
+
+                            logger.info(f"Migration: Migrating metadata entry: '{current_key}' -> '{new_sanitized_key}' (Original: '{original_name_to_set}')")
+
+                            # Update the temporary metadata dictionary
+                            if new_sanitized_key != current_key:
+                                meta_to_move = temp_metadata_after_migration.pop(current_key)
+                                meta_to_move['original_name'] = original_name_to_set
+                                temp_metadata_after_migration[new_sanitized_key] = meta_to_move
+                            else:
+                                temp_metadata_after_migration[current_key]['original_name'] = original_name_to_set
+
+                            # Attempt to rename file on disk
+                            old_file_path = self.base_dir / current_key
+                            new_file_path = self.base_dir / new_sanitized_key
+                            logger.debug(f"Migration: Checking file rename. Old path: '{old_file_path}', New path: '{new_file_path}'")
+                            if old_file_path.exists() and old_file_path != new_file_path:
+                                logger.info(f"Migration: Attempting to rename file '{old_file_path}' to '{new_file_path}'")
+                                try:
+                                    self.base_dir.mkdir(parents=True, exist_ok=True)
+                                    old_file_path.rename(new_file_path)
+                                    logger.info(f"Migration: Successfully renamed file: '{old_file_path}' -> '{new_file_path}'")
+                                except OSError as os_err:
+                                    logger.error(f"Migration: OS error renaming file '{old_file_path}' to '{new_file_path}': {os_err}", exc_info=True)
+                                except Exception as rename_err:
+                                    logger.error(f"Migration: Generic error renaming file '{old_file_path}' to '{new_file_path}': {rename_err}", exc_info=True)
+                            elif not old_file_path.exists() and new_sanitized_key != current_key:
+                                logger.warning(f"Migration: Old file path '{old_file_path}' not found, cannot rename.")
+                            elif old_file_path == new_file_path:
+                                logger.debug(f"Migration: File path '{old_file_path}' does not need renaming (already sanitized).")
+                            else:
+                                logger.debug(f"Migration: No file rename needed or possible for '{current_key}'.")
+
+                            migrated_count += 1
+                            needs_save_after_migration = True
+                    except Exception as migration_entry_error:
+                        logger.error(f"Error migrating entry for key '{current_key}': {migration_entry_error}", exc_info=True)
+
+                if migrated_count > 0:
+                    logger.info(f"Completed migration check. Migrated/updated {migrated_count} metadata entries.")
+                else:
+                    logger.info("No metadata entries required migration.")
+
+                # Update the main metadata with the migrated version
+                self.metadata = temp_metadata_after_migration
+                if needs_save_after_migration:
+                    logger.info("Saving migrated metadata structure to disk...")
+                    # Save only metadata for now, other files handled later
+                    try:
+                         with open(metadata_path, 'w') as f:
+                             json.dump(self.metadata, f)
+                    except Exception as save_err:
+                         logger.error(f"Failed to save migrated metadata: {save_err}", exc_info=True)
+            else:
+                 logger.info("Skipping migration check as no existing metadata was loaded.")
             # --- End Migration Step ---
 
 
-            # Save current provider info (do this *after* potential migration save)
-            with open(embeddings_provider_file, 'w') as f:
-                f.write("gemini")
+            # --- Step 3: Check provider and decide on loading strategy ---
+            embeddings_provider_file = self.base_dir / 'embeddings_provider.txt'
+            provider_changed = False
+            if embeddings_provider_file.exists():
+                try:
+                    with open(embeddings_provider_file, 'r') as f:
+                        stored_provider = f.read().strip()
+                    if stored_provider != "gemini":
+                        logger.warning(f"Embedding provider changed from {stored_provider} to gemini. Embeddings will be regenerated.")
+                        provider_changed = True
+                except Exception as e:
+                    logger.error(f"Error reading embeddings provider file: {e}")
 
-            # Find .txt files whose *sanitized* names are not already loaded
-            # Use the potentially updated self.chunks keys after migration
-            existing_sanitized_names = set(self.chunks.keys())
+            # --- Step 4: Load existing data OR regenerate based on provider change ---
+            chunks_path = self.base_dir / 'chunks.pkl'
+            embeddings_path = self.base_dir / 'embeddings.pkl'
+            contextualized_chunks_path = self.base_dir / 'contextualized_chunks.pkl'
+
+            # Decide whether to load existing pickles or start fresh/regenerate
+            should_load_existing = not force_reload and chunks_path.exists()
+
+            if should_load_existing and not provider_changed:
+                logger.info("Loading existing processed data (chunks, embeddings, contextualized chunks)...")
+                try:
+                    with open(chunks_path, 'rb') as f:
+                        self.chunks = pickle.load(f)
+                    if embeddings_path.exists():
+                         with open(embeddings_path, 'rb') as f:
+                             self.embeddings = pickle.load(f)
+                    else:
+                         logger.warning(f"Embeddings file {embeddings_path} not found. Embeddings will need regeneration.")
+                         self.embeddings = {} # Ensure it's empty if file missing
+                    if contextualized_chunks_path.exists():
+                         with open(contextualized_chunks_path, 'rb') as f:
+                             self.contextualized_chunks = pickle.load(f)
+                    else:
+                         self.contextualized_chunks = {}
+                    logger.info(f"Successfully loaded {len(self.chunks)} chunk entries and {len(self.embeddings)} embedding entries.")
+                    # Metadata was already loaded and potentially migrated
+                except (pickle.UnpicklingError, EOFError, FileNotFoundError) as load_err:
+                    logger.error(f"Error loading pickle files: {load_err}. Resetting data and proceeding.", exc_info=True)
+                    self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
+                    # Keep potentially migrated metadata
+                except Exception as e:
+                    logger.error(f"Unexpected error loading data: {e}. Resetting data.", exc_info=True)
+                    self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
+
+            elif should_load_existing and provider_changed:
+                logger.info("Provider changed. Loading chunks only and regenerating embeddings.")
+                try:
+                    with open(chunks_path, 'rb') as f:
+                        self.chunks = pickle.load(f)
+                    # Reset embeddings and contextualized chunks for regeneration
+                    self.embeddings = {}
+                    self.contextualized_chunks = {}
+                    self.bm25_indexes = {} # Reset BM25 as well
+
+                    # Regenerate embeddings (using migrated metadata)
+                    for s_name, chunks in self.chunks.items():
+                        original_name = self._get_original_name(s_name)
+                        logger.info(f"Regenerating embeddings for '{original_name}' (sanitized: {s_name}) due to provider change.")
+                        # ... (rest of regeneration logic as before) ...
+                        doc_path = self.base_dir / s_name
+                        doc_content = " ".join(chunks) # Default
+                        if doc_path.exists():
+                            try:
+                                with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                                    doc_content = f.read()
+                            except Exception as read_err:
+                                logger.error(f"Error reading file {doc_path} for regeneration: {read_err}")
+
+                        contextualized = await self.contextualize_chunks(original_name, doc_content, chunks)
+                        self.contextualized_chunks[s_name] = contextualized
+                        titles = [original_name] * len(contextualized)
+                        self.embeddings[s_name] = await self.generate_embeddings(contextualized, is_query=False, titles=titles)
+                        self.bm25_indexes[s_name] = self._create_bm25_index(contextualized)
+                        # Update metadata timestamp and potentially contextualized flag
+                        if s_name in self.metadata:
+                            self.metadata[s_name]['updated'] = datetime.now().isoformat()
+                            self.metadata[s_name]['contextualized'] = True # Assume contextualized after regen
+                        else: # Should exist after migration, but safety
+                             self.metadata[s_name] = {'original_name': original_name, 'updated': datetime.now().isoformat(), 'chunk_count': len(chunks), 'contextualized': True}
+
+                    needs_save_after_migration = True # Mark for saving regenerated data
+
+                except Exception as e:
+                    logger.error(f"Error during provider change regeneration: {e}. Resetting data.", exc_info=True)
+                    self.chunks, self.embeddings, self.contextualized_chunks, self.metadata, self.bm25_indexes = {}, {}, {}, {}, {}
+
+            else: # Start fresh (force_reload or no chunks.pkl)
+                logger.info("Starting fresh: Initializing empty data structures.")
+                self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
+                # Keep potentially migrated metadata if it exists
+                if not self.metadata: # Only reset metadata if it wasn't loaded/migrated
+                     self.metadata = {}
+                self.bm25_indexes = {}
+
+
+            # --- Step 5: Rebuild BM25 Indexes ---
+            logger.info("Rebuilding BM25 indexes...")
+            self.bm25_indexes = {}
+            for s_name, chunks in self.chunks.items():
+                 # Use contextualized if available, otherwise original
+                 chunks_for_bm25 = self.contextualized_chunks.get(s_name, chunks)
+                 if chunks_for_bm25:
+                     self.bm25_indexes[s_name] = self._create_bm25_index(chunks_for_bm25)
+                 else:
+                      logger.warning(f"No chunks found for BM25 indexing for '{self._get_original_name(s_name)}' (sanitized: {s_name})")
+
+
+            # --- Step 6: Load New .txt Files ---
+            logger.info("Scanning for new .txt files...")
+            existing_sanitized_names = set(self.metadata.keys()) # Check against metadata keys now
             all_txt_files_on_disk = list(self.base_dir.glob('*.txt'))
             new_txt_files_to_load = []
 
-            # Correct indentation for this block
             for txt_file_path in all_txt_files_on_disk:
                 original_filename = txt_file_path.name
                 sanitized_filename = self._sanitize_name(original_filename)
+                # Check if the *sanitized* name is already in our metadata
                 if sanitized_filename not in existing_sanitized_names:
-                    # Check if it's the internal list file (using sanitized name)
                     s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
                     if sanitized_filename == s_internal_list_name:
                         logger.info(f"Skipping internal list file found on disk: {original_filename}")
                         continue
                     new_txt_files_to_load.append(txt_file_path)
-                else:
-                    # If sanitized name exists, ensure metadata has original name
-                    if 'original_name' not in self.metadata.get(sanitized_filename, {}):
-                         logger.warning(f"Existing document '{sanitized_filename}' missing original name in metadata. Updating.")
-                         self.metadata[sanitized_filename]['original_name'] = original_filename # Best guess
+                # Check if metadata needs original_name added (e.g., if migration missed it somehow)
+                elif 'original_name' not in self.metadata.get(sanitized_filename, {}):
+                     logger.warning(f"Existing document '{sanitized_filename}' missing original name in metadata. Updating.")
+                     self.metadata[sanitized_filename]['original_name'] = original_filename
 
             if new_txt_files_to_load:
                 logger.info(f"Found {len(new_txt_files_to_load)} new .txt files to load")
@@ -1346,21 +1339,32 @@ class DocumentManager:
                         with open(txt_file_path, 'r', encoding='utf-8-sig') as f:
                             content = f.read()
                         # Pass the ORIGINAL filename to add_document
-                        await self.add_document(original_filename, content, save_to_disk=False)
+                        # Use save_to_disk=False to batch saving
+                        await self.add_document(original_filename, content, save_to_disk=False, _internal_call=False)
                         logger.info(f"Loaded and processed new file: {original_filename}")
+                        needs_save_after_migration = True # Mark for saving since new docs were added
                     except Exception as e:
-                        logger.error(f"Error processing new file {original_filename}: {e}")
+                        logger.error(f"Error processing new file {original_filename}: {e}", exc_info=True)
             else:
-                logger.info("No new .txt files to load")
+                logger.info("No new .txt files to load.")
 
-            # Update the internal document list after loading everything
+
+            # --- Step 7: Final Updates and Save ---
+            # Update the internal document list file
             await self._update_document_list_file()
 
-            # Save the updated state to disk once after all loading/updates
-            # Only save here if no migration happened, otherwise it was saved earlier
-            if not needs_save_after_migration:
-                logger.info("Saving final document state after loading/checking.")
-                self._save_to_disk()
+            # Save the final state (includes migrated data, regenerated embeddings, new files)
+            logger.info("Saving final document manager state to disk...")
+            self._save_to_disk() # Save everything together at the end
+
+            # Update provider file last
+            try:
+                with open(embeddings_provider_file, 'w') as f:
+                    f.write("gemini")
+            except Exception as e:
+                 logger.error(f"Failed to update embeddings provider file: {e}")
+
+            logger.info("--- Document Load/Migration Process Finished ---")
 
         # Add the main except block for the entire _load_documents method
         except Exception as e:
