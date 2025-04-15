@@ -102,12 +102,24 @@ def register_commands(bot):
                 await interaction.followup.send("No documents found in the knowledge base.")
                 return
                 
-            # Get all documents first
+            # Get original document names and metadata
             doc_items = []
-            for doc_name, meta in bot.document_manager.metadata.items():
-                chunks = meta['chunk_count']
-                added = meta['added']
-                doc_items.append(f"{doc_name} - {chunks} chunks (Added: {added})")
+            # Iterate through sanitized keys, get original name for display
+            s_internal_list_name = bot.document_manager._sanitize_name(bot.document_manager._internal_list_doc_name)
+            for s_name, meta in bot.document_manager.metadata.items():
+                # Skip internal list doc
+                if s_name == s_internal_list_name:
+                    continue
+                original_name = bot.document_manager._get_original_name(s_name)
+                chunks = meta.get('chunk_count', 'N/A')
+                added_raw = meta.get('added', 'Unknown')
+                # Try to parse date nicely, fallback to raw string
+                try:
+                    added_dt = datetime.fromisoformat(added_raw)
+                    added_formatted = added_dt.strftime('%Y-%m-%d %H:%M')
+                except (ValueError, TypeError):
+                    added_formatted = added_raw
+                doc_items.append(f"{original_name} - {chunks} chunks (Added: {added_formatted})")
             
             # Create header
             header = "Available documents:"
@@ -882,20 +894,22 @@ def register_commands(bot):
                     logger.error(f"Error reading document file {found_path}: {read_err}")
                     await interaction.followup.send(f"*neural error!* Failed to read the document file: {read_err}")
                     return
-            else:
-                # Fallback: Concatenate chunks if file not found
-                logger.info(f"Document file not found for '{document_name}'. Attempting to concatenate chunks.")
-                if document_name in doc_mgr.chunks:
-                    doc_content = "\n\n".join(doc_mgr.chunks[document_name])
-                    logger.info(f"Concatenated {len(doc_mgr.chunks[document_name])} chunks for '{document_name}'.")
-                elif f"{document_name}.txt" in doc_mgr.chunks:
-                     # Try with .txt extension if original name failed
-                     doc_name_txt = f"{document_name}.txt"
-                     doc_content = "\n\n".join(doc_mgr.chunks[doc_name_txt])
-                     logger.info(f"Concatenated {len(doc_mgr.chunks[doc_name_txt])} chunks for '{doc_name_txt}'.")
                 else:
-                    await interaction.followup.send(f"*neural error!* Document '{document_name}' not found in my knowledge base or associated files.")
-                    return
+                    # Fallback: Concatenate chunks using sanitized name lookup
+                    logger.info(f"Document file not found for '{document_name}'. Attempting to concatenate chunks via DocumentManager.")
+                    s_name = doc_mgr._get_sanitized_name_from_original(document_name)
+                    if s_name and s_name in doc_mgr.chunks:
+                        doc_content = "\n\n".join(doc_mgr.chunks[s_name])
+                        logger.info(f"Concatenated {len(doc_mgr.chunks[s_name])} chunks for '{document_name}' (sanitized: {s_name}).")
+                    else:
+                        # Try adding .txt extension to original name before sanitizing
+                        s_name_txt = doc_mgr._get_sanitized_name_from_original(f"{document_name}.txt")
+                        if s_name_txt and s_name_txt in doc_mgr.chunks:
+                             doc_content = "\n\n".join(doc_mgr.chunks[s_name_txt])
+                             logger.info(f"Concatenated {len(doc_mgr.chunks[s_name_txt])} chunks for '{document_name}.txt' (sanitized: {s_name_txt}).")
+                        else:
+                            await interaction.followup.send(f"*neural error!* Document '{document_name}' not found in my knowledge base or associated files.")
+                            return
 
             if not doc_content or not doc_content.strip():
                 await interaction.followup.send(f"*neural analysis complete!* The document '{document_name}' appears to be empty.")
@@ -988,56 +1002,53 @@ def register_commands(bot):
                 return
 
             doc_mgr = bot.document_manager
-            target_doc_name = None
             chunks_list = None
-            doc_exists = False
+            total_chunks = 0
+            actual_doc_name_used = document_name # Keep track of which name variation worked
 
-            # Check for document existence (try exact name, then with .txt)
-            possible_names = [document_name]
-            if not document_name.endswith('.txt'):
-                possible_names.append(f"{document_name}.txt")
+            # Find the sanitized name corresponding to the user input
+            s_name = doc_mgr._get_sanitized_name_from_original(document_name)
+            if not s_name:
+                 # Try adding .txt if original name didn't work
+                 s_name = doc_mgr._get_sanitized_name_from_original(f"{document_name}.txt")
+                 if s_name:
+                     actual_doc_name_used = f"{document_name}.txt" # Update the name that worked
 
-            for name_attempt in possible_names:
-                if contextualized:
-                    if name_attempt in doc_mgr.contextualized_chunks:
-                        chunks_list = doc_mgr.contextualized_chunks[name_attempt]
-                        target_doc_name = name_attempt
-                        doc_exists = True
-                        break
-                    elif name_attempt in doc_mgr.chunks: # Fallback if contextualized doesn't exist but original does
-                         logger.warning(f"Contextualized chunk requested for {name_attempt}, but not found. Falling back to original.")
-                         chunks_list = doc_mgr.chunks[name_attempt]
-                         target_doc_name = name_attempt
-                         doc_exists = True
-                         contextualized = False # Mark as not contextualized
-                         break
-                else:
-                    if name_attempt in doc_mgr.chunks:
-                        chunks_list = doc_mgr.chunks[name_attempt]
-                        target_doc_name = name_attempt
-                        doc_exists = True
-                        break
-
-            if not doc_exists:
+            if not s_name:
                 await interaction.followup.send(f"*neural error!* Document '{document_name}' not found in my knowledge base.")
                 return
+
+            # Determine which chunk list to use based on 'contextualized' flag
+            chunk_source_dict = doc_mgr.contextualized_chunks if contextualized else doc_mgr.chunks
+            chunk_type = "Contextualized" if contextualized else "Original"
+
+            if s_name in chunk_source_dict:
+                chunks_list = chunk_source_dict[s_name]
+                total_chunks = len(chunks_list)
+            elif contextualized and s_name in doc_mgr.chunks:
+                 # Fallback for contextualized request if only original exists
+                 logger.warning(f"Contextualized chunk requested for '{document_name}' (sanitized: {s_name}), but not found. Falling back to original.")
+                 chunks_list = doc_mgr.chunks[s_name]
+                 total_chunks = len(chunks_list)
+                 chunk_type = "Original (Fallback)" # Indicate fallback
+            else:
+                 # This case should be rare if s_name was found via _get_sanitized_name_from_original
+                 await interaction.followup.send(f"*neural error!* Could not find chunk data for document '{document_name}' (sanitized: {s_name}).")
+                 return
 
             # Convert 1-based index to 0-based
             zero_based_index = chunk_index - 1
 
-            if not chunks_list or zero_based_index < 0 or zero_based_index >= len(chunks_list):
-                await interaction.followup.send(f"*neural error!* Invalid chunk index {chunk_index}. Document '{target_doc_name}' has {len(chunks_list) if chunks_list else 0} chunks.")
+            if not chunks_list or zero_based_index < 0 or zero_based_index >= total_chunks:
+                await interaction.followup.send(f"*neural error!* Invalid chunk index {chunk_index}. Document '{actual_doc_name_used}' has {total_chunks} chunks.")
                 return
 
             # Get the chunk content
             chunk_content = chunks_list[zero_based_index]
-            chunk_type = "Contextualized" if contextualized else "Original"
 
-            chunk_content = chunks_list[zero_based_index]
-            chunk_type = "Contextualized" if contextualized else "Original"
-            total_chunks = len(chunks_list)
-
-            response_header = f"**{chunk_type} Chunk {chunk_index}/{total_chunks} from Document: {target_doc_name}**"
+            # Use the original name stored in metadata for the header
+            original_name_for_display = doc_mgr._get_original_name(s_name)
+            response_header = f"**{chunk_type} Chunk {chunk_index}/{total_chunks} from Document: {original_name_for_display}**"
 
             # Sanitize the raw chunk content *before* splitting
             # Assuming bot has sanitize_discord_text method, otherwise remove/adjust

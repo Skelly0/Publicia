@@ -350,6 +350,10 @@ The bot will display a startup banner and initialize all components.
 - `/query`: Ask a question with optional image
   - **Parameters**: `question` (your query), `image_url` (optional)
 
+- `/query_full_context`: Ask a question using ALL documents as context (1/day limit)
+  - **Parameters**: `question` (your query)
+  - Uses powerful models like Gemini 2.5 Pro for comprehensive analysis.
+
 - `/history`: View your conversation history
   - **Parameters**: `limit` (number of messages, default 10)
 

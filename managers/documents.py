@@ -11,17 +11,66 @@ import asyncio
 import urllib.parse
 import numpy as np
 from datetime import datetime
+from typing import List, Dict, Tuple, Optional, Any
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any
 from textwrap import shorten
 from rank_bm25 import BM25Okapi
+from typing import Optional # Added for type hinting
 
 from utils.logging import sanitize_for_logging
 
 logger = logging.getLogger(__name__)
 
+
 class DocumentManager:
     """Manages document storage, embeddings, and retrieval."""
+
+    def _sanitize_name(self, name: str) -> str:
+        """Sanitizes a string to be safe for use as a filename or dictionary key."""
+        if not isinstance(name, str):
+            name = str(name) # Ensure it's a string
+
+        # Replace potentially problematic characters with underscores
+        # Includes Windows reserved chars: <>:"/\|?*
+        # Also includes control characters (0-31)
+        sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '_', name)
+
+        # Replace leading/trailing dots and spaces
+        sanitized = sanitized.strip('. ')
+
+        # Collapse multiple consecutive underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
+
+        # Ensure the name is not empty after sanitization
+        if not sanitized:
+            sanitized = "untitled"
+        # Optional: Limit length?
+        # max_len = 200
+        # sanitized = sanitized[:max_len]
+        return sanitized
+
+    def _get_original_name(self, sanitized_name: str) -> str:
+        """Retrieve the original document name from metadata given the sanitized name."""
+        if sanitized_name in self.metadata:
+            return self.metadata[sanitized_name].get('original_name', sanitized_name)
+        return sanitized_name # Fallback if not found (shouldn't happen often)
+
+    def _get_sanitized_name_from_original(self, original_name: str) -> Optional[str]:
+        """Find the sanitized name corresponding to an original name."""
+        # First, try direct sanitization
+        s_name_direct = self._sanitize_name(original_name)
+        if s_name_direct in self.metadata:
+             # Verify if the original name matches
+             if self.metadata[s_name_direct].get('original_name') == original_name:
+                 return s_name_direct
+
+        # If direct match fails, iterate through metadata (slower fallback)
+        for s_name, meta in self.metadata.items():
+            if meta.get('original_name') == original_name:
+                return s_name
+        logger.warning(f"Could not find sanitized name for original name: {original_name}")
+        return None # Not found
     
     def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
@@ -81,21 +130,23 @@ class DocumentManager:
         """Creates or updates a special document listing all other documents."""
         logger.info("Updating internal document list file...")
         try:
-            # Get current document names, excluding the list file itself
-            current_doc_names = sorted([
-                name for name in self.metadata.keys()
-                if name != self._internal_list_doc_name
+            # Get original document names from metadata, excluding the list file itself
+            s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
+            original_doc_names = sorted([
+                self._get_original_name(s_name) for s_name in self.metadata.keys()
+                if s_name != s_internal_list_name
             ])
 
-            # Format the content
-            if not current_doc_names:
+            # Format the content using original names
+            if not original_doc_names:
                 content = "No documents are currently managed."
             else:
-                content = "Managed Documents:\n\n" + "\n".join(f"- {name}" for name in current_doc_names)
+                content = "Managed Documents:\n\n" + "\n".join(f"- {orig_name}" for orig_name in original_doc_names)
 
             # Check if the document exists and if content needs updating
+            # Use sanitized name for file path
             needs_update = True
-            list_doc_path = self.base_dir / self._internal_list_doc_name
+            list_doc_path = self.base_dir / s_internal_list_name
             if list_doc_path.exists():
                 try:
                     with open(list_doc_path, 'r', encoding='utf-8-sig') as f:
@@ -104,21 +155,22 @@ class DocumentManager:
                         needs_update = False
                         logger.info("Internal document list content is already up-to-date.")
                 except Exception as e:
-                    logger.warning(f"Could not read existing internal document list file: {e}. Will overwrite.")
+                    logger.warning(f"Could not read existing internal document list file ({list_doc_path}): {e}. Will overwrite.")
 
             if needs_update:
-                logger.info(f"Content for {self._internal_list_doc_name} requires update. Adding/updating document.")
-                # Use add_document to ensure it's processed like other docs (chunked, embedded)
+                logger.info(f"Content for internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}) requires update. Adding/updating document.")
+                # Use add_document with the ORIGINAL name, it will handle sanitization internally
                 # Pass _internal_call=True to prevent recursion
                 success = await self.add_document(self._internal_list_doc_name, content, save_to_disk=True, _internal_call=True)
                 if success:
-                    logger.info(f"Successfully updated and saved {self._internal_list_doc_name}.")
+                    logger.info(f"Successfully updated and saved internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}).")
                 else:
-                    logger.error(f"Failed to add/update {self._internal_list_doc_name} due to errors during processing or saving.")
+                    logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}) due to errors during processing or saving.")
             else:
                  # Even if content didn't change, ensure metadata reflects check time
-                 if self._internal_list_doc_name in self.metadata:
-                     self.metadata[self._internal_list_doc_name]['checked'] = datetime.now().isoformat()
+                 # Use sanitized name for lookup
+                 if s_internal_list_name in self.metadata:
+                     self.metadata[s_internal_list_name]['checked'] = datetime.now().isoformat()
                      # No need to save just for a timestamp check unless other changes happened
 
         except Exception as e:
@@ -191,30 +243,36 @@ class DocumentManager:
         query_tokens = query.lower().split()
         
         results = []
-        for doc_name, chunks in self.chunks.items():
-            # Make sure we have a BM25 index for this document
-            if doc_name not in self.bm25_indexes:
-                self.bm25_indexes[doc_name] = self._create_bm25_index(
-                    self.contextualized_chunks.get(doc_name, chunks)
+        # Iterate using sanitized names (s_name)
+        for s_name, chunks in self.chunks.items():
+            # Make sure we have a BM25 index for this document using sanitized name
+            if s_name not in self.bm25_indexes:
+                self.bm25_indexes[s_name] = self._create_bm25_index(
+                    self.contextualized_chunks.get(s_name, chunks) # Use s_name for lookup
                 )
                 
-            # Get BM25 scores
-            bm25_scores = self.bm25_indexes[doc_name].get_scores(query_tokens)
+            # Get BM25 scores using sanitized name
+            bm25_scores = self.bm25_indexes[s_name].get_scores(query_tokens)
             
             # Add top results
             for idx, score in enumerate(bm25_scores):
                 if idx < len(chunks):  # Safety check
                     image_id = None
-                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                        image_id = doc_name[6:-4]
-                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                        image_id = self.metadata[doc_name]['image_id']
+                    # Check image prefix using sanitized name
+                    if s_name.startswith("image_") and s_name.endswith(".txt"):
+                        image_id = s_name[6:-4]
+                    # Check metadata using sanitized name
+                    elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
+                        image_id = self.metadata[s_name]['image_id']
                     
-                    # Use contextualized chunk instead of original
-                    chunk = self.get_contextualized_chunk(doc_name, idx)
+                    # Use contextualized chunk instead of original, using sanitized name
+                    chunk = self.get_contextualized_chunk(s_name, idx)
+                    
+                    # Get the original name for the result tuple
+                    original_name = self._get_original_name(s_name)
                     
                     results.append((
-                        doc_name,
+                        original_name, # Return original name
                         chunk,
                         float(score),
                         image_id,
@@ -256,16 +314,21 @@ class DocumentManager:
         # But we'll ensure they're properly normalized anyway
         embedding_weight = 0.85  # Weight for embedding scores (adjust as needed)
         
-        # Process embedding results 
-        for doc_name, chunk, score, image_id, chunk_idx, total_chunks in embedding_results:
-            key = (doc_name, chunk_idx)
+        # Process embedding results
+        # Assume embedding_results contains ORIGINAL names, need to map to sanitized for key
+        for original_name, chunk, score, image_id, chunk_idx, total_chunks in embedding_results:
+            s_name = self._get_sanitized_name_from_original(original_name)
+            if not s_name:
+                logger.warning(f"Could not find sanitized name for '{original_name}' in embedding results, skipping.")
+                continue
+            key = (s_name, chunk_idx) # Use sanitized name in key
             # Ensure score is between 0 and 1
             norm_score = max(0, min(1, score))
             combined_scores[key] = combined_scores.get(key, 0) + (norm_score * embedding_weight)
-            
-            # Log some of the top embedding scores
+
+            # Log some of the top embedding scores (using original name for logging)
             if len(combined_scores) <= 3:
-                logger.info(f"Top embedding result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
+                logger.info(f"Top embedding result: {original_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
         
         # Normalize BM25 scores to [0, 1] range
         bm25_weight = 0.15  # Weight for BM25 scores (adjust as needed)
@@ -283,19 +346,24 @@ class DocumentManager:
             max_bm25, min_bm25, range_bm25 = 1.0, 0.0, 1.0
         
         # Process BM25 results
-        for doc_name, chunk, score, image_id, chunk_idx, total_chunks in bm25_results:
-            key = (doc_name, chunk_idx)
+        # Assume bm25_results contains ORIGINAL names, need to map to sanitized for key
+        for original_name, chunk, score, image_id, chunk_idx, total_chunks in bm25_results:
+            s_name = self._get_sanitized_name_from_original(original_name)
+            if not s_name:
+                logger.warning(f"Could not find sanitized name for '{original_name}' in BM25 results, skipping.")
+                continue
+            key = (s_name, chunk_idx) # Use sanitized name in key
             # Normalize BM25 score to [0, 1] range
             if range_bm25 > 0:
                 norm_score = (score - min_bm25) / range_bm25
             else:
                 norm_score = 0.5  # Default if all scores are the same
-                
+
             combined_scores[key] = combined_scores.get(key, 0) + (norm_score * bm25_weight)
-            
-            # Log some of the top BM25 scores
+
+            # Log some of the top BM25 scores (using original name for logging)
             #if len([k for k in combined_scores.keys() if k == key]) <= 3:
-            #    logger.info(f"Top BM25 result: {doc_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
+            #    logger.info(f"Top BM25 result: {original_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
         
         # Safety check - ensure we have some scores
         if not combined_scores:
@@ -304,38 +372,45 @@ class DocumentManager:
         
         # Create combined results
         combined_results = []
-        for (doc_name, chunk_idx), score in combined_scores.items():
-            # Use contextualized chunk instead of original
+        # Iterate using sanitized names (s_name) from the combined_scores keys
+        for (s_name, chunk_idx), score in combined_scores.items():
+            # Use contextualized chunk instead of original, using sanitized name
             chunk_index = chunk_idx - 1  # Convert from 1-based to 0-based indexing
-            
-            # Safety check for valid index
-            if chunk_index < 0 or chunk_index >= len(self.chunks.get(doc_name, [])):
+
+            # Safety check for valid index using sanitized name
+            if chunk_index < 0 or chunk_index >= len(self.chunks.get(s_name, [])):
+                logger.warning(f"Invalid chunk index {chunk_index} for sanitized doc '{s_name}' during combine.")
                 continue
-                
-            # Get the contextualized chunk
-            chunk = self.get_contextualized_chunk(doc_name, chunk_index)
-                
+
+            # Get the contextualized chunk using sanitized name
+            chunk = self.get_contextualized_chunk(s_name, chunk_index)
+
             image_id = None
-            if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                image_id = doc_name[6:-4]
-            elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                image_id = self.metadata[doc_name]['image_id']
-                
+            # Check image prefix using sanitized name
+            if s_name.startswith("image_") and s_name.endswith(".txt"):
+                image_id = s_name[6:-4]
+            # Check metadata using sanitized name
+            elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
+                image_id = self.metadata[s_name]['image_id']
+
+            # Get the original name for the final result tuple
+            original_name = self._get_original_name(s_name)
+
             combined_results.append((
-                doc_name,
+                original_name, # Return original name
                 chunk,
                 score,  # This is the combined score
                 image_id,
                 chunk_idx,
-                len(self.chunks[doc_name])
+                len(self.chunks[s_name]) # Use sanitized name for chunk count lookup
             ))
         
         # Sort by score and return top_k
         combined_results.sort(key=lambda x: x[2], reverse=True)
-        
-        # Log top combined results
-        for i, (doc_name, _, score, _, _, _) in enumerate(combined_results[:3]):
-            logger.info(f"Top {i+1} combined result: {doc_name}, score: {score:.4f}")
+
+        # Log top combined results (using original name)
+        for i, (original_name, _, score, _, _, _) in enumerate(combined_results[:3]):
+            logger.info(f"Top {i+1} combined result: {original_name}, score: {score:.4f}")
         
         return combined_results[:top_k]
 
@@ -587,9 +662,16 @@ class DocumentManager:
             bool: True if the document was added/updated successfully (including saving if requested), False otherwise.
         """
         try:
+            original_name = name # Keep original name for reference and metadata
+            s_name = self._sanitize_name(name)
+
+            if s_name != original_name:
+                logger.warning(f"Document name '{original_name}' sanitized to '{s_name}' for internal storage and filename.")
+
             # Prevent direct modification of the internal list doc via this method if not internal call
-            if name == self._internal_list_doc_name and not _internal_call:
-                 logger.warning(f"Attempted to directly modify internal document '{name}'. Use specific commands or let the system manage it.")
+            # Use sanitized name for check
+            if s_name == self._sanitize_name(self._internal_list_doc_name) and not _internal_call:
+                 logger.warning(f"Attempted to directly modify internal document '{original_name}' (sanitized: {s_name}). Use specific commands or let the system manage it.")
                  # Optionally, raise an error or return False
                  # raise ValueError(f"Cannot directly modify internal document '{name}'")
                  return False # Indicate failure
@@ -601,99 +683,104 @@ class DocumentManager:
             # Calculate word count
             word_count = len(content.split())
             max_words_for_context = 20000 # Define the limit
-            logger.info(f"Document '{name}' word count: {word_count}")
+            logger.info(f"Document '{original_name}' (sanitized: {s_name}) word count: {word_count}")
 
             # Create original chunks (always needed)
             chunks = self._chunk_text(content)
             if not chunks:
-                logger.warning(f"Document {name} has no content to chunk. Skipping.")
+                logger.warning(f"Document '{original_name}' (sanitized: {s_name}) has no content to chunk. Skipping.")
                 return True # Technically not a failure, just skipped
 
             # Check if document already exists and if content has changed
             content_changed = True
             current_hash = None # Initialize hash variable
-            if name in self.metadata and 'content_hash' in self.metadata[name]:
+            # Use sanitized name for lookup
+            if s_name in self.metadata and 'content_hash' in self.metadata[s_name]:
                 import hashlib
                 current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-                previous_hash = self.metadata[name]['content_hash']
+                previous_hash = self.metadata[s_name]['content_hash']
                 if previous_hash and previous_hash == current_hash:
                     content_changed = False
-                    logger.info(f"Document {name} content has not changed based on hash.")
+                    logger.info(f"Document '{original_name}' (sanitized: {s_name}) content has not changed based on hash.")
 
             # Determine if processing (embedding, indexing) is needed
             # Needs processing if content changed OR if embeddings are missing for this doc
-            needs_processing = content_changed or name not in self.embeddings
+            needs_processing = content_changed or s_name not in self.embeddings
 
             if needs_processing:
-                logger.info(f"Processing required for document {name} (Content changed: {content_changed}, Embeddings missing: {name not in self.embeddings})")
+                logger.info(f"Processing required for document '{original_name}' (sanitized: {s_name}) (Content changed: {content_changed}, Embeddings missing: {s_name not in self.embeddings})")
 
                 # Decide whether to contextualize based on word count
                 should_contextualize = word_count <= max_words_for_context
                 # logger.debug(f"Contextualization check for '{name}': word_count={word_count}, max_words={max_words_for_context}, should_contextualize={should_contextualize}") # DEBUG LOG REMOVED
 
                 if should_contextualize:
-                    logger.info(f"Document {name} ({word_count} words) is within limit ({max_words_for_context}). Generating contextualized chunks.")
-                    contextualized_chunks = await self.contextualize_chunks(name, content, chunks)
+                    logger.info(f"Document '{original_name}' ({word_count} words) is within limit ({max_words_for_context}). Generating contextualized chunks.")
+                    contextualized_chunks = await self.contextualize_chunks(original_name, content, chunks) # Pass original_name for context generation title?
                     # Use contextualized chunks for embeddings and BM25
                     chunks_for_embedding = contextualized_chunks
                     chunks_for_bm25 = contextualized_chunks
-                    # Store the contextualized chunks
-                    self.contextualized_chunks[name] = contextualized_chunks
+                    # Store the contextualized chunks using sanitized name
+                    self.contextualized_chunks[s_name] = contextualized_chunks
                 else:
-                    logger.warning(f"Document {name} ({word_count} words) exceeds limit ({max_words_for_context}). Skipping contextualization, using original chunks.")
+                    logger.warning(f"Document '{original_name}' ({word_count} words) exceeds limit ({max_words_for_context}). Skipping contextualization, using original chunks.")
                     # Use original chunks for embeddings and BM25
                     chunks_for_embedding = chunks
                     chunks_for_bm25 = chunks
                     # Ensure no stale contextualized chunks exist if the doc previously fit
-                    if name in self.contextualized_chunks:
-                        del self.contextualized_chunks[name]
-                        logger.info(f"Removed previous contextualized chunks for oversized document {name}.")
+                    if s_name in self.contextualized_chunks:
+                        del self.contextualized_chunks[s_name]
+                        logger.info(f"Removed previous contextualized chunks for oversized document '{original_name}' (sanitized: {s_name}).")
 
                 # Generate embeddings using the selected chunks (either original or contextualized)
                 # Ensure chunks_for_embedding is not empty before proceeding
                 if not chunks_for_embedding:
-                    logger.error(f"No chunks available for embedding document {name}. Skipping embedding generation.")
+                    logger.error(f"No chunks available for embedding document '{original_name}' (sanitized: {s_name}). Skipping embedding generation.")
                     embeddings = np.array([]) # Assign empty array if no chunks
                 else:
-                    titles = [name] * len(chunks_for_embedding) # Title count should match chunk count
+                    # Use original_name for titles passed to embedding model
+                    titles = [original_name] * len(chunks_for_embedding) # Title count should match chunk count
                     embeddings = await self.generate_embeddings(chunks_for_embedding, is_query=False, titles=titles)
 
-                # Store document data
-                self.chunks[name] = chunks  # Always store original chunks
-                self.embeddings[name] = embeddings # Store the generated embeddings
+                # Store document data using sanitized name as key
+                self.chunks[s_name] = chunks  # Store original chunks
+                self.embeddings[s_name] = embeddings # Store the generated embeddings
 
                 # Calculate hash if not already done (e.g., if content changed but wasn't in metadata before)
                 if current_hash is None:
                      import hashlib
                      current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
 
-                # Update metadata
-                self.metadata[name] = {
-                    'added': self.metadata.get(name, {}).get('added', datetime.now().isoformat()), # Preserve original add time
+                # Update metadata using sanitized name as key
+                self.metadata[s_name] = {
+                    'original_name': original_name, # Store original name
+                    'added': self.metadata.get(s_name, {}).get('added', datetime.now().isoformat()), # Preserve original add time using sanitized key lookup
                     'updated': datetime.now().isoformat(),
                     'chunk_count': len(chunks),
                     'content_hash': current_hash,
                     'contextualized': should_contextualize # Add flag indicating if contextualized
                 }
 
-                # Create BM25 index using the selected chunks
+                # Create BM25 index using the selected chunks and sanitized name
                 # Ensure chunks_for_bm25 is not empty
                 if chunks_for_bm25:
-                    self.bm25_indexes[name] = self._create_bm25_index(chunks_for_bm25)
+                    self.bm25_indexes[s_name] = self._create_bm25_index(chunks_for_bm25) # Use sanitized name
                 else:
-                    logger.warning(f"No chunks available for BM25 indexing document {name}. Skipping BM25 index creation.")
-                    if name in self.bm25_indexes: # Remove stale index if it exists
-                        del self.bm25_indexes[name]
+                    logger.warning(f"No chunks available for BM25 indexing document '{original_name}' (sanitized: {s_name}). Skipping BM25 index creation.")
+                    if s_name in self.bm25_indexes: # Remove stale index if it exists
+                        del self.bm25_indexes[s_name]
 
 
-                logger.info(f"Finished processing for document {name}. Contextualized: {should_contextualize}")
+                logger.info(f"Finished processing for document '{original_name}' (sanitized: {s_name}). Contextualized: {should_contextualize}")
 
             else: # Content hasn't changed, just update timestamp
-                logger.info(f"Document {name} content unchanged. Updating 'checked' timestamp.")
-                if name in self.metadata:
-                    self.metadata[name]['checked'] = datetime.now().isoformat()
+                logger.info(f"Document '{original_name}' (sanitized: {s_name}) content unchanged. Updating 'checked' timestamp.")
+                if s_name in self.metadata:
+                    self.metadata[s_name]['checked'] = datetime.now().isoformat()
                 else: # Should not happen if content_changed is False, but safety check
-                     self.metadata[name] = {
+                     # If metadata was missing, create it with original name
+                     self.metadata[s_name] = {
+                        'original_name': original_name,
                         'checked': datetime.now().isoformat(),
                         'chunk_count': len(chunks) # Best guess
                      }
@@ -704,14 +791,14 @@ class DocumentManager:
 
             # Log completion message
             if needs_processing:
-                 log_context_status = self.metadata.get(name, {}).get('contextualized', 'N/A')
-                 logger.info(f"{'Internally added/updated' if _internal_call else 'Added/updated'} document: {name} with {len(chunks)} chunks. Contextualized: {log_context_status}")
+                 log_context_status = self.metadata.get(s_name, {}).get('contextualized', 'N/A')
+                 logger.info(f"{'Internally added/updated' if _internal_call else 'Added/updated'} document: '{original_name}' (sanitized: {s_name}) with {len(chunks)} chunks. Contextualized: {log_context_status}")
             else:
-                 logger.info(f"Document {name} verified unchanged")
+                 logger.info(f"Document '{original_name}' (sanitized: {s_name}) verified unchanged")
 
             # Update the document list file, unless this was an internal call
             if not _internal_call:
-                await self._update_document_list_file()
+                await self._update_document_list_file() # This needs updating too
 
             return True # Indicate success
 
@@ -750,35 +837,41 @@ class DocumentManager:
         Retrieves the full content of all managed text documents.
 
         Returns:
-            Dict[str, str]: A dictionary where keys are document names
+            Dict[str, str]: A dictionary where keys are *original* document names
                             and values are the full document content.
                             Excludes image description files and internal lists.
         """
         all_contents = {}
         logger.info("Retrieving content for all managed text documents...")
-        for doc_name in self.metadata.keys():
-            # Skip internal list file and image description files
-            if doc_name == self._internal_list_doc_name or \
-               (doc_name.startswith("image_") and doc_name.endswith(".txt")):
-                logger.debug(f"Skipping non-content document: {doc_name}")
+        # Iterate using sanitized names (s_name)
+        s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
+        for s_name in self.metadata.keys():
+            # Skip internal list file and image description files using sanitized name
+            if s_name == s_internal_list_name or \
+               (s_name.startswith("image_") and s_name.endswith(".txt")):
+                logger.debug(f"Skipping non-content document (sanitized): {s_name}")
                 continue
 
-            file_path = self.base_dir / doc_name
+            original_name = self._get_original_name(s_name) # Get original name for the key
+            file_path = self.base_dir / s_name # Use sanitized name for file path
+            content = None
             if file_path.exists() and file_path.is_file():
                 try:
                     # Use utf-8-sig to handle potential BOM
                     with open(file_path, 'r', encoding='utf-8-sig') as f:
-                        all_contents[doc_name] = f.read()
+                        content = f.read()
                 except Exception as e:
-                    logger.error(f"Error reading content for document {doc_name}: {e}")
+                    logger.error(f"Error reading content for document '{original_name}' (sanitized: {s_name}): {e}")
             else:
-                logger.warning(f"Document file not found for {doc_name}, attempting to reconstruct from chunks.")
-                # Fallback: Reconstruct from original chunks if file missing
-                if doc_name in self.chunks:
-                    all_contents[doc_name] = " ".join(self.chunks[doc_name])
+                logger.warning(f"Document file not found for '{original_name}' (sanitized: {s_name}), attempting to reconstruct from chunks.")
+                # Fallback: Reconstruct from original chunks if file missing, using sanitized name
+                if s_name in self.chunks:
+                    content = " ".join(self.chunks[s_name])
                 else:
-                     logger.error(f"Could not retrieve content for {doc_name} from file or chunks.")
+                     logger.error(f"Could not retrieve content for '{original_name}' (sanitized: {s_name}) from file or chunks.")
 
+            if content is not None:
+                 all_contents[original_name] = content # Use original name as key
 
         logger.info(f"Retrieved content for {len(all_contents)} documents.")
         return all_contents
@@ -852,53 +945,65 @@ class DocumentManager:
         
         results = []
         logger.info("Performing custom search with pre-generated embedding")
-        
-        for doc_name, doc_embeddings in self.embeddings.items():
+
+        # Iterate using sanitized names (s_name)
+        for s_name, doc_embeddings in self.embeddings.items():
             if len(doc_embeddings) == 0:
-                logger.warning(f"Skipping document {doc_name} with empty embeddings")
+                logger.warning(f"Skipping document '{self._get_original_name(s_name)}' (sanitized: {s_name}) with empty embeddings")
                 continue
-                
+
             # Calculate similarities (dot product since embeddings are normalized)
             similarities = np.dot(doc_embeddings, query_embedding)
-            
+
             if len(similarities) > 0:
                 top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
-                
+
                 for idx in top_indices:
                     image_id = None
-                    if doc_name.startswith("image_") and doc_name.endswith(".txt"):
-                        image_id = doc_name[6:-4]
-                    elif doc_name in self.metadata and 'image_id' in self.metadata[doc_name]:
-                        image_id = self.metadata[doc_name]['image_id']
-                    
-                    if idx < len(self.chunks[doc_name]):
-                        # Use contextualized chunk instead of original
-                        chunk = self.get_contextualized_chunk(doc_name, idx)
-                        
+                    # Check image prefix using sanitized name
+                    if s_name.startswith("image_") and s_name.endswith(".txt"):
+                        image_id = s_name[6:-4]
+                    # Check metadata using sanitized name
+                    elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
+                        image_id = self.metadata[s_name]['image_id']
+
+                    # Check chunk index validity using sanitized name
+                    if idx < len(self.chunks[s_name]):
+                        # Use contextualized chunk instead of original, using sanitized name
+                        chunk = self.get_contextualized_chunk(s_name, idx)
+
+                        # Get the original name for the result tuple
+                        original_name = self._get_original_name(s_name)
+
                         results.append((
-                            doc_name,
+                            original_name, # Return original name
                             chunk,
                             float(similarities[idx]),
                             image_id,
                             idx + 1,  # 1-based indexing for display
-                            len(self.chunks[doc_name])
+                            len(self.chunks[s_name]) # Use sanitized name for chunk count
                         ))
         
         # Sort by similarity
         results.sort(key=lambda x: x[2], reverse=True)
-        
-        # Log search results
-        for doc_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
-            logger.info(f"Found relevant chunk in {doc_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
+
+        # Log search results (using original name)
+        for original_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
+            logger.info(f"Found relevant chunk in {original_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
             if image_id:
                 logger.info(f"This is an image description for image ID: {image_id}")
-            
-            # Log whether we're using a contextualized chunk
-            is_contextualized = (doc_name in self.contextualized_chunks and 
-                                chunk_index - 1 < len(self.contextualized_chunks[doc_name]) and
-                                chunk == self.contextualized_chunks[doc_name][chunk_index - 1])
-            #logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk")
-            
+
+            # Log whether we're using a contextualized chunk (needs sanitized name for lookup)
+            s_name = self._get_sanitized_name_from_original(original_name)
+            if s_name:
+                is_contextualized = (s_name in self.contextualized_chunks and
+                                    chunk_index - 1 < len(self.contextualized_chunks[s_name]) and
+                                    chunk == self.contextualized_chunks[s_name][chunk_index - 1])
+                #logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk for {original_name}")
+            else:
+                #logger.info(f"Could not verify contextualization status for {original_name}")
+                pass # Avoid logging if lookup failed
+
             #logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
 
         return results[:top_k]
@@ -938,30 +1043,35 @@ class DocumentManager:
         try:
             logger.info("Starting regeneration of all embeddings")
 
-            # Iterate through all documents
-            for doc_name, chunks in self.chunks.items():
-                logger.info(f"Regenerating embeddings for document: {doc_name}")
+            # Iterate through all documents using sanitized names (s_name)
+            for s_name, chunks in self.chunks.items():
+                original_name = self._get_original_name(s_name)
+                logger.info(f"Regenerating embeddings for document: '{original_name}' (sanitized: {s_name})")
 
                 # Get contextualized chunks (regenerate if needed, although ideally they exist)
-                if doc_name not in self.contextualized_chunks:
-                     logger.warning(f"Contextualized chunks missing for {doc_name}, regenerating...")
-                     doc_path = self.base_dir / doc_name
+                # Use sanitized name for lookups
+                if s_name not in self.contextualized_chunks:
+                     logger.warning(f"Contextualized chunks missing for '{original_name}' (sanitized: {s_name}), regenerating...")
+                     doc_path = self.base_dir / s_name # Use sanitized name for path
                      if doc_path.exists():
                          with open(doc_path, 'r', encoding='utf-8-sig') as f:
                              doc_content = f.read()
-                         self.contextualized_chunks[doc_name] = await self.contextualize_chunks(doc_name, doc_content, chunks)
+                         # Use original name for context generation title?
+                         self.contextualized_chunks[s_name] = await self.contextualize_chunks(original_name, doc_content, chunks)
                      else:
-                         logger.error(f"Cannot find original file {doc_name} to regenerate contextualized chunks.")
+                         logger.error(f"Cannot find original file '{original_name}' (sanitized: {s_name}) to regenerate contextualized chunks.")
                          continue # Skip this document if original file is missing
 
-                contextualized_chunks_for_doc = self.contextualized_chunks.get(doc_name, chunks) # Fallback to original if still missing
+                # Use sanitized name for lookup, fallback to original chunks
+                contextualized_chunks_for_doc = self.contextualized_chunks.get(s_name, chunks)
 
                 # Generate new embeddings asynchronously
-                titles = [doc_name] * len(contextualized_chunks_for_doc)
+                # Pass ORIGINAL name as title
+                titles = [original_name] * len(contextualized_chunks_for_doc)
                 new_embeddings = await self.generate_embeddings(contextualized_chunks_for_doc, is_query=False, titles=titles) # Await async call
 
-                # Update stored embeddings
-                self.embeddings[doc_name] = new_embeddings
+                # Update stored embeddings using sanitized name
+                self.embeddings[s_name] = new_embeddings
 
             # Save to disk
             self._save_to_disk()
@@ -974,6 +1084,7 @@ class DocumentManager:
 
     async def _load_documents(self, force_reload: bool = False):
         """Load document data from disk and add any new .txt files."""
+        # Wrap the entire loading process in a try/except
         try:
             # Check if embeddings provider has changed
             embeddings_provider_file = self.base_dir / 'embeddings_provider.txt'
@@ -1007,34 +1118,41 @@ class DocumentManager:
                     self.embeddings = {}
                     self.metadata = {}
                     self.bm25_indexes = {}
-                    
-                    # Regenerate embeddings for all documents
-                    for doc_name, chunks in self.chunks.items():
-                        logger.info(f"Regenerating embeddings for document: {doc_name}")
-                        
-                        # Get original document content if available
-                        doc_path = self.base_dir / doc_name
+
+                    # Regenerate embeddings for all documents using sanitized names (s_name)
+                    for s_name, chunks in self.chunks.items():
+                        original_name = self._get_original_name(s_name) # Get original name early
+                        logger.info(f"Regenerating embeddings for document: '{original_name}' (sanitized: {s_name}) due to provider change")
+
+                        # Get original document content if available using sanitized name for path
+                        doc_path = self.base_dir / s_name
                         if doc_path.exists():
                             with open(doc_path, 'r', encoding='utf-8-sig') as f:
                                 doc_content = f.read()
                         else:
                             # If original not available, concatenate chunks
+                            logger.warning(f"Original file not found for '{original_name}' (sanitized: {s_name}), using concatenated chunks.")
                             doc_content = " ".join(chunks)
-                        
-                        # Generate contextualized chunks
-                        contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
-                        self.contextualized_chunks[doc_name] = contextualized_chunks
 
-                        # Generate embeddings asynchronously
-                        titles = [doc_name] * len(contextualized_chunks)
-                        self.embeddings[doc_name] = await self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles) # Await async call
+                        # Generate contextualized chunks using original name for title?
+                        contextualized_chunks = await self.contextualize_chunks(original_name, doc_content, chunks)
+                        self.contextualized_chunks[s_name] = contextualized_chunks # Store with sanitized key
 
-                        # Create BM25 index
-                        self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
-                        
-                        self.metadata[doc_name] = {
-                            'added': datetime.now().isoformat(),
-                            'chunk_count': len(chunks)
+                        # Generate embeddings asynchronously using ORIGINAL name as title
+                        titles = [original_name] * len(contextualized_chunks)
+                        self.embeddings[s_name] = await self.generate_embeddings(contextualized_chunks, is_query=False, titles=titles) # Store with sanitized key
+
+                        # Create BM25 index using sanitized key
+                        self.bm25_indexes[s_name] = self._create_bm25_index(contextualized_chunks)
+
+                        # Update metadata using sanitized key, store original name
+                        self.metadata[s_name] = {
+                            'original_name': original_name,
+                            'added': datetime.now().isoformat(), # Reset added time? Or try to preserve?
+                            'updated': datetime.now().isoformat(),
+                            'chunk_count': len(chunks),
+                            'content_hash': self.metadata.get(s_name, {}).get('content_hash'), # Preserve hash if possible
+                            'contextualized': True # Assume contextualized after regeneration
                         }
                 else:
                     # Normal load if provider hasn't changed
@@ -1100,28 +1218,138 @@ class DocumentManager:
                 self.contextualized_chunks = {}
                 self.embeddings = {}
                 self.metadata = {}
-                self.bm25_indexes = {}
-                logger.info("Starting fresh or force reloading documents")
+            self.bm25_indexes = {}
+            logger.info("Starting fresh or force reloading documents")
 
-            # Save current provider info
+            # --- Migration Step for Existing Data ---
+            migrated_count = 0
+            keys_to_migrate = list(self.metadata.keys()) # Iterate over a copy of keys
+            needs_save_after_migration = False
+
+            logger.info("Checking existing document metadata for necessary migrations...")
+            for current_key in keys_to_migrate:
+                # Add a try-except block for individual entry migration
+                try:
+                    meta = self.metadata.get(current_key)
+                    if not meta:
+                        continue # Skip if metadata somehow missing for this key
+
+                    original_name_in_meta = meta.get('original_name')
+                    # Calculate what the key *should* be if the current_key was the original name
+                    expected_sanitized_key_if_current_is_orig = self._sanitize_name(current_key)
+
+                    # Scenario 1: Key is unsanitized (doesn't match its sanitized version)
+                    # Scenario 2: Key is sanitized, but 'original_name' field is missing (old format)
+                    needs_migration = False
+                    original_name_to_set = None
+
+                    if current_key != expected_sanitized_key_if_current_is_orig:
+                        # Key itself is likely the old, unsanitized name
+                        needs_migration = True
+                        original_name_to_set = current_key # The key *is* the original name
+                        logger.warning(f"Found potentially unsanitized key '{current_key}'. Preparing migration.")
+                    elif original_name_in_meta is None:
+                        # Key is sanitized, but metadata is old format (missing original_name)
+                        needs_migration = True
+                        original_name_to_set = current_key # Assume the key was the intended original name
+                        logger.warning(f"Found old metadata format for key '{current_key}' (missing 'original_name'). Preparing update.")
+
+                    if needs_migration and original_name_to_set:
+                        new_sanitized_key = self._sanitize_name(original_name_to_set)
+
+                        # Check for conflict: If the new key exists and is not the current key
+                        if new_sanitized_key in self.metadata and new_sanitized_key != current_key:
+                            logger.error(f"Migration conflict! Cannot migrate '{current_key}' to '{new_sanitized_key}' because the target key already exists. Skipping migration for this entry.")
+                            continue # Skip this problematic entry
+
+                        logger.info(f"Migrating entry: '{current_key}' -> '{new_sanitized_key}' (Original: '{original_name_to_set}')")
+
+                        # Move data to new key only if the key is actually changing
+                        if new_sanitized_key != current_key:
+                            if current_key in self.chunks: self.chunks[new_sanitized_key] = self.chunks.pop(current_key)
+                            if current_key in self.contextualized_chunks: self.contextualized_chunks[new_sanitized_key] = self.contextualized_chunks.pop(current_key)
+                            if current_key in self.embeddings: self.embeddings[new_sanitized_key] = self.embeddings.pop(current_key)
+                            if current_key in self.bm25_indexes: self.bm25_indexes[new_sanitized_key] = self.bm25_indexes.pop(current_key)
+                            # Move metadata last
+                            meta_to_move = self.metadata.pop(current_key)
+                            meta_to_move['original_name'] = original_name_to_set # Ensure original name is set
+                            self.metadata[new_sanitized_key] = meta_to_move
+                        else:
+                            # Key isn't changing, just update metadata in place
+                            self.metadata[current_key]['original_name'] = original_name_to_set
+
+                        # Attempt to rename file on disk
+                        old_file_path = self.base_dir / current_key # Path based on the old key
+                        new_file_path = self.base_dir / new_sanitized_key # Path based on the new key
+                        if old_file_path.exists() and old_file_path != new_file_path:
+                            try:
+                                old_file_path.rename(new_file_path)
+                                logger.info(f"Successfully renamed file: {old_file_path} -> {new_file_path}")
+                            except Exception as rename_err:
+                                logger.error(f"Failed to rename file during migration {old_file_path} -> {new_file_path}: {rename_err}")
+                        elif not old_file_path.exists() and new_sanitized_key != current_key:
+                             logger.warning(f"Old file path '{old_file_path}' not found during migration, cannot rename.")
+
+
+                        migrated_count += 1
+                        needs_save_after_migration = True
+
+                # Add except block for the inner try (catches errors during individual entry processing)
+                except Exception as migration_entry_error:
+                     logger.error(f"Error migrating entry for key '{current_key}': {migration_entry_error}")
+                     # Continue to the next key even if one fails
+
+            if migrated_count > 0:
+                logger.info(f"Completed migration check. Migrated/updated {migrated_count} entries.")
+            else:
+                 logger.info("No metadata entries required migration.")
+
+            # Save changes immediately if migration occurred
+            if needs_save_after_migration:
+                 logger.info("Saving migrated data structures to disk...")
+                 self._save_to_disk()
+            # --- End Migration Step ---
+
+
+            # Save current provider info (do this *after* potential migration save)
             with open(embeddings_provider_file, 'w') as f:
                 f.write("gemini")
 
-            # Find .txt files not already loaded
-            existing_names = set(self.chunks.keys())
-            txt_files = [f for f in self.base_dir.glob('*.txt') if f.name not in existing_names]
+            # Find .txt files whose *sanitized* names are not already loaded
+            # Use the potentially updated self.chunks keys after migration
+            existing_sanitized_names = set(self.chunks.keys())
+            all_txt_files_on_disk = list(self.base_dir.glob('*.txt'))
+            new_txt_files_to_load = []
 
-            if txt_files:
-                logger.info(f"Found {len(txt_files)} new .txt files to load")
-                for txt_file in txt_files:
+            # Correct indentation for this block
+            for txt_file_path in all_txt_files_on_disk:
+                original_filename = txt_file_path.name
+                sanitized_filename = self._sanitize_name(original_filename)
+                if sanitized_filename not in existing_sanitized_names:
+                    # Check if it's the internal list file (using sanitized name)
+                    s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
+                    if sanitized_filename == s_internal_list_name:
+                        logger.info(f"Skipping internal list file found on disk: {original_filename}")
+                        continue
+                    new_txt_files_to_load.append(txt_file_path)
+                else:
+                    # If sanitized name exists, ensure metadata has original name
+                    if 'original_name' not in self.metadata.get(sanitized_filename, {}):
+                         logger.warning(f"Existing document '{sanitized_filename}' missing original name in metadata. Updating.")
+                         self.metadata[sanitized_filename]['original_name'] = original_filename # Best guess
+
+            if new_txt_files_to_load:
+                logger.info(f"Found {len(new_txt_files_to_load)} new .txt files to load")
+                for txt_file_path in new_txt_files_to_load:
+                    original_filename = txt_file_path.name
                     try:
-                        with open(txt_file, 'r', encoding='utf-8-sig') as f:
+                        with open(txt_file_path, 'r', encoding='utf-8-sig') as f:
                             content = f.read()
-                        # Use save_to_disk=False here to avoid saving after each file
-                        await self.add_document(txt_file.name, content, save_to_disk=False)
-                        logger.info(f"Loaded and processed {txt_file.name}")
+                        # Pass the ORIGINAL filename to add_document
+                        await self.add_document(original_filename, content, save_to_disk=False)
+                        logger.info(f"Loaded and processed new file: {original_filename}")
                     except Exception as e:
-                        logger.error(f"Error processing {txt_file.name}: {e}")
+                        logger.error(f"Error processing new file {original_filename}: {e}")
             else:
                 logger.info("No new .txt files to load")
 
@@ -1129,9 +1357,17 @@ class DocumentManager:
             await self._update_document_list_file()
 
             # Save the updated state to disk once after all loading/updates
-            self._save_to_disk()
+            # Only save here if no migration happened, otherwise it was saved earlier
+            if not needs_save_after_migration:
+                logger.info("Saving final document state after loading/checking.")
+                self._save_to_disk()
+
+        # Add the main except block for the entire _load_documents method
         except Exception as e:
-            logger.error(f"Error loading documents: {e}")
+            logger.error(f"Critical error during document loading/migration: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Reset state to prevent partial loads
             self.chunks = {}
             self.contextualized_chunks = {}
             self.embeddings = {}
@@ -1188,33 +1424,54 @@ class DocumentManager:
 
     async def rename_document(self, old_name: str, new_name: str) -> str: # Make async
         """Rename a document in the system (regular doc, Google Doc, or lorebook)."""
-        # Prevent renaming the internal list document
+        # Use original names for checks against internal list name
         if old_name == self._internal_list_doc_name:
             return f"Cannot rename the internal document list file '{old_name}'."
-        if new_name == self._internal_list_doc_name:
-             return f"Cannot rename a document to the internal list file name '{new_name}'."
+        s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
+        s_new_name = self._sanitize_name(new_name)
+        if s_new_name == s_internal_list_name:
+             return f"Cannot rename a document to the internal list file name '{new_name}' (sanitized: {s_new_name})."
 
         result_message = f"Document '{old_name}' not found in the system" # Default message
 
-        # Check if it's a regular document
-        if old_name in self.metadata:
-            # Add .txt extension to new_name if it doesn't have it and old_name does
-            if old_name.endswith('.txt') and not new_name.endswith('.txt'):
-                new_name += '.txt'
-                
-            # Update the in-memory dictionaries
-            self.chunks[new_name] = self.chunks.pop(old_name)
-            self.embeddings[new_name] = self.embeddings.pop(old_name)
-            self.metadata[new_name] = self.metadata.pop(old_name)
-            
-            # Save the changes to disk
+        # --- Regular Document Rename ---
+        s_old_name = self._get_sanitized_name_from_original(old_name)
+
+        if s_old_name and s_old_name in self.metadata:
+            logger.info(f"Attempting to rename regular document '{old_name}' (sanitized: {s_old_name}) to '{new_name}' (sanitized: {s_new_name})")
+
+            # Check if new sanitized name conflicts with an existing document (excluding itself)
+            if s_new_name in self.metadata and s_new_name != s_old_name:
+                existing_original = self._get_original_name(s_new_name)
+                return f"Cannot rename to '{new_name}': Sanitized name '{s_new_name}' conflicts with existing document '{existing_original}'."
+
+            # Update the in-memory dictionaries using sanitized names
+            self.chunks[s_new_name] = self.chunks.pop(s_old_name)
+            if s_old_name in self.contextualized_chunks: # Handle contextualized chunks
+                self.contextualized_chunks[s_new_name] = self.contextualized_chunks.pop(s_old_name)
+            self.embeddings[s_new_name] = self.embeddings.pop(s_old_name)
+            if s_old_name in self.bm25_indexes: # Handle BM25 index
+                 self.bm25_indexes[s_new_name] = self.bm25_indexes.pop(s_old_name)
+
+            # Update metadata: pop old, update new key, store original name
+            meta = self.metadata.pop(s_old_name)
+            meta['original_name'] = new_name # Update original name field
+            meta['updated'] = datetime.now().isoformat()
+            self.metadata[s_new_name] = meta
+
+            # Save the changes to disk (pickles and json)
             self._save_to_disk()
-            
-            # Check if there's a file on disk to rename
-            old_file_path = self.base_dir / old_name
+
+            # Rename the actual file on disk using sanitized names
+            old_file_path = self.base_dir / s_old_name
             if old_file_path.exists():
-                new_file_path = self.base_dir / new_name
-                old_file_path.rename(new_file_path)
+                new_file_path = self.base_dir / s_new_name
+                try:
+                    old_file_path.rename(new_file_path)
+                    logger.info(f"Renamed file on disk from {s_old_name} to {s_new_name}")
+                except Exception as e:
+                    logger.error(f"Failed to rename file {old_file_path} to {new_file_path}: {e}")
+                    # Consider how to handle this - maybe revert in-memory changes?
 
             result_message = f"Document renamed from '{old_name}' to '{new_name}'"
             await self._update_document_list_file() # Update list after rename
@@ -1226,41 +1483,103 @@ class DocumentManager:
             with open(tracked_file, 'r') as f:
                 tracked_docs = json.load(f)
             
-            # Check if old_name is a Google Doc custom name or filename
+            # --- Google Doc Rename ---
+            logger.info(f"Checking if '{old_name}' corresponds to a tracked Google Doc.")
+            # Check if old_name is a Google Doc custom name or filename derived from ID
+            doc_found = False
             for i, doc in enumerate(tracked_docs):
                 doc_id = doc['id']
-                custom_name = doc.get('custom_name')
-                filename = f"googledoc_{doc_id}.txt"
-                
-                if old_name == custom_name or old_name == filename:
-                    # Update the custom name
-                    tracked_docs[i]['custom_name'] = new_name
-                    
-                    # Save the updated list
-                    with open(tracked_file, 'w') as f:
-                        json.dump(tracked_docs, f)
-                    
-                    # If the document is also in the main storage, update it there
-                    old_filename = custom_name or filename
-                    if old_filename.endswith('.txt') and not new_name.endswith('.txt'):
-                        new_name += '.txt'
-                        
-                    # Update in-memory dictionaries if present
-                    if old_filename in self.metadata:
-                        self.chunks[new_name] = self.chunks.pop(old_filename)
-                        self.embeddings[new_name] = self.embeddings.pop(old_filename)
-                        self.metadata[new_name] = self.metadata.pop(old_filename)
-                        self._save_to_disk()
-                    
-                    # Rename the file on disk if it exists
-                    old_file_path = self.base_dir / old_filename
-                    if old_file_path.exists():
-                        new_file_path = self.base_dir / new_name
-                        old_file_path.rename(new_file_path)
+                current_custom_name = doc.get('custom_name')
+                # Generate the potential filename based on ID (before sanitization)
+                id_based_filename_orig = f"googledoc_{doc_id}.txt"
 
-                    result_message = f"Google Doc renamed from '{old_name}' to '{new_name}'"
-                    await self._update_document_list_file() # Update list after rename
-                    return result_message
+                # Check if old_name matches the current custom name OR the ID-based name
+                if old_name == current_custom_name or old_name == id_based_filename_orig:
+                    logger.info(f"Found matching Google Doc (ID: {doc_id}). Updating custom name to '{new_name}'.")
+                    # Update the custom name in the tracking list
+                    tracked_docs[i]['custom_name'] = new_name
+                    doc_found = True
+
+                    # Save the updated tracking list
+                    with open(tracked_file, 'w') as f:
+                        json.dump(tracked_docs, f, indent=2) # Add indent for readability
+
+                    # Now, check if this Google Doc is *also* managed internally
+                    # Determine the sanitized name it *would* have had based on its *previous* name
+                    s_old_name_gdoc = self._get_sanitized_name_from_original(current_custom_name or id_based_filename_orig)
+
+                    if s_old_name_gdoc and s_old_name_gdoc in self.metadata:
+                        logger.info(f"Google Doc '{old_name}' is also managed internally (sanitized: {s_old_name_gdoc}). Renaming internal data.")
+                        # Check for conflicts with the new sanitized name
+                        if s_new_name in self.metadata and s_new_name != s_old_name_gdoc:
+                             existing_original = self._get_original_name(s_new_name)
+                             # Revert tracking file change before returning error? Maybe not necessary.
+                             return f"Cannot rename Google Doc to '{new_name}': Sanitized name '{s_new_name}' conflicts with existing document '{existing_original}'."
+
+                        # Rename internal data similar to regular documents
+                        self.chunks[s_new_name] = self.chunks.pop(s_old_name_gdoc)
+                        if s_old_name_gdoc in self.contextualized_chunks:
+                            self.contextualized_chunks[s_new_name] = self.contextualized_chunks.pop(s_old_name_gdoc)
+                        self.embeddings[s_new_name] = self.embeddings.pop(s_old_name_gdoc)
+                        if s_old_name_gdoc in self.bm25_indexes:
+                             self.bm25_indexes[s_new_name] = self.bm25_indexes.pop(s_old_name_gdoc)
+
+                        meta = self.metadata.pop(s_old_name_gdoc)
+                        meta['original_name'] = new_name # Update original name field
+                        meta['updated'] = datetime.now().isoformat()
+                        self.metadata[s_new_name] = meta
+
+                        self._save_to_disk()
+
+                        # Rename the file on disk using sanitized names
+                        old_file_path = self.base_dir / s_old_name_gdoc
+                        if old_file_path.exists():
+                            new_file_path = self.base_dir / s_new_name
+                            try:
+                                old_file_path.rename(new_file_path)
+                                logger.info(f"Renamed Google Doc file on disk from {s_old_name_gdoc} to {s_new_name}")
+                            except Exception as e:
+                                logger.error(f"Failed to rename Google Doc file {old_file_path} to {new_file_path}: {e}")
+                    else:
+                         logger.info(f"Google Doc '{old_name}' was tracked but not found in internal document manager storage.")
+
+
+                    result_message = f"Google Doc renamed from '{old_name}' to '{new_name}' (tracking updated)"
+                    await self._update_document_list_file() # Update list if internal data changed
+                    return result_message # Exit loop once found and processed
+
+            if doc_found: # Should have returned inside loop if found
+                 pass # Should not reach here if found
+
+        # --- Lorebook Rename ---
+        # Lorebooks are not sanitized internally, handle directly by filename
+        lorebooks_path = self.get_lorebooks_path()
+        old_lorebook_path = lorebooks_path / old_name
+        # Try adding .txt if the direct name doesn't exist
+        if not old_lorebook_path.exists() and not old_name.endswith('.txt'):
+            old_lorebook_path = lorebooks_path / f"{old_name}.txt"
+
+        if old_lorebook_path.exists():
+            logger.info(f"Attempting to rename lorebook: {old_lorebook_path}")
+            # Ensure new name has .txt if old one did
+            new_lorebook_name = new_name
+            if old_lorebook_path.name.endswith('.txt') and not new_lorebook_name.endswith('.txt'):
+                new_lorebook_name += '.txt'
+
+            new_lorebook_path = lorebooks_path / new_lorebook_name
+
+            # Check for conflict
+            if new_lorebook_path.exists():
+                 return f"Cannot rename lorebook to '{new_name}': File already exists."
+
+            try:
+                old_lorebook_path.rename(new_lorebook_path)
+                result_message = f"Lorebook renamed from '{old_lorebook_path.name}' to '{new_lorebook_path.name}'"
+                # Note: Lorebooks aren't in self.metadata, so list won't update automatically here.
+                return result_message
+            except Exception as e:
+                 logger.error(f"Failed to rename lorebook {old_lorebook_path} to {new_lorebook_path}: {e}")
+                 return f"Error renaming lorebook: {e}"
 
         # Check if it's a lorebook
         lorebooks_path = self.get_lorebooks_path()
@@ -1283,81 +1602,105 @@ class DocumentManager:
         return result_message # Return default "not found" if no match
 
     async def delete_document(self, name: str) -> bool: # Make async
-        """Delete a document from the system."""
+        """Delete a document from the system using its original name."""
         # Prevent deletion of the internal list document
         if name == self._internal_list_doc_name:
             logger.warning(f"Attempted to delete the internal document list file '{name}'. Operation aborted.")
             return False
 
-        deleted = False
+        deleted_something = False
+        original_name_to_delete = name # Keep for logging/messages
+        s_name_to_delete = self._get_sanitized_name_from_original(original_name_to_delete)
+
         try:
-            # Check if it's a regular document
-            if name in self.chunks:
+            # --- Regular Document Deletion ---
+            if s_name_to_delete and s_name_to_delete in self.metadata:
+                logger.info(f"Attempting to delete regular document '{original_name_to_delete}' (sanitized: {s_name_to_delete})")
                 # Remove from memory
-                del self.chunks[name]
-                del self.embeddings[name]
-                del self.metadata[name]
-                
-                # Save changes
+                if s_name_to_delete in self.chunks: del self.chunks[s_name_to_delete]
+                if s_name_to_delete in self.contextualized_chunks: del self.contextualized_chunks[s_name_to_delete]
+                if s_name_to_delete in self.embeddings: del self.embeddings[s_name_to_delete]
+                if s_name_to_delete in self.bm25_indexes: del self.bm25_indexes[s_name_to_delete]
+                del self.metadata[s_name_to_delete] # Delete metadata last
+
+                # Save changes to pickles/json
                 self._save_to_disk()
-                
-                # Remove file if it exists
-                file_path = self.base_dir / name
+
+                # Remove file from disk using sanitized name
+                file_path = self.base_dir / s_name_to_delete
                 if file_path.exists():
-                    file_path.unlink()
-                deleted = True
+                    try:
+                        file_path.unlink()
+                        logger.info(f"Deleted file from disk: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {file_path}: {e}")
+                deleted_something = True
 
-            # Check if it's a lorebook
+            # --- Lorebook Deletion ---
+            # Lorebooks use original names for files
             lorebooks_path = self.get_lorebooks_path()
-            lorebook_path = lorebooks_path / name
-            
-            # Try with .txt extension if not found
-            if not lorebook_path.exists() and not name.endswith('.txt'):
-                lorebook_path = lorebooks_path / f"{name}.txt"
-            if lorebook_path.exists():
-                lorebook_path.unlink()
-                # Lorebooks aren't in self.metadata, so list won't update automatically.
-                deleted = True # Mark as deleted, but list won't change unless logic is added
+            lorebook_path = lorebooks_path / original_name_to_delete
+            # Try adding .txt if direct name doesn't exist
+            if not lorebook_path.exists() and not original_name_to_delete.endswith('.txt'):
+                lorebook_path = lorebooks_path / f"{original_name_to_delete}.txt"
 
-            # Check if it's a tracked Google Doc and remove from tracking if so
+            if lorebook_path.exists():
+                logger.info(f"Attempting to delete lorebook file: {lorebook_path}")
+                try:
+                    lorebook_path.unlink()
+                    logger.info(f"Deleted lorebook file: {lorebook_path}")
+                    deleted_something = True
+                except Exception as e:
+                    logger.error(f"Failed to delete lorebook file {lorebook_path}: {e}")
+
+            # --- Google Doc Tracking Deletion ---
             tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
             if tracked_file.exists():
                 try:
                     with open(tracked_file, 'r') as f:
                         tracked_docs = json.load(f)
-                    
-                    # Find the doc to remove based on filename or custom name matching 'name'
+
                     original_length = len(tracked_docs)
-                    tracked_docs = [
-                        doc for doc in tracked_docs 
-                        if not (
-                            (doc.get('custom_name') == name) or 
-                            (f"googledoc_{doc['id']}.txt" == name) or
-                            (doc.get('custom_name') == name.replace('.txt', '')) or # Handle cases where .txt might be missing
-                            (f"googledoc_{doc['id']}" == name.replace('.txt', ''))
-                        )
-                    ]
-                    
-                    if len(tracked_docs) < original_length:
-                        logger.info(f"Removed tracked Google Doc entry corresponding to '{name}'")
+                    # Find the doc to remove based on custom name or ID-based filename matching the *original* name provided
+                    docs_to_keep = []
+                    removed_gdoc = False
+                    for doc in tracked_docs:
+                        doc_id = doc['id']
+                        custom_name = doc.get('custom_name')
+                        id_based_filename_orig = f"googledoc_{doc_id}.txt"
+
+                        # Check if the original name matches either the custom name or the ID-based name
+                        if not (custom_name == original_name_to_delete or id_based_filename_orig == original_name_to_delete):
+                            docs_to_keep.append(doc)
+                        else:
+                            logger.info(f"Found tracked Google Doc entry corresponding to '{original_name_to_delete}' (ID: {doc_id}). Removing from tracking.")
+                            removed_gdoc = True
+
+                    if removed_gdoc:
                         with open(tracked_file, 'w') as f:
-                            json.dump(tracked_docs, f)
-                        # If we removed a tracked doc, mark as deleted
-                        deleted = True
+                            json.dump(docs_to_keep, f, indent=2)
+                        deleted_something = True # Mark as deleted if tracking entry was removed
 
                 except Exception as track_e:
-                    logger.error(f"Error updating tracked Google Docs file while deleting {name}: {track_e}")
+                    logger.error(f"Error updating tracked Google Docs file while deleting '{original_name_to_delete}': {track_e}")
                     # Don't fail the whole delete operation, just log the tracking error
 
-            if deleted:
-                 logger.info(f"Successfully deleted document/lorebook/tracking entry for '{name}'")
-                 # Update the list file only if a *managed* document was deleted
-                 if name in self.metadata: # Check if it was in metadata before deletion
+            # --- Final Steps ---
+            if deleted_something:
+                 logger.info(f"Successfully completed deletion operations for '{original_name_to_delete}'")
+                 # Update the list file only if a *managed* document was deleted (i.e., s_name_to_delete was valid)
+                 if s_name_to_delete:
                      await self._update_document_list_file()
                  return True
             else:
-                 logger.warning(f"Document '{name}' not found for deletion.")
-                 return False # Return False if not found
+                 logger.warning(f"Document, lorebook, or Google Doc tracking entry '{original_name_to_delete}' not found for deletion.")
+                 return False # Return False if nothing was found/deleted
+
+        except Exception as e:
+            logger.error(f"Error during deletion process for '{original_name_to_delete}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
 
         except Exception as e:
             logger.error(f"Error deleting document {name}: {e}")

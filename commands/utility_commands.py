@@ -28,7 +28,7 @@ def register_commands(bot):
             response += "**Slash Commands** (`/command`)\n\n"
             
             categories = {
-                "Lore Queries": ["query"],
+                "Lore Queries": ["query", "query_full_context"], # Added query_full_context
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "export_prompt", "whats_new"], # Added pronouns
@@ -323,6 +323,7 @@ def register_commands(bot):
             response += "**🔍 Asking Questions**\n"
             response += "• **Mention me** in a message with your question about Ledus Banum 77 and Imperial lore\n"
             response += "• Use `/query` command for more structured questions (supports image URLs for analysis)\n"
+            response += "• Use `/query_full_context` to ask questions using *all* documents as context (limited to once per day, uses powerful models like Gemini 2.5 Pro)\n" # Added query_full_context
             response += "• I'll search my knowledge base and provide answers with citations where possible\n"
             response += "• You can attach images directly to mentioned messages for visual analysis\n\n"
             response += "If you reply to a message and ping Publicia, she will be able to see the message you are replying to\n\n"

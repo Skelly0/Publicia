@@ -1025,7 +1025,7 @@ class DiscordBot(commands.Bot):
                     "model": current_model,
                     "messages": processed_messages,
                     "temperature": temperature,
-                    "max_tokens": 8000,
+                    "max_tokens": 20000,
                     **kwargs
                 }
 
