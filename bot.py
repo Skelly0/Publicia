@@ -18,7 +18,7 @@ import numpy as np
 from datetime import datetime
 from textwrap import shorten
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any, Set
+from typing import List, Dict, Tuple, Optional, Any, Set, Union # Added Union
 from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -88,7 +88,7 @@ class DiscordBot(commands.Bot):
             "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku",
             "anthropic/claude-3-haiku:beta",
-            "meta-llama/llama-4-maverick:floor"
+            "meta-llama/llama-4-maverick:floor",
             "openai/gpt-4.1-mini",
             "openai/gpt-4.1-nano",
         ]
@@ -757,178 +757,205 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error downloading image: {e}")
             return None
     
-    async def _try_ai_completion(self, model: str, messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
-        """Get AI completion with dynamic fallback options based on the requested model.
-        
+    async def _try_ai_completion(self, model: Union[str, List[str]], messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
+        """Get AI completion with dynamic fallback options or a specific model list.
+
+        Args:
+            model (str | List[str]): The primary model ID (str) to use with automatic fallbacks,
+                                     or an explicit list of model IDs (List[str]) to try in order.
+            messages (List[Dict]): The message history for the API call.
+            image_ids (Optional[List[str]]): List of image IDs from search results.
+            image_attachments (Optional[List[str]]): List of base64 encoded image attachments.
+            temperature (float): The sampling temperature.
+            max_retries (int): Max retries for short responses on the *same* model.
+            min_response_length (int): Minimum character length for a valid response.
+            **kwargs: Additional arguments for the API call.
+
         Returns:
             Tuple[Optional[Dict], Optional[str]]: (completion result, actual model used)
         """
-        # Get primary model family (deepseek, google, etc.)
-        model_family = model.split('/')[0] if '/' in model else None
-        
-        # Check if we need a vision-capable model
-        need_vision = (image_ids and len(image_ids) > 0) or (image_attachments and len(image_attachments) > 0)
-        
-        # Build fallback list dynamically based on the requested model
-        models = [model]  # Start with the requested model
-        
-        # Add model-specific fallbacks based on more specific model types
-        # DeepSeek models - handle different model types separately
-        if "deepseek/deepseek-chat-v3" in model:
-            # DeepSeek Chat v3 fallbacks
-            fallbacks = [
-                "deepseek/deepseek-chat-v3-0324:free",
-                "deepseek/deepseek-chat-v3-0324:floor",
-                "deepseek/deepseek-chat-v3-0324",
-                "deepseek/deepseek-chat",
-                "deepseek/deepseek-r1:free",  # Last resort fallback to R1
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif "deepseek/deepseek-r1" in model:
-            # DeepSeek R1 fallbacks
-            fallbacks = [
-                "deepseek/deepseek-r1:free",
-                "deepseek/deepseek-r1:floor",
-                "deepseek/deepseek-r1",
-                "deepseek/deepseek-r1:nitro",
-                "deepseek/deepseek-r1-distill-llama-70b",
-                "deepseek/deepseek-r1-distill-qwen-32b"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif "deepseek/deepseek-chat" in model and "v3" not in model:
-            # DeepSeek Chat (non-v3) fallbacks
-            fallbacks = [
-                "deepseek/deepseek-chat",
-                "deepseek/deepseek-r1:free",
-                "deepseek/deepseek-r1"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif "grok" in model:
-            fallbacks = [
-                "x-ai/grok-3-mini-beta",
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif "meta-llama/llama-4-maverick" in model:
-            fallbacks = [
-                "meta-llama/llama-4-maverick:floor",
-                "meta-llama/llama-4-maverick",
-                "meta-llama/llama-4-scout",
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # Qwen models
-        elif model_family == "qwen":
-            fallbacks = [
+        models_to_try = []
+        requested_model_or_list = model # Keep track of original request for logging
+
+        if isinstance(model, list):
+            # If a list is provided, use it directly
+            models_to_try = model
+            logger.info(f"Using explicit model list for completion: {models_to_try}")
+        elif isinstance(model, str):
+            # If a string is provided, build the fallback list as before
+            logger.info(f"Building fallback list starting with requested model: {model}")
+            models_to_try = [model] # Start with the requested model
+            model_family = model.split('/')[0] if '/' in model else None
+
+            # Add model-specific fallbacks
+            # (Keep the existing fallback logic here)
+            # DeepSeek models
+            if "deepseek/deepseek-chat-v3" in model:
+                # DeepSeek Chat v3 fallbacks
+                fallbacks = [
+                    "deepseek/deepseek-chat-v3-0324:free",
+                    "deepseek/deepseek-chat-v3-0324:floor",
+                    "deepseek/deepseek-chat-v3-0324",
+                    "deepseek/deepseek-chat",
+                    "deepseek/deepseek-r1:free",  # Last resort fallback to R1
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            elif "deepseek/deepseek-r1" in model:
+                # DeepSeek R1 fallbacks
+                fallbacks = [
+                    "deepseek/deepseek-r1:free",
+                    "deepseek/deepseek-r1:floor",
+                    "deepseek/deepseek-r1",
+                    "deepseek/deepseek-r1:nitro",
+                    "deepseek/deepseek-r1-distill-llama-70b",
+                    "deepseek/deepseek-r1-distill-qwen-32b"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            elif "deepseek/deepseek-chat" in model and "v3" not in model:
+                # DeepSeek Chat (non-v3) fallbacks
+                fallbacks = [
+                    "deepseek/deepseek-chat",
+                    "deepseek/deepseek-r1:free",
+                    "deepseek/deepseek-r1"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Grok
+            elif "grok" in model:
+                fallbacks = [
+                    "x-ai/grok-3-mini-beta",
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Llama
+            elif "meta-llama/llama-4-maverick" in model:
+                fallbacks = [
+                    "meta-llama/llama-4-maverick:floor",
+                    "meta-llama/llama-4-maverick",
+                    "meta-llama/llama-4-scout",
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Qwen models
+            elif model_family == "qwen":
+                fallbacks = [
+                    "qwen/qwq-32b:free",
+                    "qwen/qwq-32b:floor",
+                    "qwen/qwq-32b",
+                    "qwen/qwen-turbo",
+                    "qwen/qwen2.5-32b-instruct"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Google models
+            elif model_family == "google":
+                fallbacks = [
+                    "google/gemini-2.5-pro-exp-03-25:free", # Add new model as a primary fallback
+                    "google/gemini-2.0-flash-thinking-exp:free",
+                    "google/gemini-2.0-pro-exp-02-05:free",
+                    "google/gemini-2.0-flash-001"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # TheDrummer models
+            elif model_family == "thedrummer" and "anubis" in model:
+                fallbacks = [
+                    "thedrummer/anubis-pro-105b-v1",
+                    "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            elif model_family == "thedrummer":  # Other TheDrummer models
+                fallbacks = [
+                    "thedrummer/unslopnemo-12b",
+                    "thedrummer/rocinante-12b",
+                    "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Eva models
+            elif model_family == "eva-unit-01":
+                fallbacks = [
+                    "eva-unit-01/eva-qwen-2.5-72b:floor",
+                    "eva-unit-01/eva-qwen-2.5-72b",
+                    "qwen/qwq-32b:free",
+                    "qwen/qwq-32b",
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Nous Research models
+            elif model_family == "nousresearch":
+                fallbacks = [
+                    "nousresearch/hermes-3-llama-3.1-70b",
+                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "meta-llama/llama-3.3-70b-instruct"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Anthropic models
+            elif model_family == "anthropic":
+                if "claude-3.7-sonnet" in model:
+                    fallbacks = [
+                        "anthropic/claude-3.7-sonnet",
+                        "anthropic/claude-3.5-sonnet:beta",
+                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-haiku"
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                elif "claude-3.5-sonnet" in model:
+                    fallbacks = [
+                        "anthropic/claude-3.5-sonnet",
+                        "anthropic/claude-3.7-sonnet:beta",
+                        "anthropic/claude-3.7-sonnet",
+                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-haiku"
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                else:
+                    # General Anthropic fallbacks
+                    fallbacks = [
+                        "latitudegames/wayfarer-large-70b-llama-3.3",
+                        "meta-llama/llama-3.3-70b-instruct",  # base model fallback
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # Microsoft models
+            elif model_family == "microsoft":
+                fallbacks = [
+                    "microsoft/phi-4-multimodal-instruct",
+                    "microsoft/phi-4",
+                    "microsoft/phi-3.5-mini-128k-instruct"
+                ]
+                models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+            # OpenAI
+            elif model_family == "openai":
+                if "4.1-mini" in model:
+                    fallbacks = [
+                        "openai/gpt-4.1-mini",
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                elif "4.1-nano" in model:
+                    fallbacks = [
+                        "openai/gpt-4.1-nano",
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                else:
+                    fallbacks = [] # Ensure fallbacks is defined even if no specific match
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+
+            # Add general fallbacks (cleaned up)
+            general_fallbacks = [
+                "google/gemini-2.5-pro-exp-03-25:free",
                 "qwen/qwq-32b:free",
                 "qwen/qwq-32b:floor",
-                "qwen/qwq-32b",
-                "qwen/qwen-turbo",
-                "qwen/qwen2.5-32b-instruct"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # Google models
-        elif model_family == "google":
-            fallbacks = [
-                "google/gemini-2.5-pro-exp-03-25:free", # Add new model as a primary fallback
+                "google/gemini-2.0-flash-001",
                 "google/gemini-2.0-flash-thinking-exp:free",
+                "deepseek/deepseek-r1:free",
+                "deepseek/deepseek-r1",
+                "deepseek/deepseek-chat",
                 "google/gemini-2.0-pro-exp-02-05:free",
-                "google/gemini-2.0-flash-001"
+                "nousresearch/hermes-3-llama-3.1-405b",
+                "anthropic/claude-3.5-haiku:beta",
+                "anthropic/claude-3.5-haiku"
             ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # TheDrummer models
-        elif model_family == "thedrummer" and "anubis" in model:
-            fallbacks = [
-                "thedrummer/anubis-pro-105b-v1",
-                "latitudegames/wayfarer-large-70b-llama-3.3",  # try other narrative model
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        elif model_family == "thedrummer":  # Other TheDrummer models
-            fallbacks = [
-                "thedrummer/unslopnemo-12b",
-                "thedrummer/rocinante-12b",
-                "meta-llama/llama-3.3-70b-instruct"  # Safe fallback option
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # Eva models
-        elif model_family == "eva-unit-01":
-            fallbacks = [
-                "eva-unit-01/eva-qwen-2.5-72b:floor",
-                "eva-unit-01/eva-qwen-2.5-72b",
-                "qwen/qwq-32b:free",
-                "qwen/qwq-32b",
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # Nous Research models
-        elif model_family == "nousresearch":
-            fallbacks = [
-                "nousresearch/hermes-3-llama-3.1-70b",
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "meta-llama/llama-3.3-70b-instruct"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
-        # Anthropic models
-        elif model_family == "anthropic":
-            if "claude-3.7-sonnet" in model:
-                fallbacks = [
-                    "anthropic/claude-3.7-sonnet",
-                    "anthropic/claude-3.5-sonnet:beta",
-                    "anthropic/claude-3.5-haiku:beta",
-                    "anthropic/claude-3.5-haiku"
-                ]
-                models.extend([fb for fb in fallbacks if fb not in models])
-            elif "claude-3.5-sonnet" in model:
-                fallbacks = [
-                    "anthropic/claude-3.5-sonnet",
-                    "anthropic/claude-3.7-sonnet:beta",
-                    "anthropic/claude-3.7-sonnet",
-                    "anthropic/claude-3.5-haiku:beta",
-                    "anthropic/claude-3.5-haiku"
-                ]
-                models.extend([fb for fb in fallbacks if fb not in models])
-            else:
-                # General Anthropic fallbacks
-                fallbacks = [
-                    "latitudegames/wayfarer-large-70b-llama-3.3",
-                    "meta-llama/llama-3.3-70b-instruct",  # base model fallback
-                ]
-                models.extend([fb for fb in fallbacks if fb not in models])
-        # Microsoft models
-        elif model_family == "microsoft":
-            fallbacks = [
-                "microsoft/phi-4-multimodal-instruct",
-                "microsoft/phi-4",
-                "microsoft/phi-3.5-mini-128k-instruct"
-            ]
-            models.extend([fb for fb in fallbacks if fb not in models])
+            models_to_try.extend([fb for fb in general_fallbacks if fb not in models_to_try])
+            logger.info(f"Final fallback list: {models_to_try}")
+        else:
+             logger.error(f"Invalid type for 'model' parameter: {type(model)}. Expected str or List[str].")
+             return None, None # Cannot proceed
 
-        elif model_family == "openai":
-            if "4.1-mini" in model:
-                fallbacks = [
-                    "openai/gpt-4.1-mini",
-                ]
-                models.extend([fb for fb in fallbacks if fb not in models])
-            elif "4.1-nano" in model:
-                fallbacks = [
-                    "openai/gpt-4.1-nano",
-                ]
-                models.extend([fb for fb in fallbacks if fb not in models])
-        
-        # Add general fallbacks that aren't already in the list
-        general_fallbacks = [
-            #"google/gemini-2.5-pro-exp-03-25:free", # Add new model here too
-            "qwen/qwq-32b:free",
-            "qwen/qwq-32b:floor",
-            "google/gemini-2.0-flash-001",
-            "google/gemini-2.0-flash-thinking-exp:free",
-            "deepseek/deepseek-r1:free",
-            "qwen/qwq-32b:free",
-            "deepseek/deepseek-r1",
-            "deepseek/deepseek-chat",
-            "google/gemini-2.0-pro-exp-02-05:free",
-            "nousresearch/hermes-3-llama-3.1-405b",
-            "anthropic/claude-3.5-haiku:beta",
-            "anthropic/claude-3.5-haiku"
-        ]
-        models.extend([fb for fb in general_fallbacks if fb not in models])
+        # Check if we need a vision-capable model
+        need_vision = (image_ids and len(image_ids) > 0) or (image_attachments and len(image_attachments) > 0)
 
         # Headers for API calls
         headers = {
@@ -938,7 +965,7 @@ class DiscordBot(commands.Bot):
             "Content-Type": "application/json"
         }
 
-        for current_model in models:
+        for current_model in models_to_try:
             try:
                 logger.info(f"Attempting completion with model: {current_model}")
                 
@@ -1095,9 +1122,11 @@ class DiscordBot(commands.Bot):
                         logger.info(f"Response: {shorten(response_content, width=200, placeholder='...')}")
                         
                         # For analytics, log which model was actually used
-                        if model != current_model:
-                            logger.info(f"Notice: Fallback model {current_model} was used instead of requested {model}")
-                            
+                        if requested_model_or_list != current_model and isinstance(requested_model_or_list, str):
+                            logger.info(f"Notice: Fallback model {current_model} was used instead of requested {requested_model_or_list}")
+                        elif isinstance(requested_model_or_list, list) and current_model != requested_model_or_list[0]:
+                             logger.info(f"Notice: Model {current_model} was used from the provided list (requested first: {requested_model_or_list[0]})")
+
                         return completion, current_model  # Return both the completion and the model used
                     else:
                         logger.error(f"Unexpected response structure from {current_model}: {completion}")
@@ -1111,7 +1140,7 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error with model {current_model}: {str(e)}\nTraceback:\n{tb}")
                 continue
         
-        logger.error(f"All models failed to generate completion. Attempted models: {', '.join(models)}")
+        logger.error(f"All models failed to generate completion. Attempted models: {', '.join(models_to_try)}")
         return None, None  # Return None for both completion and model used
 
     def calculate_dynamic_temperature(self, query: str, conversation_history=None):

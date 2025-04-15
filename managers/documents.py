@@ -600,7 +600,7 @@ class DocumentManager:
 
             # Calculate word count
             word_count = len(content.split())
-            max_words_for_context = 30000 # Define the limit
+            max_words_for_context = 20000 # Define the limit
             logger.info(f"Document '{name}' word count: {word_count}")
 
             # Create original chunks (always needed)
@@ -629,6 +629,7 @@ class DocumentManager:
 
                 # Decide whether to contextualize based on word count
                 should_contextualize = word_count <= max_words_for_context
+                # logger.debug(f"Contextualization check for '{name}': word_count={word_count}, max_words={max_words_for_context}, should_contextualize={should_contextualize}") # DEBUG LOG REMOVED
 
                 if should_contextualize:
                     logger.info(f"Document {name} ({word_count} words) is within limit ({max_words_for_context}). Generating contextualized chunks.")
@@ -743,6 +744,44 @@ class DocumentManager:
             mapping[name] = doc_id
         
         return mapping
+
+    def get_all_document_contents(self) -> Dict[str, str]:
+        """
+        Retrieves the full content of all managed text documents.
+
+        Returns:
+            Dict[str, str]: A dictionary where keys are document names
+                            and values are the full document content.
+                            Excludes image description files and internal lists.
+        """
+        all_contents = {}
+        logger.info("Retrieving content for all managed text documents...")
+        for doc_name in self.metadata.keys():
+            # Skip internal list file and image description files
+            if doc_name == self._internal_list_doc_name or \
+               (doc_name.startswith("image_") and doc_name.endswith(".txt")):
+                logger.debug(f"Skipping non-content document: {doc_name}")
+                continue
+
+            file_path = self.base_dir / doc_name
+            if file_path.exists() and file_path.is_file():
+                try:
+                    # Use utf-8-sig to handle potential BOM
+                    with open(file_path, 'r', encoding='utf-8-sig') as f:
+                        all_contents[doc_name] = f.read()
+                except Exception as e:
+                    logger.error(f"Error reading content for document {doc_name}: {e}")
+            else:
+                logger.warning(f"Document file not found for {doc_name}, attempting to reconstruct from chunks.")
+                # Fallback: Reconstruct from original chunks if file missing
+                if doc_name in self.chunks:
+                    all_contents[doc_name] = " ".join(self.chunks[doc_name])
+                else:
+                     logger.error(f"Could not retrieve content for {doc_name} from file or chunks.")
+
+
+        logger.info(f"Retrieved content for {len(all_contents)} documents.")
+        return all_contents
 
     async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]: # Make async
         """
@@ -1011,18 +1050,48 @@ class DocumentManager:
                         if doc_name in self.contextualized_chunks:
                             self.bm25_indexes[doc_name] = self._create_bm25_index(self.contextualized_chunks[doc_name])
                         else:
-                            # Generate contextualized chunks
+                            logger.warning(f"Contextualized chunks missing for existing document '{doc_name}' during BM25 index rebuild. Checking word count before regenerating.")
+                            # Generate contextualized chunks only if within limit
                             doc_path = self.base_dir / doc_name
+                            doc_content = ""
                             if doc_path.exists():
-                                with open(doc_path, 'r', encoding='utf-8-sig') as f:
-                                    doc_content = f.read()
+                                try:
+                                    with open(doc_path, 'r', encoding='utf-8-sig') as f:
+                                        doc_content = f.read()
+                                except Exception as e:
+                                     logger.error(f"Error reading document file {doc_name} for contextualization check: {e}")
+                                     # Fallback to original chunks if file read fails
+                                     self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
+                                     continue # Skip to next document
+
                             else:
-                                # If original not available, concatenate chunks
+                                # If original file not available, concatenate chunks for word count check
+                                logger.warning(f"Original file {doc_name} not found. Using concatenated chunks for word count check.")
                                 doc_content = " ".join(chunks)
-                            
-                            contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
-                            self.contextualized_chunks[doc_name] = contextualized_chunks
-                            self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
+
+                            # Perform the word count check here
+                            word_count = len(doc_content.split())
+                            max_words_for_context = 20000 # Use the same limit
+                            should_contextualize_rebuild = word_count <= max_words_for_context
+                            logger.info(f"BM25 rebuild check for '{doc_name}': word_count={word_count}, max_words={max_words_for_context}, should_contextualize={should_contextualize_rebuild}")
+
+                            if should_contextualize_rebuild:
+                                logger.info(f"Document '{doc_name}' is within limit. Regenerating contextualized chunks for BM25 index.")
+                                contextualized_chunks = await self.contextualize_chunks(doc_name, doc_content, chunks)
+                                self.contextualized_chunks[doc_name] = contextualized_chunks
+                                self.bm25_indexes[doc_name] = self._create_bm25_index(contextualized_chunks)
+                                # Update metadata flag if possible
+                                if doc_name in self.metadata:
+                                    self.metadata[doc_name]['contextualized'] = True
+                            else:
+                                logger.warning(f"Document '{doc_name}' exceeds limit ({word_count} words). Using original chunks for BM25 index rebuild.")
+                                self.bm25_indexes[doc_name] = self._create_bm25_index(chunks)
+                                # Ensure no stale contextualized chunks exist
+                                if doc_name in self.contextualized_chunks:
+                                    del self.contextualized_chunks[doc_name]
+                                # Update metadata flag if possible
+                                if doc_name in self.metadata:
+                                    self.metadata[doc_name]['contextualized'] = False
                     
                     logger.info(f"Loaded {len(self.chunks)} documents from processed data")
             else:

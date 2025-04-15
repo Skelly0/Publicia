@@ -11,8 +11,9 @@ import asyncio
 import base64
 import json
 import os
-from datetime import datetime
-from utils.helpers import split_message
+import urllib.parse # Moved import to top level
+from datetime import datetime, timedelta, timezone # Added timedelta, timezone
+from utils.helpers import split_message, check_permissions # Added check_permissions import
 # Import both system prompts
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT
 
@@ -130,7 +131,7 @@ def register_commands(bot):
                         google_doc_contents.append((doc_id, doc_url, content))
 
             # Format raw results with citation info
-            import urllib.parse
+            # import urllib.parse # Removed from here
             raw_doc_contexts = []
             for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id:
@@ -339,8 +340,199 @@ def register_commands(bot):
                 await interaction.followup.send("*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
 
         except Exception as e:
-            logger.error(f"Error processing query: {e}")
+            logger.error(f"Error processing query: {e}", exc_info=True) # Added exc_info for better debugging
             try:
-                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
-            except:
-                logger.error("Failed to send error message to user")
+                # Check if status_message exists before trying to edit
+                if 'status_message' in locals() and status_message and isinstance(status_message, discord.WebhookMessage): # Check type too
+                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
+                else:
+                    # If defer failed or status_message wasn't created, send a new message via followup
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to user: {send_error}")
+
+
+    @bot.tree.command(name="query_full_context", description="Ask Publicia a question using ALL documents as context (1/day limit)")
+    @app_commands.describe(
+        question="Your question using the full document context"
+    )
+    async def query_full_context(interaction: discord.Interaction, question: str):
+        user_id_str = str(interaction.user.id)
+        user_name = interaction.user.name
+        logger.info(f"Full context query received from user: {user_name} (ID: {user_id_str})")
+
+        # --- Check if user is admin (bypass limit if so) using helper ---
+        is_admin = await check_permissions(interaction)
+        if is_admin:
+            logger.info(f"User {user_name} (ID: {user_id_str}) has admin privileges. Bypassing usage limit.")
+        else:
+             logger.info(f"User {user_name} (ID: {user_id_str}) does not have admin privileges. Applying usage limit.")
+
+
+        # --- Daily Usage Limit Check (Skip for Admins) ---
+        can_use = True
+        time_remaining_str = ""
+        if not is_admin:
+            last_usage_str = bot.user_preferences_manager.get_last_full_context_usage(user_id_str)
+        if last_usage_str:
+            try:
+                last_usage_time = datetime.fromisoformat(last_usage_str).replace(tzinfo=timezone.utc)
+                now_utc = datetime.now(timezone.utc)
+                if now_utc - last_usage_time < timedelta(days=1):
+                    can_use = False
+                    next_available_time = last_usage_time + timedelta(days=1)
+                    time_remaining = next_available_time - now_utc
+                    # Format time remaining
+                    hours, remainder = divmod(time_remaining.total_seconds(), 3600)
+                    minutes, _ = divmod(remainder, 60)
+                    time_remaining_str = f"{int(hours)}h {int(minutes)}m"
+
+            except ValueError:
+                logger.error(f"Could not parse last usage timestamp '{last_usage_str}' for user {user_id_str}. Allowing usage.")
+            except Exception as e:
+                 logger.error(f"Error checking usage limit for user {user_id_str}: {e}. Allowing usage.")
+        # End of non-admin check block
+
+        if not is_admin and not can_use: # Apply limit only if not admin and cannot use
+            await interaction.response.send_message(
+                f"*Usage limit reached!* The full context query can only be used once per day (admins excluded). "
+                f"Please try again in approximately {time_remaining_str}.",
+                ephemeral=True
+            )
+            logger.warning(f"User {user_id_str} attempted to use query_full_context but hit the daily limit.")
+            return
+
+        # --- Proceed with Command ---
+        try:
+            await interaction.response.defer()
+        except discord.errors.NotFound:
+            logger.warning("Interaction expired before deferral for query_full_context")
+            return
+        except Exception as e:
+            logger.error(f"Error deferring interaction for query_full_context: {e}")
+            return
+
+        status_message = await interaction.followup.send("*neural pathways activating... gathering all documents...*", ephemeral=False)
+
+        try:
+            # Get user info
+            channel_name = interaction.channel.name if interaction.guild else "DM"
+            nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
+
+            # --- Get All Document Content ---
+            await status_message.edit(content="*retrieving full content of all managed documents... this may take a moment...*")
+            all_doc_contents = bot.document_manager.get_all_document_contents() # Synchronous call
+
+            if not all_doc_contents:
+                await status_message.edit(content="*neural error detected!* No documents found to provide context.")
+                return
+
+            # --- Combine and Estimate Token Count ---
+            await status_message.edit(content=f"*processing content from {len(all_doc_contents)} documents... estimating size...*")
+            full_context_str = ""
+            total_chars = 0
+            for name, content in all_doc_contents.items():
+                full_context_str += f"<document name=\"{name}\">\n{content}\n</document>\n\n"
+                total_chars += len(content)
+
+            # Estimate tokens (simple heuristic: 4 chars/token)
+            estimated_tokens = total_chars // 4
+            # Define model context limit (adjust as needed for Gemini 2.5 Pro)
+            # Let's target slightly under 1M tokens for safety margin with Gemini 2.5 Pro Experimental
+            TOKEN_LIMIT = 800000
+            truncated = False
+
+            logger.info(f"Estimated total characters: {total_chars}, Estimated tokens: {estimated_tokens}")
+
+            # --- Truncate if Necessary ---
+            if estimated_tokens > TOKEN_LIMIT:
+                truncated = True
+                await status_message.edit(content=f"*warning: combined document content ({estimated_tokens} tokens) exceeds limit ({TOKEN_LIMIT}). Truncating...*")
+                logger.warning(f"Full context ({estimated_tokens} tokens) exceeds limit ({TOKEN_LIMIT}). Truncating.")
+
+                # Simple truncation: keep only enough characters from the start
+                max_chars = TOKEN_LIMIT * 4 # Target character count
+                full_context_str = full_context_str[:max_chars] + "\n\n... (Content truncated due to length)"
+                estimated_tokens = TOKEN_LIMIT # Update estimated tokens after truncation
+
+            # --- Prepare Messages for Model ---
+            await status_message.edit(content="*preparing context for the advanced model...*")
+
+            # Fetch user pronouns
+            pronouns = bot.user_preferences_manager.get_pronouns(user_id_str)
+            pronoun_context_message = None
+            if pronouns:
+                pronoun_context_message = {
+                    "role": "system",
+                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
+                }
+
+            # Use standard system prompt (or create a specific one later if needed)
+            selected_system_prompt = SYSTEM_PROMPT
+
+            messages = [
+                {"role": "system", "content": selected_system_prompt},
+                # Pronoun context
+                *([pronoun_context_message] if pronoun_context_message else []),
+                # Full document context
+                {
+                    "role": "system",
+                    "content": f"Full document context follows {'(truncated)' if truncated else ''}:\n\n{full_context_str}"
+                },
+                # User query context
+                {"role": "user", "content": f"You are responding to a message in the Discord channel: {channel_name}"},
+                {"role": "user", "content": f"{nickname}: {question}"}
+            ]
+
+            # --- Model Selection and Execution ---
+            # Specify the exact models to use
+            target_models = ["google/gemini-2.5-pro-experimental:free", "google/gemini-2.5-pro-preview"]
+            model_name_display = "Gemini 2.5 Pro Experimental (Full Context)" # Friendly name
+
+            await status_message.edit(content=f"*formulating response using the powerful {model_name_display}...*")
+
+            temperature = bot.calculate_dynamic_temperature(question) # Use dynamic temp
+
+            # Call _try_ai_completion - Assuming it can handle a list of models to try
+            # If not, bot.py needs adjustment. For now, passing the list.
+            completion, actual_model = await bot._try_ai_completion(
+                target_models, # Pass the list of models
+                messages,
+                temperature=temperature
+                # No image handling needed for this command
+            )
+
+            # --- Handle Response ---
+            if completion and completion.get('choices') and len(completion['choices']) > 0:
+                if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
+                    response = completion['choices'][0]['message']['content']
+
+                    # Record usage *after* successful generation
+                    bot.user_preferences_manager.record_full_context_usage(user_id_str)
+                    logger.info(f"Recorded full context usage for user {user_id_str}")
+
+                    await bot.send_split_message(
+                        interaction.channel,
+                        response,
+                        model_used=actual_model or target_models[0], # Show model used
+                        user_id=user_id_str,
+                        existing_message=status_message
+                    )
+                else:
+                    logger.error(f"Unexpected response structure from full context query: {completion}")
+                    await status_message.edit(content="*neural circuit overload!* Received an unexpected response structure.")
+            else:
+                # Don't record usage if generation failed
+                await status_message.edit(content="*synaptic failure detected!* Apologies, the advanced model failed to generate a response.")
+
+        except Exception as e:
+            logger.error(f"Error processing full context query: {e}", exc_info=True)
+            try:
+                # Check if status_message exists before trying to edit
+                if 'status_message' in locals() and status_message:
+                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred during the full context query.")
+                else:
+                    # If defer failed, status_message might not exist
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred during the full context query.")
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to user during full context query: {send_error}")

@@ -250,3 +250,39 @@ class UserPreferencesManager:
         except Exception as e:
             logger.error(f"Error setting pronouns preference: {e}")
             return False
+
+    def get_last_full_context_usage(self, user_id: str) -> str | None:
+        """Get the timestamp of the last full context query usage."""
+        file_path = self.get_file_path(user_id)
+        if not os.path.exists(file_path):
+            return None
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                return preferences.get("last_full_context_usage", None)
+        except Exception as e:
+            logger.error(f"Error reading last full context usage: {e}")
+            return None
+
+    def record_full_context_usage(self, user_id: str) -> bool:
+        """Record the current time as the last full context query usage."""
+        try:
+            file_path = self.get_file_path(user_id)
+            if os.path.exists(file_path):
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    try:
+                        preferences = json.load(file)
+                    except json.JSONDecodeError:
+                        preferences = {}
+            else:
+                preferences = {}
+
+            from datetime import datetime
+            preferences["last_full_context_usage"] = datetime.now().isoformat()
+
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error recording full context usage: {e}")
+            return False
