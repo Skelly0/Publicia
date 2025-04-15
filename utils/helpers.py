@@ -5,34 +5,57 @@ import re
 import discord
 from typing import List
 from discord import app_commands
+from managers.config import Config  # Import the Config class
+
+# Instantiate Config to access settings
+config = Config()
 
 async def check_permissions(interaction: discord.Interaction):
-    """Check if a user has administrator permissions."""
-    # First check for special user ID (this doesn't require guild permissions)
-    if interaction.user.id == 203229662967627777:
+    """Check if a user has permissions based on configured user IDs or role IDs."""
+    user_id = interaction.user.id
+
+    # 1. Check the special override user ID
+    if user_id == 203229662967627777:
         return True
-        
-    # Check if we're in a guild
-    if not interaction.guild:
-        raise app_commands.CheckFailure("This command can only be used in a server")
-    
-    # Try to get permissions directly from interaction.user
-    try:
-        return interaction.user.guild_permissions.administrator
-    except AttributeError:
-        # If that fails, try getting the member object
+
+    # 2. Check if the user ID is in the allowed list from config
+    if user_id in config.ALLOWED_USER_IDS:
+        return True
+
+    # 3. Check roles only if in a guild and allowed roles are configured
+    if interaction.guild and config.ALLOWED_ROLE_IDS:
         try:
-            member = interaction.guild.get_member(interaction.user.id)
-            
-            # Member might be None if not in cache
-            if member is None:
-                # Fetch fresh from API
-                member = await interaction.guild.fetch_member(interaction.user.id)
-                
-            return member.guild_permissions.administrator
+            # Ensure we have the member object, fetching if necessary
+            member = interaction.user
+            if not isinstance(member, discord.Member): # If interaction.user is just a User object
+                 member = interaction.guild.get_member(user_id)
+                 if member is None:
+                     member = await interaction.guild.fetch_member(user_id)
+
+            if member: # Proceed only if member object is available
+                user_role_ids = {role.id for role in member.roles}
+                allowed_role_ids_set = set(config.ALLOWED_ROLE_IDS)
+
+                # Check for intersection between user's roles and allowed roles
+                if user_role_ids.intersection(allowed_role_ids_set):
+                    return True
+
+        except discord.NotFound:
+            print(f"Could not find member {user_id} in guild {interaction.guild.id} for permission check.")
+            return False # User not found in guild
+        except discord.Forbidden:
+            print(f"Bot lacks permissions to fetch member {user_id} or roles in guild {interaction.guild.id}.")
+            return False # Bot permission issue
         except Exception as e:
-            print(f"Permission check error: {e}")
-            return False
+            print(f"Error checking roles for user {user_id} in guild {interaction.guild.id}: {e}")
+            return False # General error during role check
+
+    # 4. If none of the above checks passed, deny permission
+    # Raise CheckFailure to give specific feedback in Discord
+    raise app_commands.CheckFailure(
+        "You do not have the required permissions (specific user ID or allowed role) to use this command."
+    )
+
 
 def is_image(attachment):
     """Check if an attachment is an image based on content type or file extension."""

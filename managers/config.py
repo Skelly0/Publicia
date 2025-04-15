@@ -112,6 +112,10 @@ class Config:
 
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
+        # Permission settings (comma-separated IDs)
+        self.ALLOWED_USER_IDS = [int(uid.strip()) for uid in os.getenv('ALLOWED_USER_IDS', '').split(',') if uid.strip().isdigit()]
+        self.ALLOWED_ROLE_IDS = [int(rid.strip()) for rid in os.getenv('ALLOWED_ROLE_IDS', '').split(',') if rid.strip().isdigit()]
+        
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
             logger.warning(f"Invalid temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")

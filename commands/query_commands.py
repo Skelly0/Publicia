@@ -494,6 +494,9 @@ def register_commands(bot):
 
             temperature = bot.calculate_dynamic_temperature(question) # Use dynamic temp
 
+            # Log the models being attempted
+            logger.info(f"Attempting full context query with models: {target_models}")
+
             # Call _try_ai_completion - Assuming it can handle a list of models to try
             # If not, bot.py needs adjustment. For now, passing the list.
             completion, actual_model = await bot._try_ai_completion(
@@ -502,6 +505,9 @@ def register_commands(bot):
                 temperature=temperature
                 # No image handling needed for this command
             )
+
+            # Log the model that was actually used
+            logger.info(f"Full context query completed using model: {actual_model}")
 
             # --- Handle Response ---
             if completion and completion.get('choices') and len(completion['choices']) > 0:
