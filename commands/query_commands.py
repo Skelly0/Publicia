@@ -372,9 +372,10 @@ def register_commands(bot):
         # --- Daily Usage Limit Check (Skip for Admins) ---
         can_use = True
         time_remaining_str = ""
+        last_usage_str = None # Initialize to ensure it exists
         if not is_admin:
             last_usage_str = bot.user_preferences_manager.get_last_full_context_usage(user_id_str)
-        if last_usage_str:
+        if last_usage_str: # Now this check is safe
             try:
                 last_usage_time = datetime.fromisoformat(last_usage_str).replace(tzinfo=timezone.utc)
                 now_utc = datetime.now(timezone.utc)
