@@ -57,21 +57,65 @@ class DocumentManager:
         return sanitized_name # Fallback if not found (shouldn't happen often)
 
     def _get_sanitized_name_from_original(self, original_name: str) -> Optional[str]:
-        """Find the sanitized name corresponding to an original name."""
-        # First, try direct sanitization
+        """
+        Find the sanitized name corresponding to an original name.
+        Handles cases where the input might have a .txt extension but the stored name doesn't.
+        """
+        if not original_name: # Handle empty input
+            return None
+
+        # 1. Check direct match (input name == stored original_name)
+        # Iterate through metadata first to handle potential sanitization collisions
+        logger.debug(f"Attempt 1: Checking direct match for '{original_name}'") # ADDED LOGGING
+        for s_name, meta in self.metadata.items():
+            stored_original = meta.get('original_name') # ADDED LOGGING
+            logger.debug(f"Comparing '{original_name}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+            if stored_original == original_name:
+                logger.debug(f"Found direct match for '{original_name}' -> sanitized '{s_name}'")
+                return s_name
+
+        # 2. Check if input has .txt and stored original_name doesn't
+        name_without_txt = None
+        if original_name.endswith('.txt'):
+            name_without_txt = original_name[:-4]
+            if name_without_txt: # Ensure not empty after stripping
+                logger.debug(f"Attempt 2: Checking match for '{name_without_txt}' (removed .txt)") # ADDED LOGGING
+                for s_name, meta in self.metadata.items():
+                    stored_original = meta.get('original_name') # ADDED LOGGING
+                    logger.debug(f"Comparing '{name_without_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+                    if stored_original == name_without_txt:
+                        logger.debug(f"Found match for '{original_name}' by removing .txt ('{name_without_txt}') -> sanitized '{s_name}'")
+                        return s_name
+
+        # 3. Check if input *doesn't* have .txt but stored original_name *does* (less common)
+        name_with_txt = f"{original_name}.txt"
+        logger.debug(f"Attempt 3: Checking match for '{name_with_txt}' (added .txt)") # ADDED LOGGING
+        for s_name, meta in self.metadata.items():
+             stored_original = meta.get('original_name') # ADDED LOGGING
+             logger.debug(f"Comparing '{name_with_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+             if stored_original == name_with_txt:
+                 logger.debug(f"Found match for '{original_name}' by adding .txt ('{name_with_txt}') -> sanitized '{s_name}'")
+                 return s_name
+
+        # 4. Fallback: Check if the sanitized version of the input exists as a key
+        # This helps if the original_name field in metadata is somehow incorrect/missing
+        # but the sanitized key itself matches.
+        logger.debug(f"Attempt 4: Checking fallback using sanitized key") # ADDED LOGGING
         s_name_direct = self._sanitize_name(original_name)
         if s_name_direct in self.metadata:
-             # Verify if the original name matches
-             if self.metadata[s_name_direct].get('original_name') == original_name:
-                 return s_name_direct
+            logger.warning(f"Found sanitized key '{s_name_direct}' matching input '{original_name}', but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
+            return s_name_direct
+        # Also check sanitized version without .txt if applicable
+        if name_without_txt:
+            s_name_direct_no_txt = self._sanitize_name(name_without_txt)
+            if s_name_direct_no_txt in self.metadata:
+                 logger.warning(f"Found sanitized key '{s_name_direct_no_txt}' matching input '{original_name}' (without .txt), but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
+                 return s_name_direct_no_txt
 
-        # If direct match fails, iterate through metadata (slower fallback)
-        for s_name, meta in self.metadata.items():
-            if meta.get('original_name') == original_name:
-                return s_name
-        logger.warning(f"Could not find sanitized name for original name: {original_name}")
+
+        logger.warning(f"Could not find any matching sanitized name for original name: '{original_name}'")
         return None # Not found
-    
+
     def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
@@ -1024,8 +1068,10 @@ class DocumentManager:
                 pickle.dump(self.embeddings, f)
             
             # Save metadata
+            logger.info(f"Saving metadata. Keys to save: {list(self.metadata.keys())}") # ADDED LOGGING
             with open(self.base_dir / 'metadata.json', 'w') as f:
                 json.dump(self.metadata, f)
+            logger.info("Successfully wrote metadata.json") # ADDED LOGGING
                 
             # Save embedding provider info
             #with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
@@ -1614,21 +1660,29 @@ class DocumentManager:
 
         deleted_something = False
         original_name_to_delete = name # Keep for logging/messages
+        logger.info(f"delete_document called with original_name_to_delete: '{original_name_to_delete}'") # ADDED LOGGING
         s_name_to_delete = self._get_sanitized_name_from_original(original_name_to_delete)
+        logger.info(f"Resolved sanitized name: '{s_name_to_delete}'") # ADDED LOGGING
 
         try:
             # --- Regular Document Deletion ---
             if s_name_to_delete and s_name_to_delete in self.metadata:
-                logger.info(f"Attempting to delete regular document '{original_name_to_delete}' (sanitized: {s_name_to_delete})")
+                logger.info(f"Found document in metadata. Proceeding with deletion of '{original_name_to_delete}' (sanitized: {s_name_to_delete})") # ADDED LOGGING
                 # Remove from memory
                 if s_name_to_delete in self.chunks: del self.chunks[s_name_to_delete]
                 if s_name_to_delete in self.contextualized_chunks: del self.contextualized_chunks[s_name_to_delete]
                 if s_name_to_delete in self.embeddings: del self.embeddings[s_name_to_delete]
                 if s_name_to_delete in self.bm25_indexes: del self.bm25_indexes[s_name_to_delete]
+                
+                logger.info(f"Attempting to delete metadata entry for key: '{s_name_to_delete}'") # ADDED LOGGING
                 del self.metadata[s_name_to_delete] # Delete metadata last
+                logger.info(f"Successfully deleted metadata entry for key: '{s_name_to_delete}' from memory.") # ADDED LOGGING
+                logger.info(f"Metadata keys after deletion: {list(self.metadata.keys())}") # ADDED LOGGING
 
-                # Save changes to pickles/json
+                # Save changes to pickles/json IMMEDIATELY after metadata deletion
+                logger.info(f"Attempting to save changes (especially metadata) to disk immediately after deleting '{s_name_to_delete}'...") # ADDED LOGGING
                 self._save_to_disk()
+                logger.info(f"Successfully saved changes to disk after deleting '{s_name_to_delete}'.") # ADDED LOGGING
 
                 # Remove file from disk using sanitized name
                 file_path = self.base_dir / s_name_to_delete
@@ -1639,6 +1693,8 @@ class DocumentManager:
                     except Exception as e:
                         logger.error(f"Failed to delete file {file_path}: {e}")
                 deleted_something = True
+            else: # ADDED ELSE BLOCK FOR LOGGING
+                logger.warning(f"Document '{original_name_to_delete}' not found in metadata (sanitized name resolved to: {s_name_to_delete}). Checking lorebooks and tracking file.") # ADDED LOGGING
 
             # --- Lorebook Deletion ---
             # Lorebooks use original names for files
@@ -1693,8 +1749,134 @@ class DocumentManager:
             if deleted_something:
                  logger.info(f"Successfully completed deletion operations for '{original_name_to_delete}'")
                  # Update the list file only if a *managed* document was deleted (i.e., s_name_to_delete was valid)
-                 if s_name_to_delete:
-                     await self._update_document_list_file()
+                 # Moved this call to the beginning of the function to ensure it runs before potential errors during deletion/saving
+                 # if s_name_to_delete:
+                 #    await self._update_document_list_file()
+                 return True
+            else:
+                 logger.warning(f"Document, lorebook, or Google Doc tracking entry '{original_name_to_delete}' not found for deletion.")
+                 return False # Return False if nothing was found/deleted
+
+        except Exception as e:
+            logger.error(f"Error during deletion process for '{original_name_to_delete}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+        except Exception as e:
+            logger.error(f"Error deleting document {name}: {e}")
+            return False
+
+    async def delete_document(self, name: str) -> bool: # Make async
+        """Delete a document from the system using its original name."""
+        # Prevent deletion of the internal list document
+        if name == self._internal_list_doc_name:
+            logger.warning(f"Attempted to delete the internal document list file '{name}'. Operation aborted.")
+            return False
+
+        deleted_something = False
+        original_name_to_delete = name # Keep for logging/messages
+        logger.info(f"delete_document called with original_name_to_delete: '{original_name_to_delete}'") # ADDED LOGGING
+        s_name_to_delete = self._get_sanitized_name_from_original(original_name_to_delete)
+        logger.info(f"Resolved sanitized name: '{s_name_to_delete}'") # ADDED LOGGING
+
+        # Try updating the list file *before* attempting deletion, in case saving fails later
+        if s_name_to_delete:
+             try:
+                 logger.info(f"Attempting to update internal list file before deleting '{original_name_to_delete}'")
+                 await self._update_document_list_file() # Call update list early
+             except Exception as list_update_err:
+                  logger.error(f"Error updating list file before deletion: {list_update_err}")
+                  # Continue with deletion attempt even if list update fails
+
+        try:
+            # --- Regular Document Deletion ---
+            if s_name_to_delete and s_name_to_delete in self.metadata:
+                logger.info(f"Found document in metadata. Proceeding with deletion of '{original_name_to_delete}' (sanitized: {s_name_to_delete})") # ADDED LOGGING
+                # Remove from memory
+                if s_name_to_delete in self.chunks: del self.chunks[s_name_to_delete]
+                if s_name_to_delete in self.contextualized_chunks: del self.contextualized_chunks[s_name_to_delete]
+                if s_name_to_delete in self.embeddings: del self.embeddings[s_name_to_delete]
+                if s_name_to_delete in self.bm25_indexes: del self.bm25_indexes[s_name_to_delete]
+                
+                logger.info(f"Attempting to delete metadata entry for key: '{s_name_to_delete}'") # ADDED LOGGING
+                del self.metadata[s_name_to_delete] # Delete metadata last
+                logger.info(f"Successfully deleted metadata entry for key: '{s_name_to_delete}' from memory.") # ADDED LOGGING
+                logger.info(f"Metadata keys after deletion: {list(self.metadata.keys())}") # ADDED LOGGING
+
+                # Save changes to pickles/json IMMEDIATELY after metadata deletion
+                logger.info(f"Attempting to save changes (especially metadata) to disk immediately after deleting '{s_name_to_delete}'...") # ADDED LOGGING
+                self._save_to_disk()
+                logger.info(f"Successfully saved changes to disk after deleting '{s_name_to_delete}'.") # ADDED LOGGING
+
+                # Remove file from disk using sanitized name
+                file_path = self.base_dir / s_name_to_delete
+                if file_path.exists():
+                    try:
+                        file_path.unlink()
+                        logger.info(f"Deleted file from disk: {file_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete file {file_path}: {e}")
+                deleted_something = True
+            else: # ADDED ELSE BLOCK FOR LOGGING
+                logger.warning(f"Document '{original_name_to_delete}' not found in metadata (sanitized name resolved to: {s_name_to_delete}). Checking lorebooks and tracking file.") # ADDED LOGGING
+
+            # --- Lorebook Deletion ---
+            # Lorebooks use original names for files
+            lorebooks_path = self.get_lorebooks_path()
+            lorebook_path = lorebooks_path / original_name_to_delete
+            # Try adding .txt if direct name doesn't exist
+            if not lorebook_path.exists() and not original_name_to_delete.endswith('.txt'):
+                lorebook_path = lorebooks_path / f"{original_name_to_delete}.txt"
+
+            if lorebook_path.exists():
+                logger.info(f"Attempting to delete lorebook file: {lorebook_path}")
+                try:
+                    lorebook_path.unlink()
+                    logger.info(f"Deleted lorebook file: {lorebook_path}")
+                    deleted_something = True
+                except Exception as e:
+                    logger.error(f"Failed to delete lorebook file {lorebook_path}: {e}")
+
+            # --- Google Doc Tracking Deletion ---
+            tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+            if tracked_file.exists():
+                try:
+                    with open(tracked_file, 'r') as f:
+                        tracked_docs = json.load(f)
+
+                    original_length = len(tracked_docs)
+                    # Find the doc to remove based on custom name or ID-based filename matching the *original* name provided
+                    docs_to_keep = []
+                    removed_gdoc = False
+                    for doc in tracked_docs:
+                        doc_id = doc['id']
+                        custom_name = doc.get('custom_name')
+                        id_based_filename_orig = f"googledoc_{doc_id}.txt"
+
+                        # Check if the original name matches either the custom name or the ID-based name
+                        if not (custom_name == original_name_to_delete or id_based_filename_orig == original_name_to_delete):
+                            docs_to_keep.append(doc)
+                        else:
+                            logger.info(f"Found tracked Google Doc entry corresponding to '{original_name_to_delete}' (ID: {doc_id}). Removing from tracking.")
+                            removed_gdoc = True
+
+                    if removed_gdoc:
+                        with open(tracked_file, 'w') as f:
+                            json.dump(docs_to_keep, f, indent=2)
+                        deleted_something = True # Mark as deleted if tracking entry was removed
+
+                except Exception as track_e:
+                    logger.error(f"Error updating tracked Google Docs file while deleting '{original_name_to_delete}': {track_e}")
+                    # Don't fail the whole delete operation, just log the tracking error
+
+            # --- Final Steps ---
+            if deleted_something:
+                 logger.info(f"Successfully completed deletion operations for '{original_name_to_delete}'")
+                 # Update the list file only if a *managed* document was deleted (i.e., s_name_to_delete was valid)
+                 # Moved this call to the beginning of the function to ensure it runs before potential errors during deletion/saving
+                 # if s_name_to_delete:
+                 #    await self._update_document_list_file()
                  return True
             else:
                  logger.warning(f"Document, lorebook, or Google Doc tracking entry '{original_name_to_delete}' not found for deletion.")
