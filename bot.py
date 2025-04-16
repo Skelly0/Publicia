@@ -1652,6 +1652,10 @@ class DiscordBot(commands.Bot):
             # Ignore messages from self
             if message.author == self.user:
                 return
+            
+            if "@everyone" in message.content or "@here" in message.content:
+                print(f"Ignoring message with @everyone/@here ping from {message.author}: {message.content}")
+                return
 
             # Ignore messages from banned users
             if message.author.id in self.banned_users:
