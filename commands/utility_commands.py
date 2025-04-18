@@ -33,7 +33,8 @@ def register_commands(bot):
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "export_prompt", "whats_new"], # Added pronouns
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
-                "Moderation": ["ban_user", "unban_user"]
+                "Moderation": ["ban_user", "unban_user"],
+                "Admin": ["compare_models", "reload_docs", "regenerate_embeddings", "refresh_docs"] # Added Admin category
             }
             
             for category, cmd_list in categories.items():
@@ -87,7 +88,7 @@ def register_commands(bot):
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
-        app_commands.Choice(name="Gemini 2.0 Flash", value="google/gemini-2.0-flash-001"),
+        app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview"),
         #app_commands.Choice(name="Gemini 2.5 Pro Exp", value="google/gemini-2.5-pro-exp-03-25:free"), # Added new model
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
@@ -165,7 +166,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
-                    f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                    f"**Gemini 2.5 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview')}) for broader context.",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
@@ -250,7 +251,7 @@ def register_commands(bot):
             # Create a description of all model strengths
             model_descriptions = [
                 f"**Qwen QwQ 32B**: RECOMMENDED - Great for roleplaying with strong lore accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Prone to minor hallucinations due to it being a small model, and it sometimes slips in Chinese phrases. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) search results.",
-                f"**Gemini 2.0 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.0-flash-001')}) for broader context.",
+                f"**Gemini 2.5 Flash**: RECOMMENDED - Better for accurate citations, factual responses, document analysis, image viewing capabilities, and has very fast response times. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview')}) for broader context.",
                 #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                 f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                 f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
@@ -385,7 +386,10 @@ def register_commands(bot):
             response += "• `/summarize_doc` - Generate an AI summary of a document\n"
             response += "• `/view_chunk` - View the specific text content of a document chunk\n"
             response += "• `/update_image_description` - Update the description for an image\n"
+            response += "• `Publicia! edit_image [id]` - View and edit an image description (prefix command)\n" # Added edit_image prefix command
             response += "• `/reload_docs` - Reload all documents from disk (admin only)\n"
+            response += "• `/regenerate_embeddings` - Regenerate all document embeddings (admin only)\n" # Added regenerate_embeddings
+            response += "• `/refresh_docs` - Manually refresh all tracked Google Docs (admin only)\n" # Added refresh_docs
             response += "• `/archive_channel` - Archive messages from a Discord channel as a document (admin only)\n\n"
             
             # Conversation Management
@@ -426,7 +430,15 @@ def register_commands(bot):
             response += "  - Shows system prompt, conversation history, search results, and more\n"
             response += "  - Helps understand exactly how I process your questions\n"
             response += "  - Includes privacy option to make output only visible to you\n\n"
-            
+
+            # Admin Tools
+            response += "## **ADMIN TOOLS**\n\n"
+            response += "**🛠️ Management & Moderation**\n"
+            response += "• `/compare_models` - Compare responses from multiple AI models (admin only)\n"
+            response += "• `/ban_user` - Ban a user from using the bot (admin only)\n"
+            response += "• `/unban_user` - Unban a user (admin only)\n\n"
+            # Note: reload_docs, regenerate_embeddings, refresh_docs, archive_channel are listed under Document Management
+
             # Tips
             response += "## **TIPS FOR BEST RESULTS**\n\n"
             response += "• Ask specific questions for more accurate answers\n"

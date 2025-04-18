@@ -149,6 +149,10 @@ Comprehensive tools to help troubleshoot issues:
 | `/manage_history` | View and manage history with indices |
 | `/delete_history_messages` | Delete specific messages |
 | `/lobotomise` | Wipe your conversation history |
+| `/archive_conversation` | Archive your current conversation history |
+| `/list_archives` | List your archived conversation histories |
+| `/swap_conversation` | Swap between current and archived conversation histories |
+| `/delete_archive` | Delete an archived conversation |
 | `/parse_channel` | Toggle parsing of channel messages for context |
 
 #### Document Management
@@ -164,6 +168,9 @@ Comprehensive tools to help troubleshoot issues:
 | `/rename_document` | Rename a document |
 | `/list_files` | List files in the knowledge base (Documents, Images, Lorebooks) |
 | `/retrieve_file` | Retrieve a specific file (Document or Lorebook) |
+| `/archive_channel` | Archive messages from a Discord channel as a document (admin only) |
+| `/summarize_doc` | Generate a summary of a document |
+| `/view_chunk` | View the content of a specific document chunk |
 
 #### Image Management
 | Command | Description |
@@ -172,8 +179,6 @@ Comprehensive tools to help troubleshoot issues:
 | `/view_image` | View an image from knowledge base |
 | `/remove_image` | Remove an image |
 | `/update_image_description` | Update an image description |
-| `/generate_gemini_image` | Generate an image using Gemini 2.0 Flash |
-| `/edit_gemini_image` | Edit an existing image using Gemini 2.0 Flash |
 
 #### Settings and Utilities
 | Command | Description |
@@ -184,6 +189,9 @@ Comprehensive tools to help troubleshoot issues:
 | `/list_commands` | Show all available commands |
 | `/help` | Display detailed help information |
 | `/export_prompt` | Export the complete prompt for a query |
+| `/toggle_prompt_mode` | Toggle between standard (immersive) and informational (concise) system prompts |
+| `/pronouns` | Set your preferred pronouns |
+| `/whats_new` | Shows documents and images added or updated recently |
 
 #### Admin Commands
 | Command | Description |
@@ -192,6 +200,8 @@ Comprehensive tools to help troubleshoot issues:
 | `/unban_user` | Unban a user |
 | `/reload_docs` | Reload all documents from disk |
 | `/regenerate_embeddings` | Regenerate all document embeddings |
+| `/refresh_docs` | Manually refresh all tracked Google Docs |
+| `/compare_models` | Compare responses from multiple AI models |
 
 ## Recent Updates
 

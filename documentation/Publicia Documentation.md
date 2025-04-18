@@ -104,7 +104,7 @@ This sophisticated approach improves search accuracy and content understanding:
 - The same contextualized chunks are included in prompts sent to the model
 - This solves problems with ambiguous pronouns, missing entity references, and lack of temporal context
 - Significantly reduces retrieval failures by up to 49% based on research
-- Uses Gemini 2.0 Flash via OpenRouter to generate context
+- Uses Gemini 2.5 Flash via OpenRouter to generate context
 
 ### Image Processing
 
@@ -142,7 +142,7 @@ Unique capability to work with Google Docs:
 Users can choose their preferred AI model:
 
 - DeepSeek-R1: Best for immersive roleplaying
-- Gemini 2.0 Flash: Optimized for accuracy and image analysis
+- Gemini 2.5 Flash: Optimized for accuracy and image analysis
 - Nous: Hermes 405B: Balanced between creativity and precision
 - Qwen QwQ 32B: Great for roleplaying with strong lore accuracy
 - Claude 3.5 Haiku: Fast responses with image capabilities
@@ -240,7 +240,7 @@ pip install -r requirements.txt
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
-LLM_MODEL=google/gemini-2.0-flash-001  # Default model
+LLM_MODEL=google/gemini-2.5-flash-preview  # Default model
 EMBEDDING_MODEL=models/text-embedding-004  # Google embedding model
 EMBEDDING_DIMENSIONS=1024  # Optional: truncate embeddings to save space
 TOP_K=10  # Number of search results to return
@@ -396,6 +396,15 @@ The bot will display a startup banner and initialize all components.
 - `/reload_docs`: Reload all documents from disk
 
 - `/regenerate_embeddings`: Regenerate all document embeddings
+- `/refresh_docs`: Manually refresh all tracked Google Docs
+
+#### Admin-Specific Tools
+- `/compare_models`: Compare responses from multiple AI models
+  - **Parameters**: `question`, `model_types` (optional), `max_models` (optional), `image_url` (optional), `private` (optional)
+- `/ban_user`: Ban a user from using the bot
+  - **Parameters**: `user` (Discord user)
+- `/unban_user`: Unban a user
+  - **Parameters**: `user` (Discord user)
 
 ### Prefix Commands
 
@@ -407,6 +416,8 @@ These commands use the prefix "Publicia!" instead of slash commands:
 
 - `Publicia! edit_image [image_id]`: View and edit an image description 
 
+- `Publicia! edit_image [image_id]`: View and edit an image description 
+
 ## Advanced Usage
 
 ### Model Selection Strategy
@@ -414,7 +425,7 @@ These commands use the prefix "Publicia!" instead of slash commands:
 Choose models based on your needs:
 
 - **DeepSeek-R1**: Use for immersive, creative responses and roleplaying
-- **Gemini 2.0 Flash**: Best for factual accuracy, citations, and image analysis
+- **Gemini 2.5 Flash**: Best for factual accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
 - **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities

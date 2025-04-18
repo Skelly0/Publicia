@@ -77,6 +77,7 @@ class DiscordBot(commands.Bot):
         
         # List of models that support vision capabilities
         self.vision_capable_models = [
+            "google/gemini-2.5-flash-preview",
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-pro-exp-02-05:free",
             "google/gemini-2.5-pro-exp-03-25:free", # Added new vision model
@@ -194,7 +195,7 @@ class DiscordBot(commands.Bot):
             ]
             
             payload = {
-                "model": "google/gemini-2.0-flash-001",  # Use a vision-capable model
+                "model": "google/gemini-2.5-flash-preview",  # Use a vision-capable model
                 "messages": messages,
                 "temperature": 0.1
             }
@@ -940,7 +941,7 @@ class DiscordBot(commands.Bot):
                 "google/gemini-2.5-pro-exp-03-25:free",
                 "qwen/qwq-32b:free",
                 "qwen/qwq-32b:floor",
-                "google/gemini-2.0-flash-001",
+                "google/gemini-2.5-flash-preview",
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "deepseek/deepseek-r1:free",
                 "deepseek/deepseek-r1",
@@ -1948,7 +1949,8 @@ class DiscordBot(commands.Bot):
             model_name = "Unknown Model"
             if "deepseek/deepseek-r1" in preferred_model: model_name = "DeepSeek-R1"
             elif "deepseek/deepseek-chat" in preferred_model: model_name = "DeepSeek V3 0324"
-            elif preferred_model.startswith("google/"): model_name = "Gemini 2.0 Flash"
+            elif preferred_model == "google/gemini-2.5-flash-preview": model_name = "Gemini 2.5 Flash" # Specific check
+            elif preferred_model.startswith("google/"): model_name = "Gemini 2.0 Flash" # Fallback for other google models
             elif preferred_model.startswith("nousresearch/"): model_name = "Nous: Hermes 405B"
             elif "claude-3.5-haiku" in preferred_model: model_name = "Claude 3.5 Haiku"
             elif "claude-3.5-sonnet" in preferred_model: model_name = "Claude 3.5 Sonnet"

@@ -500,7 +500,7 @@ class DocumentManager:
                 "qwen/qwen-turbo",
                 "google/gemma-3-12b-it",
                 "google/gemini-2.0-flash-lite-001",
-                "google/gemini-2.0-flash-001", # Fixed formatting
+                "google/gemini-2.5-flash-preview", # Fixed formatting
                 "google/gemini-flash-1.5-8b",
             ]
             

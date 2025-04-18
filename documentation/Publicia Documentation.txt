@@ -396,6 +396,15 @@ The bot will display a startup banner and initialize all components.
 - `/reload_docs`: Reload all documents from disk
 
 - `/regenerate_embeddings`: Regenerate all document embeddings
+- `/refresh_docs`: Manually refresh all tracked Google Docs
+
+#### Admin-Specific Tools
+- `/compare_models`: Compare responses from multiple AI models
+  - **Parameters**: `question`, `model_types` (optional), `max_models` (optional), `image_url` (optional), `private` (optional)
+- `/ban_user`: Ban a user from using the bot
+  - **Parameters**: `user` (Discord user)
+- `/unban_user`: Unban a user
+  - **Parameters**: `user` (Discord user)
 
 ### Prefix Commands
 

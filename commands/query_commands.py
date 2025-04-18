@@ -487,7 +487,7 @@ def register_commands(bot):
 
             # --- Model Selection and Execution ---
             # Specify the exact models to use
-            target_models = ["google/gemini-2.5-pro-exp-03-25:free", "google/gemini-2.0-flash-001", "cohere/command-r7b-12-2024"]#, "google/gemini-2.5-pro-preview-03-25"]
+            target_models = ["google/gemini-2.5-pro-exp-03-25:free", "google/gemini-2.5-flash-preview", "cohere/command-r7b-12-2024"]#, "google/gemini-2.5-pro-preview-03-25"]
             model_name_display = "Gemini 2.5 Pro Experimental (Full Context)" # Friendly name
 
             await status_message.edit(content=f"*formulating response using the powerful {model_name_display}...*")
