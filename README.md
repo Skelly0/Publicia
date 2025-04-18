@@ -89,7 +89,7 @@ Publicia can process, store, and analyze images related to your lore:
 ### Multiple AI Models
 Users can select their preferred AI model for responses:
 - **DeepSeek-R1**: Best for immersive roleplaying and creative responses
-- **Gemini 2.0 Flash**: Best for accuracy, citations, and image analysis
+- **Gemini 2.5 Flash**: Best for accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Balanced between creativity and factual precision
 - **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities

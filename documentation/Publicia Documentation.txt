@@ -104,7 +104,7 @@ This sophisticated approach improves search accuracy and content understanding:
 - The same contextualized chunks are included in prompts sent to the model
 - This solves problems with ambiguous pronouns, missing entity references, and lack of temporal context
 - Significantly reduces retrieval failures by up to 49% based on research
-- Uses Gemini 2.0 Flash via OpenRouter to generate context
+- Uses Gemini 2.5 Flash via OpenRouter to generate context
 
 ### Image Processing
 
@@ -142,7 +142,7 @@ Unique capability to work with Google Docs:
 Users can choose their preferred AI model:
 
 - DeepSeek-R1: Best for immersive roleplaying
-- Gemini 2.0 Flash: Optimized for accuracy and image analysis
+- Gemini 2.5 Flash: Optimized for accuracy and image analysis
 - Nous: Hermes 405B: Balanced between creativity and precision
 - Qwen QwQ 32B: Great for roleplaying with strong lore accuracy
 - Claude 3.5 Haiku: Fast responses with image capabilities
@@ -423,15 +423,12 @@ These commands use the prefix "Publicia!" instead of slash commands:
 Choose models based on your needs:
 
 - **DeepSeek-R1**: Use for immersive, creative responses and roleplaying
-- **Gemini 2.0 Flash**: Best for factual accuracy, citations, and image analysis
+- **Gemini 2.5 Flash**: Best for factual accuracy, citations, and image analysis
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
 - **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 3.5 Sonnet**: Advanced capabilities, more creative than 3.7 Sonnet (admin-only)
 - **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
-- **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
-- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
-- **Testing Model**: Experimental models for testing
 
 The bot will automatically fall back to available models if your preferred model fails, and includes an automatic retry system when models return blank or extremely short responses.
 

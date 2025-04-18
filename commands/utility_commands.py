@@ -130,6 +130,8 @@ def register_commands(bot):
                 model_name = "Llama 4 Maverick"
             elif model == "google/gemini-2.5-pro-exp-03-25:free":
                 model_name = "Gemini 2.5 Pro Exp"
+            elif model == "google/gemini-2.5-flash-preview":
+                model_name = "Gemini 2.5 Flash"
             elif model.startswith("google/"): # Keep this as a fallback for other google models
                 model_name = "Gemini 2.0 Flash"
             elif model.startswith("nousresearch/"):
@@ -217,6 +219,8 @@ def register_commands(bot):
                 model_name = "Llama 4 Maverick"
             elif preferred_model == "google/gemini-2.5-pro-exp-03-25:free":
                 model_name = "Gemini 2.5 Pro Exp"
+            elif preferred_model == "google/gemini-2.5-flash-preview":
+                model_name = "Gemini 2.5 Flash"
             elif preferred_model.startswith("google/"): # Keep this as a fallback for other google models
                 model_name = "Gemini 2.0 Flash"
             elif preferred_model.startswith("nousresearch/"):
@@ -362,7 +366,7 @@ def register_commands(bot):
             response += "  - I can search my image database for relevant visual information\n"
             response += "• I can recognize content in images and integrate them into my responses\n"
             response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
-            response += "• Vision-capable models: Gemini 2.0 Flash, Claude 3.5 Haiku, Claude 3.5 Sonnet, Claude 3.7 Sonnet\n\n"
+            response += "• Vision-capable models: Gemini 2.5 Flash, Claude 3.5 Haiku, Claude 3.5 Sonnet, Claude 3.7 Sonnet\n\n"
             
             # Document Management
             response += "## **DOCUMENT & IMAGE MANAGEMENT**\n\n"
