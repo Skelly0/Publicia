@@ -302,7 +302,7 @@ class DiscordBot(commands.Bot):
         failed_chunks = []
         
         # File fallback for very long responses
-        if len(chunks) > 5:  # If response would be more than 4 messages
+        if len(chunks) > 7:  # If response would be more than 6 messages (changed from 5 to 7)
             try:
                 # Create a temporary file with the full response
                 file_content = text
