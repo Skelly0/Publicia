@@ -119,14 +119,21 @@ def register_commands(bot):
                     added_formatted = added_dt.strftime('%Y-%m-%d %H:%M')
                 except (ValueError, TypeError):
                     added_formatted = added_raw
-                doc_items.append(f"{original_name} - {chunks} chunks (Added: {added_formatted})")
-            
+                # Store as tuple for sorting: (original_name, display_string)
+                doc_items.append((original_name.lower(), f"{original_name} - {chunks} chunks (Added: {added_formatted})"))
+
+            # Sort alphabetically by original name (case-insensitive)
+            doc_items.sort(key=lambda item: item[0])
+
+            # Extract the display strings after sorting
+            sorted_doc_strings = [item[1] for item in doc_items]
+
             # Create header
             header = "Available documents:"
-            
+
             # Split into chunks, allowing room for code block formatting
-            doc_chunks = split_message("\n".join(doc_items), max_length=1900)  # Leave room for formatting
-            
+            doc_chunks = split_message("\n".join(sorted_doc_strings), max_length=1900)  # Leave room for formatting
+
             for i, chunk in enumerate(doc_chunks):
                 # Format each chunk as a separate code block
                 formatted_chunk = f"{header if i == 0 else 'Documents (continued):'}\n```\n{chunk}\n```"
@@ -263,14 +270,25 @@ def register_commands(bot):
             if not tracked_docs:
                 await interaction.followup.send("*my neural pathways show no connected google docs*")
                 return
-                
-            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"
+
+            # Prepare list for sorting
+            doc_list_items = []
             for doc in tracked_docs:
                 doc_id = doc['id']
-                name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
+                # Use custom name if available, otherwise generate default
+                name = doc.get('custom_name') or f"googledoc_{doc_id}" # Removed .txt for sorting consistency
                 doc_url = f"<https://docs.google.com/document/d/{doc_id}>"
-                response += f"\n{name} - URL: {doc_url}"
-            
+                display_string = f"{name} - URL: {doc_url}"
+                # Store tuple: (sort_key_name, display_string)
+                doc_list_items.append((name.lower(), display_string))
+
+            # Sort alphabetically by name (case-insensitive)
+            doc_list_items.sort(key=lambda item: item[0])
+
+            # Build the response string from sorted items
+            response = "*accessing neural connections to google docs...*\n\n**TRACKED DOCUMENTS**\n"
+            response += "\n".join([item[1] for item in doc_list_items]) # Join sorted display strings
+
             # Split the message to avoid Discord's 2000 character limit
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
@@ -354,9 +372,10 @@ def register_commands(bot):
             if not local_file_name.endswith('.txt'):
                 local_file_name += '.txt'
                 
-            # Remove local file if it exists
+            """# Remove local file if it exists
             local_file_path = Path(bot.document_manager.base_dir) / local_file_name
             file_removed = False
+            
             
             if local_file_path.exists():
                 try:
@@ -366,11 +385,11 @@ def register_commands(bot):
                     else:
                         await interaction.followup.send(f"Document tracked, but file not found in document manager: {local_file_name}")
                 except Exception as e:
-                    await interaction.followup.send(f"Error removing document: {str(e)}")
+                    await interaction.followup.send(f"Error removing document: {str(e)}")"""
             
-            response = f"*I've surgically removed the neural connection to {doc_name}*\n*url: {doc_url}*"
-            if file_removed:
-                response += f"\n*and removed the local document file ({local_file_name})*"
+            response = f"*I've surgically removed the neural connection to {doc_name}*, it will no longer be tracked\n*url: {doc_url}*\n It may also need to be removed from the saved documents"
+            #if file_removed:
+            #    response += f"\n*and removed the local document file ({local_file_name})*"
             
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
