@@ -136,6 +136,7 @@ Unique capability to work with Google Docs:
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
+- **Robust Filename Handling**: Properly sanitizes filenames derived from Google Doc titles (or custom names) to prevent errors caused by characters invalid on Windows (e.g., em dashes, `\ / : * ? " < > |`).
 - Support renaming and removing tracked documents
 
 ### AI Model Selection
@@ -541,6 +542,7 @@ Customize search result reranking with these settings:
 - Verify internet connection
 - Try removing and re-adding the Doc
 - Verify the content hash mechanism is working correctly
+- **Filename Character Errors**: Issues like `[Errno 22] Invalid argument` caused by special characters (e.g., em dash `—`) in document titles used as filenames should now be resolved due to improved filename sanitization.
 
 #### Image Processing Failures
 - Check supported image formats (PNG, JPG, etc.)

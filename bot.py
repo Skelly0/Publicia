@@ -27,7 +27,7 @@ import sys
 
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # Added INFORMATIONAL_SYSTEM_PROMPT
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
-from utils.helpers import check_permissions, is_image, split_message
+from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
 from utils.logging import sanitize_for_logging
 
 from commands import (
@@ -578,12 +578,14 @@ class DiscordBot(commands.Bot):
             if not original_name.endswith('.txt'):
                 original_name += '.txt'
 
-            # Determine the sanitized name for file system operations
-            sanitized_name = self.document_manager._sanitize_name(original_name)
-            logger.info(f"Processing Google Doc ID {doc_id}: Original Name='{original_name}', Sanitized Name='{sanitized_name}'")
+            # Determine the sanitized name for internal DocumentManager keys
+            internal_sanitized_key = self.document_manager._sanitize_name(original_name)
+            # Determine the safe filename for the actual file on disk using the robust helper
+            safe_filename = sanitize_filename(original_name)
+            logger.info(f"Processing Google Doc ID {doc_id}: Original Name='{original_name}', Internal Key='{internal_sanitized_key}', Safe Filename='{safe_filename}'")
 
-            # Check if document has changed using the sanitized name for metadata lookup
-            changed = await self._has_google_doc_changed(doc_id, sanitized_name)
+            # Check if document has changed using the internal sanitized key for metadata lookup
+            changed = await self._has_google_doc_changed(doc_id, internal_sanitized_key)
             
             if not changed:
                 logger.info(f"Google Doc {doc_id} has not changed, skipping")
@@ -598,22 +600,29 @@ class DiscordBot(commands.Bot):
                         return False
                     content = await response.text()
             
-            # Save to file using the SANITIZED name
-            file_path = self.document_manager.base_dir / sanitized_name
+            # Save to file using the SAFE FILENAME
+            file_path = self.document_manager.base_dir / safe_filename
             try:
+                # Ensure the directory exists before writing
+                self.document_manager.base_dir.mkdir(parents=True, exist_ok=True)
                 with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(content)
                 logger.info(f"Saved Google Doc {doc_id} content to file: '{file_path}'")
+            except OSError as os_err:
+                 # Catch specific OS errors like invalid argument
+                 logger.error(f"OS Error writing Google Doc content to '{file_path}': {os_err}", exc_info=True)
+                 return False # Abort if file write fails
             except Exception as write_err:
-                 logger.error(f"Failed to write Google Doc content to '{file_path}': {write_err}", exc_info=True)
+                 logger.error(f"General Error writing Google Doc content to '{file_path}': {write_err}", exc_info=True)
                  return False # Abort if file write fails
 
-            # If the custom name changed, we might need to remove data associated with the OLD sanitized name
+            # If the custom name changed, we might need to remove data associated with the OLD internal key
             # Note: old_filename here is the *original* name from the mapping before the change
             if old_filename:
-                 old_sanitized_name = self.document_manager._sanitize_name(old_filename)
-                 if old_sanitized_name != sanitized_name and old_sanitized_name in self.document_manager.metadata:
-                     logger.info(f"Removing old document data for previous name '{old_filename}' (sanitized: {old_sanitized_name})")
+                 old_internal_key = self.document_manager._sanitize_name(old_filename)
+                 # Compare internal keys, not filenames
+                 if old_internal_key != internal_sanitized_key and old_internal_key in self.document_manager.metadata:
+                     logger.info(f"Removing old document data for previous name '{old_filename}' (internal key: {old_internal_key})")
                      # Use delete_document with the OLD ORIGINAL name to handle removal cleanly
                      await self.document_manager.delete_document(old_filename) # Let delete handle file removal too
 

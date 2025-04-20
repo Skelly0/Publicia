@@ -3,12 +3,69 @@ Utility functions for Publicia bot
 """
 import re
 import discord
+import string # Added for filename sanitization
 from typing import List
 from discord import app_commands
 from managers.config import Config  # Import the Config class
 
 # Instantiate Config to access settings
 config = Config()
+
+
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitizes a string to be safe for use as a filename on Windows.
+    Removes or replaces invalid characters: < > : " / \ | ? *
+    Also removes control characters (ASCII 0-31).
+    Replaces multiple consecutive underscores with a single one.
+    Strips leading/trailing whitespace and underscores.
+    """
+    if not filename:
+        return "_unnamed_file_" # Return a default name if input is empty
+
+    # Remove control characters (ASCII 0-31)
+    filename = "".join(c for c in filename if c not in string.printable[:32])
+
+    # Define invalid characters for Windows filenames
+    # Note: We keep '.' for extensions, but handle leading/trailing dots later
+    invalid_chars = r'[<>:"/\\|?*]' # Raw string to avoid escaping backslash
+
+    # Replace invalid characters with underscores
+    sanitized = re.sub(invalid_chars, '_', filename)
+
+    # Replace multiple consecutive underscores with a single one
+    sanitized = re.sub(r'_+', '_', sanitized)
+
+    # Strip leading/trailing whitespace and underscores/periods
+    sanitized = sanitized.strip(' ._')
+
+    # Ensure the filename is not empty after sanitization
+    if not sanitized:
+        return "_sanitized_empty_"
+
+    # Prevent names reserved by Windows (CON, PRN, AUX, NUL, COM1-9, LPT1-9)
+    # Check case-insensitively
+    reserved_names = {
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+    }
+    # Split name and extension to check only the base name
+    base_name, ext = os.path.splitext(sanitized)
+    if base_name.upper() in reserved_names:
+        sanitized = f"_{base_name}{ext}" # Prepend underscore if reserved
+
+    # Limit filename length (Windows max path is 260, filename part is less)
+    # Let's aim for a reasonable limit like 100 chars for the filename itself
+    MAX_FILENAME_LEN = 100
+    if len(sanitized) > MAX_FILENAME_LEN:
+        base, ext = os.path.splitext(sanitized)
+        # Truncate the base name, keeping the extension
+        base = base[:MAX_FILENAME_LEN - len(ext) - 1] # -1 for the dot
+        sanitized = f"{base}{ext}"
+
+    return sanitized
+
 
 async def check_permissions(interaction: discord.Interaction):
     """Check if a user has permissions based on configured user IDs or role IDs."""
@@ -146,3 +203,7 @@ def split_message(text, max_length=1750):
         chunks.append(current_chunk)
     
     return chunks
+
+
+# --- Add import for os used in sanitize_filename ---
+import os
