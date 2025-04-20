@@ -135,6 +135,7 @@ Unique capability to work with Google Docs:
 - **Efficient Change Detection**: Uses content hashing to compare the current document content with the stored version, only processing and re-indexing if actual changes are detected.
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
+- Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
 - Support renaming and removing tracked documents
 
 ### AI Model Selection
@@ -301,7 +302,7 @@ The bot will display a startup banner and initialize all components.
 - `/add_info`: Add text directly to knowledge base
   - **Parameters**: `name` (document name), `content` (document content)
 
-- `/list_docs`: Show all documents in knowledge base
+- `/list_docs`: Show all documents in the knowledge base, sorted alphabetically.
 
 - `/remove_doc`: Remove a document
   - **Parameters**: `name` (document to remove)
@@ -593,68 +594,6 @@ If data becomes corrupted:
 - Monitor API usage to avoid unexpected costs
 - Keep backup copies of important documents
 - API keys should never be committed to version control
-
-## Recent Updates
-
-### Version 13.8 (March 2025)
-- Enhanced hybrid search system with improved context-aware search
-- Added search result caching for efficient handling of follow-up queries
-- Implemented automatic enhancement of context-dependent queries
-- Improved conversation context extraction for better continuity
-- Added weighted context-aware embedding generation
-- Enhanced error handling and recovery for message sending
-- Improved file fallback for very long responses
-- Added better handling of rate limits with exponential backoff
-- Optimized Google Docs change detection with more efficient content hashing
-
-### Version 13.7 (March 2025)
-- Added BM25 search capability for better keyword matching
-- Implemented contextual retrieval to enhance chunks with AI-generated context
-- Replaced rank-based fusion with score-based fusion (60% embeddings, 40% BM25)
-- Added fallback mechanism to reranking to ensure results are always returned
-- Fixed critical issue to include contextualized chunks in prompts sent to models
-- Enhanced `/export_prompt` to show contextual enhancements for chunks
-- Added Google Docs change detection with content hashing for efficiency
-- Added comprehensive logging for the search system
-- Added rank_bm25 dependency for BM25 functionality
-
-### Version 13.6 (March 2025)
-- Fixed "user object has no attribute nickname" error for better handling of user mentions
-- Added retry system when models return blank or extremely short responses
-- Made TOP_K act as a maximum limit for chunks parsed in
-- Enhanced reranking system with improved filter modes for better search relevance
-- Added better error handling for edge cases
-- Improved message splitting for longer responses
-
-### Version 13.5 (February 2025)
-- Added model-specific TOP_K configuration for optimized retrieval
-- Implemented dynamic provider selection for better reliability
-- Enhanced model fallback system with model-specific fallbacks
-- Added support for multimodal content in vision-capable models
-- Improved handling of image attachments and search results
-- Enhanced error handling for API calls with better recovery
-- Added better logging for search and retrieval operations
-
-### Version 13 (February 2025)
-- Updated to use Google's Generative AI for embeddings (models/text-embedding-004)
-- Added dynamic temperature control system for better response quality
-- Implemented sophisticated result reranking with multiple filter modes
-- Added new models: Wayfarer 70B and Anubis Pro 105B
-- Enhanced embedding configuration with dimension control
-- Improved error handling and recovery mechanisms
-- Added `/export_prompt` command for debugging
-- Added more fallback options for models
-- Simplified search system for better reliability
-- Enhanced message splitting for better Discord compatibility
-- Improved handling of empty documents with automatic cleanup
-
-### Version 12 (January 2025)
-- Added support for Claude 3.5 and 3.7 models
-- Improved conversation history management
-- Enhanced image description capabilities
-- Better Google Doc integration
-- More robust error handling
-- Comprehensive logging system
 
 ---
 
