@@ -371,26 +371,32 @@ def register_commands(bot):
             local_file_name = doc_name
             if not local_file_name.endswith('.txt'):
                 local_file_name += '.txt'
-                
-            """# Remove local file if it exists
-            local_file_path = Path(bot.document_manager.base_dir) / local_file_name
+
+            # Remove local file if it exists in the document manager
             file_removed = False
-            
-            
-            if local_file_path.exists():
-                try:
-                    success = await bot.document_manager.delete_document(local_file_name) # Added await
-                    if success:
-                        file_removed = True
-                    else:
-                        await interaction.followup.send(f"Document tracked, but file not found in document manager: {local_file_name}")
-                except Exception as e:
-                    await interaction.followup.send(f"Error removing document: {str(e)}")"""
-            
-            response = f"*I've surgically removed the neural connection to {doc_name}*, it will no longer be tracked\n*url: {doc_url}*\n It may also need to be removed from the saved documents"
-            #if file_removed:
-            #    response += f"\n*and removed the local document file ({local_file_name})*"
-            
+            logger.info(f"Attempting to delete local document associated with Google Doc: '{local_file_name}'")
+            try:
+                # Use the original name (local_file_name) which might be custom or ID-based
+                success = await bot.document_manager.delete_document(local_file_name)
+                if success:
+                    logger.info(f"Successfully deleted local document file '{local_file_name}' via DocumentManager.")
+                    file_removed = True
+                else:
+                    # It's possible the doc was tracked but never successfully downloaded/added
+                    logger.warning(f"Google Doc '{doc_name}' removed from tracking, but corresponding local document '{local_file_name}' not found in DocumentManager for deletion.")
+                    # Send a less alarming message in this case, as it might be expected
+                    # await interaction.followup.send(f"Note: Google Doc tracking removed, but local file '{local_file_name}' was not found in the document manager.")
+            except Exception as e:
+                logger.error(f"Error attempting to delete local document '{local_file_name}' during Google Doc removal: {e}")
+                # Inform user about the error, but continue with tracking removal confirmation
+                await interaction.followup.send(f"*neural warning!* Error removing associated local document file '{local_file_name}': {str(e)}")
+
+            response = f"*I've surgically removed the neural connection to {doc_name}*, it will no longer be tracked\n*url: {doc_url}*"
+            if file_removed:
+                response += f"\n*and removed the associated local document file ({local_file_name}) from my knowledge base.*"
+            else:
+                 response += f"\n*(Associated local file '{local_file_name}' was not found in the knowledge base to remove)*"
+
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
                 

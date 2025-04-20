@@ -14,6 +14,7 @@ import logging
 import random
 import aiohttp
 import discord
+import html # Added for HTML entity decoding
 import numpy as np
 from datetime import datetime
 from textwrap import shorten
@@ -731,8 +732,10 @@ class DiscordBot(commands.Bot):
                         title = match.group(1)
                         # Remove " - Google Docs" suffix if present
                         title = re.sub(r'\s*-\s*Google\s*Docs$', '', title)
+                        # Decode HTML entities (like &#39; for apostrophe)
+                        title = html.unescape(title)
                         return title
-                    
+
                     return None
         except aiohttp.ClientError as e:
             logger.error(f"Network error getting title for doc {doc_id}: {e}")

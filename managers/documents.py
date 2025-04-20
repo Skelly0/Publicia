@@ -1686,6 +1686,7 @@ class DocumentManager:
 
                 # Remove file from disk using sanitized name
                 file_path = self.base_dir / s_name_to_delete
+                logger.info(f"Attempting to delete file from disk: {file_path}") # ADDED LOGGING
                 if file_path.exists():
                     try:
                         file_path.unlink()
