@@ -136,7 +136,6 @@ Unique capability to work with Google Docs:
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
-- **Robust Filename Handling**: Properly sanitizes filenames derived from Google Doc titles (or custom names) to prevent errors caused by characters invalid on Windows (e.g., em dashes, `\ / : * ? " < > |`).
 - Support renaming and removing tracked documents
 
 ### AI Model Selection
@@ -242,7 +241,7 @@ pip install -r requirements.txt
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
-LLM_MODEL=google/gemini-2.0-flash-001  # Default model
+LLM_MODEL=google/gemini-2.5-flash-preview  # Default model
 EMBEDDING_MODEL=models/text-embedding-004  # Google embedding model
 EMBEDDING_DIMENSIONS=1024  # Optional: truncate embeddings to save space
 TOP_K=10  # Number of search results to return
@@ -381,11 +380,7 @@ The bot will display a startup banner and initialize all components.
 
 - `/list_commands`: Show all available commands
 
-- `/help`: Detailed help information
-
-- `/export_prompt`: Export the complete prompt for a query
-  - **Parameters**: `question` (your query), `private` (visibility toggle)
-  - Now includes information about contextual enhancements for each chunk
+- `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
 
 #### Admin Commands
 
@@ -418,6 +413,8 @@ These commands use the prefix "Publicia!" instead of slash commands:
 
 - `Publicia! edit_image [image_id]`: View and edit an image description 
 
+- `Publicia! edit_image [image_id]`: View and edit an image description 
+
 ## Advanced Usage
 
 ### Model Selection Strategy
@@ -431,6 +428,9 @@ Choose models based on your needs:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 3.5 Sonnet**: Advanced capabilities, more creative than 3.7 Sonnet (admin-only)
 - **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
+- **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
+- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
+- **Testing Model**: Experimental models for testing
 
 The bot will automatically fall back to available models if your preferred model fails, and includes an automatic retry system when models return blank or extremely short responses.
 
@@ -461,12 +461,10 @@ Configure the hybrid search system for optimal performance:
 -   **Reranking Settings**: Modify `RERANKING_ENABLED`, `RERANKING_CANDIDATES`, `RERANKING_MIN_SCORE`, and `RERANKING_FILTER_MODE` in `.env` to fine-tune result filtering.
 -   **Contextual Retrieval Prompt**: While not directly configurable via `.env`, the prompt used for generating chunk context (`prompts/context_prompt.py` - *verify path*) influences retrieval. Modifications require code changes.
 -   **Context-Aware Search**: This is largely automatic but relies on good conversation history management.
--   **Debugging**: Use `/export_prompt` to inspect how context is generated and added to chunks, and how queries are enhanced.
 
 ### Contextual Retrieval Best Practices
 
 -   **Document Structure**: Keep original documents well-structured with clear headings and logical flow, as this aids the AI in generating useful context for chunks.
--   **Review Context**: Use `/export_prompt` to occasionally review the AI-generated context for important documents to ensure it's accurate and helpful.
 -   **Regeneration**: Remember that context is generated *once* when a document is added or updated. If you significantly restructure a document or the context generation logic improves, use `/regenerate_embeddings` for the specific document (or all documents) to apply the changes.
 
 ### Backup Strategies
@@ -489,7 +487,6 @@ Configure the hybrid search system for optimal performance:
 
 ### Debug Tools
 
--   **`/export_prompt`**: Essential for understanding how prompts are constructed, including contextual enhancements, conversation history, and the final query sent to the LLM.
 -   **`/toggle_debug`**: Shows the specific AI model used for each response and potentially other metadata.
 -   **Logs**: Check `bot_detailed.log` for detailed operational information, errors, and search process steps.
 -   **`/list_files`**: Useful for verifying the contents and names of documents, images, and lorebooks currently indexed by the bot.
@@ -527,7 +524,6 @@ Customize search result reranking with these settings:
 -   **Document Content**: Ensure relevant information exists and is well-structured in the knowledge base.
 -   **Hybrid Search Weights**: Adjust the embedding vs. BM25 weights in `.env` if results seem skewed towards semantic or keyword matches inappropriately.
 -   **Reranking Settings**: Experiment with `RERANKING_MIN_SCORE` and `RERANKING_FILTER_MODE`. A `strict` filter might be too aggressive, while `topk` might return irrelevant results.
--   **Contextual Retrieval**: Use `/export_prompt` to check if the AI-generated context for relevant chunks is accurate. If not, consider regenerating embeddings for those documents.
 -   **Embeddings**: Consider regenerating embeddings (`/regenerate_embeddings`) if you suspect issues or after significant code changes.
 
 #### Model Errors
@@ -542,7 +538,6 @@ Customize search result reranking with these settings:
 - Verify internet connection
 - Try removing and re-adding the Doc
 - Verify the content hash mechanism is working correctly
-- **Filename Character Errors**: Issues like `[Errno 22] Invalid argument` caused by special characters (e.g., em dash `—`) in document titles used as filenames should now be resolved due to improved filename sanitization.
 
 #### Image Processing Failures
 - Check supported image formats (PNG, JPG, etc.)
@@ -564,7 +559,6 @@ Customize search result reranking with these settings:
 
 #### Contextual Retrieval Issues
 -   **Check Document Structure**: Poorly structured documents lead to poor context generation.
--   **Verify with `/export_prompt`**: This is the best way to see the actual context being generated and included in prompts.
 -   **API Key/Model Access**: Ensure the model used for context generation (e.g., Gemini Flash) is accessible via your OpenRouter key.
 -   **Regenerate Embeddings**: If context is consistently poor for a document, try regenerating its embeddings.
 
@@ -576,7 +570,6 @@ The bot uses a comprehensive logging system:
 - Enable debug mode with `/toggle_debug` for model information
 - Check console output for detailed errors
 - Image and document operations are logged extensively
-- Use `/export_prompt` to see exactly what prompts are being sent to the model
 
 ### Data Management
 

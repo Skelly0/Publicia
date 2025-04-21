@@ -188,7 +188,6 @@ Comprehensive tools to help troubleshoot issues:
 | `/toggle_debug` | Toggle showing model info in responses |
 | `/list_commands` | Show all available commands |
 | `/help` | Display detailed help information |
-| `/export_prompt` | Export the complete prompt for a query |
 | `/toggle_prompt_mode` | Toggle between standard (immersive) and informational (concise) system prompts |
 | `/pronouns` | Set your preferred pronouns |
 | `/whats_new` | Shows documents and images added or updated recently |
@@ -202,44 +201,6 @@ Comprehensive tools to help troubleshoot issues:
 | `/regenerate_embeddings` | Regenerate all document embeddings |
 | `/refresh_docs` | Manually refresh all tracked Google Docs |
 | `/compare_models` | Compare responses from multiple AI models |
-
-## Recent Updates
-
-### Version 13.8 (March 2025)
-- Enhanced hybrid search with context-aware embedding generation and caching.
-- Improved Google Docs change detection using efficient content hashing.
-- Added weighted context-aware embedding generation.
-- Improved error handling for message sending and rate limits.
-
-### Version 13.7 (March 2025)
-- Implemented BM25 keyword search alongside vector search (hybrid search).
-- Added contextual retrieval: AI generates context for document chunks before embedding.
-- Switched to score-based fusion for combining search results.
-- Enhanced `/export_prompt` to show contextual enhancements.
-
-### Version 13.6 (March 2025)
-- Fixed user mention errors ("user object has no attribute nickname").
-- Added retry system for blank/short model responses.
-- Improved reranking filter modes and made TOP_K a maximum limit.
-
-### Version 13.5 (February 2025)
-- Added model-specific TOP_K configuration.
-- Implemented dynamic provider selection and model-specific fallbacks.
-- Added support for multimodal content in vision models.
-- Improved handling of image attachments and search results.
-
-### Version 13 (February 2025)
-- Updated to use Google's Generative AI for embeddings
-- Added dynamic temperature control system for better response quality
-- Implemented sophisticated result reranking with multiple filter modes
-- Added new models: Wayfarer 70B and Anubis Pro 105B
-- Enhanced embedding configuration with dimension control
-- Improved error handling and recovery mechanisms
-- Added `/export_prompt` command for debugging
-- Added more fallback options for models
-- Simplified search system for better reliability
-- Enhanced message splitting for better Discord compatibility
-- Improved handling of empty documents with automatic cleanup
 
 ## Documentation
 

@@ -31,7 +31,7 @@ def register_commands(bot):
                 "Lore Queries": ["query", "query_full_context"], # Added query_full_context
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "export_prompt", "whats_new"], # Added pronouns
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"], # Added pronouns
                 "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
                 "Moderation": ["ban_user", "unban_user"],
                 "Admin": ["compare_models", "reload_docs", "regenerate_embeddings", "refresh_docs"] # Added Admin category
@@ -362,13 +362,13 @@ def register_commands(bot):
             logger.error(f"Error displaying help: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to display help information.")
 
-    @bot.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
+    """@bot.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
     @app_commands.describe(
         question="The question to generate a prompt for",
         private="Whether to make the output visible only to you (default: True)"
     )
     async def export_prompt(interaction: discord.Interaction, question: str, private: bool = True):
-        """Export the complete prompt that would be sent to the AI model."""
+        #Export the complete prompt that would be sent to the AI model.
         await interaction.response.defer(ephemeral=private)
         try:
             # This command handles just like a regular query, but exports the prompt instead
@@ -405,7 +405,7 @@ def register_commands(bot):
             await status_message.edit(content="*formatting prompt for export...*")
             
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            file_content = f"""
+            file_content = f#
     =========================================================
     PUBLICIA PROMPT EXPORT WITH CONTEXTUAL INFORMATION
     =========================================================
@@ -433,10 +433,10 @@ def register_commands(bot):
     please review the content first.
     =========================================================
 
-    """
+    #
             
             # System prompt
-            file_content += f"""
+            file_content += f#
     SYSTEM PROMPT
     ---------------------------------------------------------
     This defines Publicia's character, abilities, and behavior.
@@ -444,16 +444,16 @@ def register_commands(bot):
     {SYSTEM_PROMPT}
     =========================================================
 
-    """
+    #
             
             # Conversation history
             if conversation_messages:
-                file_content += f"""
+                file_content += f#
     CONVERSATION HISTORY ({len(conversation_messages)} messages)
     ---------------------------------------------------------
     Previous messages provide context for your current query.
     ---------------------------------------------------------
-    """
+    #
                 for i, msg in enumerate(conversation_messages):
                     role = msg.get("role", "unknown")
                     content = msg.get("content", "")
@@ -463,7 +463,7 @@ def register_commands(bot):
             
             # Synthesized context
             if synthesis:
-                file_content += f"""
+                file_content += f#
     SYNTHESIZED DOCUMENT CONTEXT
     ---------------------------------------------------------
     This is an AI-generated summary of the search results.
@@ -471,17 +471,17 @@ def register_commands(bot):
     {synthesis}
     =========================================================
 
-    """
+    #
             
             # Raw search results
             if search_results:
-                file_content += f"""
+                file_content += f#
     RAW SEARCH RESULTS ({len(search_results)} results)
     ---------------------------------------------------------
     These are the actual document chunks found by semantic search.
     Each result shows whether it has been enhanced with AI-generated context.
     ---------------------------------------------------------
-    """
+    #
                 for i, (doc, chunk, score, image_id, chunk_index, total_chunks) in enumerate(search_results):                        
                     # Check if this chunk has been contextualized
                     has_context = False
@@ -522,7 +522,7 @@ def register_commands(bot):
                 file_content += "=========================================================\n\n"
             
             # User query
-            file_content += f"""
+            file_content += f#
     USER QUERY
     ---------------------------------------------------------
     This is your actual question/message sent to Publicia.
@@ -530,18 +530,18 @@ def register_commands(bot):
     {nickname}: {question}
     =========================================================
 
-    """
+    #
             
             # Analysis data
             if analysis and analysis.get("success"):
-                file_content += f"""
+                file_content += f#
     QUERY ANALYSIS
     ---------------------------------------------------------
     This shows how your query was analyzed to improve search results.
     ---------------------------------------------------------
     {json.dumps(analysis, indent=2)}
     =========================================================
-    """
+    #
             
             # Save to file
             file_name = f"publicia_prompt_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -578,6 +578,7 @@ def register_commands(bot):
             import traceback
             logger.error(traceback.format_exc())
             await interaction.followup.send("*neural circuit overload!* failed to export prompt due to an error.")
+    """
 
     @bot.tree.command(name="whats_new", description="Shows documents and images added or updated recently")
     @app_commands.describe(days="How many days back to check (default: 7)")

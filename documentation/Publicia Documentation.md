@@ -382,10 +382,6 @@ The bot will display a startup banner and initialize all components.
 
 - `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
 
-- `/export_prompt`: Export the complete prompt for a query
-  - **Parameters**: `question` (your query), `private` (visibility toggle)
-  - Now includes information about contextual enhancements for each chunk
-
 #### Admin Commands
 
 - `/ban_user`: Ban a user from using the bot
@@ -465,12 +461,10 @@ Configure the hybrid search system for optimal performance:
 -   **Reranking Settings**: Modify `RERANKING_ENABLED`, `RERANKING_CANDIDATES`, `RERANKING_MIN_SCORE`, and `RERANKING_FILTER_MODE` in `.env` to fine-tune result filtering.
 -   **Contextual Retrieval Prompt**: While not directly configurable via `.env`, the prompt used for generating chunk context (`prompts/context_prompt.py` - *verify path*) influences retrieval. Modifications require code changes.
 -   **Context-Aware Search**: This is largely automatic but relies on good conversation history management.
--   **Debugging**: Use `/export_prompt` to inspect how context is generated and added to chunks, and how queries are enhanced.
 
 ### Contextual Retrieval Best Practices
 
 -   **Document Structure**: Keep original documents well-structured with clear headings and logical flow, as this aids the AI in generating useful context for chunks.
--   **Review Context**: Use `/export_prompt` to occasionally review the AI-generated context for important documents to ensure it's accurate and helpful.
 -   **Regeneration**: Remember that context is generated *once* when a document is added or updated. If you significantly restructure a document or the context generation logic improves, use `/regenerate_embeddings` for the specific document (or all documents) to apply the changes.
 
 ### Backup Strategies
@@ -493,7 +487,6 @@ Configure the hybrid search system for optimal performance:
 
 ### Debug Tools
 
--   **`/export_prompt`**: Essential for understanding how prompts are constructed, including contextual enhancements, conversation history, and the final query sent to the LLM.
 -   **`/toggle_debug`**: Shows the specific AI model used for each response and potentially other metadata.
 -   **Logs**: Check `bot_detailed.log` for detailed operational information, errors, and search process steps.
 -   **`/list_files`**: Useful for verifying the contents and names of documents, images, and lorebooks currently indexed by the bot.
@@ -531,7 +524,6 @@ Customize search result reranking with these settings:
 -   **Document Content**: Ensure relevant information exists and is well-structured in the knowledge base.
 -   **Hybrid Search Weights**: Adjust the embedding vs. BM25 weights in `.env` if results seem skewed towards semantic or keyword matches inappropriately.
 -   **Reranking Settings**: Experiment with `RERANKING_MIN_SCORE` and `RERANKING_FILTER_MODE`. A `strict` filter might be too aggressive, while `topk` might return irrelevant results.
--   **Contextual Retrieval**: Use `/export_prompt` to check if the AI-generated context for relevant chunks is accurate. If not, consider regenerating embeddings for those documents.
 -   **Embeddings**: Consider regenerating embeddings (`/regenerate_embeddings`) if you suspect issues or after significant code changes.
 
 #### Model Errors
@@ -567,7 +559,6 @@ Customize search result reranking with these settings:
 
 #### Contextual Retrieval Issues
 -   **Check Document Structure**: Poorly structured documents lead to poor context generation.
--   **Verify with `/export_prompt`**: This is the best way to see the actual context being generated and included in prompts.
 -   **API Key/Model Access**: Ensure the model used for context generation (e.g., Gemini Flash) is accessible via your OpenRouter key.
 -   **Regenerate Embeddings**: If context is consistently poor for a document, try regenerating its embeddings.
 
@@ -579,7 +570,6 @@ The bot uses a comprehensive logging system:
 - Enable debug mode with `/toggle_debug` for model information
 - Check console output for detailed errors
 - Image and document operations are logged extensively
-- Use `/export_prompt` to see exactly what prompts are being sent to the model
 
 ### Data Management
 
