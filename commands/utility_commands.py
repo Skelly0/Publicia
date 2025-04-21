@@ -321,142 +321,43 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             response = "# **PUBLICIA HELP GUIDE**\n\n"
-            response += "*greetings, human! my genetically enhanced brain is ready to assist you with imperial knowledge. here's how to use my capabilities:*\n\n"
-            
+            response += "*greetings, human! my genetically enhanced brain is ready to assist you with imperial knowledge. here's a quick overview:*\n\n"
+
             # Core functionality
             response += "## **CORE FUNCTIONALITY**\n\n"
-            response += "**🔍 Asking Questions**\n"
-            response += "• **Mention me** in a message with your question about Ledus Banum 77 and Imperial lore\n"
-            response += "• Use `/query` command for more structured questions (supports image URLs for analysis)\n"
-            response += "• Use `/query_full_context` to ask questions using *all* documents as context (limited to once per day, uses powerful models like Gemini 2.5 Pro)\n" # Added query_full_context
-            response += "• I'll search my knowledge base and provide answers with citations where possible\n"
-            response += "• You can attach images directly to mentioned messages for visual analysis\n\n"
-            response += "If you reply to a message and ping Publicia, she will be able to see the message you are replying to\n\n"
-            
-            # Knowledge Base
-            response += "## **KNOWLEDGE BASE & LIMITATIONS**\n\n"
-            response += "**📚 What I Know**\n"
-            response += "• My knowledge is based on documents and images uploaded to my neural database\n"
-            response += "• I specialize in Ledus Banum 77 (aka Tundra) lore and Imperial institutions\n"
-            response += "• I can cite specific documents when providing information\n"
-            response += "• I understand the Infinite Empire's structure, planes of existence, and Resonant Drilling\n\n"
-            
-            response += "**⚠️ What I Don't Know**\n"
-            response += "• Information not contained in my document or image database\n"
-            response += "• I cannot access the internet\n"
-            response += "• I am bad at highly broad queries, or at queries asking for info that is not in my knowledge base\n"
-            response += "• I am bad at queries that would require information from many different sources, as my embedding search system has a limit on the amount of document chunks it will return\n"
-            response += "   • I would recommend breaking down your query into smaller, more focused questions so that my embeddings search can return more relevant and focused results\n"
-            response += "• I may lack up to date information if my documents have not been updated\n\n"
-            
-            # How I Work
-            response += "## **HOW I WORK**\n\n"
-            response += "**🧠 Neural Processing**\n"
-            response += "• I use semantic search with advanced reranking to find relevant information\n"
-            response += "• I analyze your query to understand what you're looking for\n"
-            response += "• I synthesize information from multiple documents when needed\n"
-            response += "• I provide citations to document sources when possible\n"
-            response += "• I automatically extract content from Google Docs linked in your queries\n"
-            response += "• I use dynamic temperature control to adapt my responses to your query type\n\n"
-            
-            response += "**🖼️ Image Analysis**\n"
-            response += "• I can analyze images in three ways:\n"
-            response += "  - Attach an image directly when mentioning me\n"
-            response += "  - Use `/query` with an image URL\n"
-            response += "  - I can search my image database for relevant visual information\n"
-            response += "• I can recognize content in images and integrate them into my responses\n"
-            response += "• Add images to my knowledge base using `Publicia! add_image` for future searches\n"
-            response += "• Vision-capable models: Gemini 2.5 Flash, Claude 3.5 Haiku, Claude 3.5 Sonnet, Claude 3.7 Sonnet\n\n"
-            
-            # Document Management
-            response += "## **DOCUMENT & IMAGE MANAGEMENT**\n\n"
-            response += "**📚 Adding Information**\n"
-            response += "• `/add_info` - Add text directly to my knowledge base\n"
-            response += "• `Publicia! add_doc` - Add a document with an attachment\n"
-            response += "• `/add_googledoc` - Connect a Google Doc to my knowledge base\n"
-            response += "• `Publicia! add_image \"name\" [yes/no]` - Add an image with optional auto-description\n\n"
-            
-            response += "**📋 Managing Documents & Images**\n"
-            response += "• `/list_docs` - See all documents in my knowledge base\n"
-            response += "• `/list_images` - See all images in my visual knowledge base\n"
-            response += "• `/list_files` - See all files in my knowledge base\n"
-            response += "• `/retrieve_file` - Retrieve a file from my knowledge base and upload it to Discord\n\n"
-            response += "• `/view_image` - View an image from my knowledge base\n"
-            response += "• `/remove_doc` - Remove a document from my knowledge base\n"
-            response += "• `/remove_image` - Remove an image from my knowledge base\n"
-            response += "• `/remove_googledoc` - Disconnect a Google Doc\n"
-            response += "• `/rename_document` - Rename a document in my database\n"
-            response += "• `/search_docs` - Search directly in my document knowledge base\n"
-            response += "• `/summarize_doc` - Generate an AI summary of a document\n"
-            response += "• `/view_chunk` - View the specific text content of a document chunk\n"
-            response += "• `/update_image_description` - Update the description for an image\n"
-            response += "• `Publicia! edit_image [id]` - View and edit an image description (prefix command)\n" # Added edit_image prefix command
-            response += "• `/reload_docs` - Reload all documents from disk (admin only)\n"
-            response += "• `/regenerate_embeddings` - Regenerate all document embeddings (admin only)\n" # Added regenerate_embeddings
-            response += "• `/refresh_docs` - Manually refresh all tracked Google Docs (admin only)\n" # Added refresh_docs
-            response += "• `/archive_channel` - Archive messages from a Discord channel as a document (admin only)\n\n"
-            
-            # Conversation Management
-            response += "## **CONVERSATION SYSTEM**\n\n"
-            response += "**💬 How Conversations Work**\n"
-            response += "• I remember your chats to provide more relevant, contextual responses\n"
-            response += "• Each user has their own conversation history stored separately\n"
-            response += "• When you ask something, I check your previous interactions for context\n"
-            response += "• This lets me understand ongoing discussions, recurring topics, and your interests\n"
-            response += "• Conversations are limited to the most recent 50 messages to maintain performance\n"
-            response += "• Use `/parse_channel` to let me analyze recent channel messages for more context\n\n"
+            response += "**🔍 Asking Questions:**\n"
+            response += "• **Mention me** (@Publicia) with your question about Ledus Banum 77 / Imperial lore.\n"
+            response += "• Use `/query` for structured questions (supports image URLs).\n"
+            response += "• Use `/query_full_context` for deep dives using all documents (limited use).\n"
+            response += "• Attach images directly when mentioning me for visual analysis.\n"
+            response += "• Replying to a message while mentioning me provides context.\n\n"
 
-            response += "**🧠 Memory Management**\n"
-            response += "• `/history [limit]` - See your recent conversation (default: shows last 10 messages)\n"
-            response += "• `/manage_history [limit]` - View messages with numbered indices for selective deletion\n"
-            response += "• `/delete_history_messages indices:\"0,2,5\" confirm:\"yes\"` - Remove specific messages by their indices\n"
-            response += "• `/lobotomise` command to completely wipe your history\n"
-            response += "• `/archive_conversation [archive_name]` - Save your current conversation history with optional custom name\n" 
-            response += "• `/list_archives` - View all your archived conversations\n"
-            response += "• `/swap_conversation archive_name` - Switch between current and archived conversations (automatically saves current conversation first)\n"
-            response += "• `/delete_archive archive_name confirm:\"yes\"` - Permanently delete an archived conversation (requires confirmation)\n"
-            response += "• Memory management lets you organize conversations, preserve important discussions, and start fresh when needed\n\n"
-            
-            # Customization
-            response += "## **CUSTOMIZATION**\n\n"
-            response += "**⚙️ AI Model Selection & Utility**\n" # Renamed section slightly
-            response += "• `/set_model` - Choose your preferred AI model\n"
-            response += "• `/get_model` - Check which model you're currently using and see available models\n"
-            response += "• `/pronouns` - Set your preferred pronouns (e.g., she/her, they/them)\n" # Added pronouns command
-            response += "• `/toggle_debug` - Show/hide which model generated each response\n"
-            response += "• `/toggle_prompt_mode` - Switch between standard (immersive) and informational (concise) prompts\n" # Added toggle_prompt_mode description
-            response += "• `/whats_new [days]` - Show documents/images added or updated recently (default: 7 days)\n\n" # Added whats_new description
-            response += "I recommend using Gemini 2.0 Flash for factual queries, DeepSeek-R1 for times when you want good prose and creative writing, Claude 3.5 Haiku for roleplay and accuracy, and QwQ 32B when you want a balance.\n\n"
-            
-            # Add our new section here
-            response += "**🧪 Debugging Tools**\n"
-            response += "• `/export_prompt` - Export the complete prompt for your query\n"
-            response += "  - Shows system prompt, conversation history, search results, and more\n"
-            response += "  - Helps understand exactly how I process your questions\n"
-            response += "  - Includes privacy option to make output only visible to you\n\n"
+            # How I Work & Limitations
+            response += "## **HOW I WORK & LIMITATIONS**\n\n"
+            response += "**🧠 Neural Processing:** I use semantic search on my internal knowledge base (documents & images) to find relevant info. I can synthesize answers and cite sources. I remember our conversation history for context (last 50 messages).\n\n"
+            response += "**🖼️ Image Analysis:** I can analyze images attached to mentions, via `/query` URLs, or from my internal image database (if the model supports vision, e.g., Gemini Flash, Claude Haiku).\n\n"
+            response += "**⚠️ Limitations:** My knowledge is limited to uploaded documents/images. I cannot access the internet. Very broad queries or questions requiring info from many sources might yield poor results; try breaking down complex questions.\n\n"
 
-            # Admin Tools
-            response += "## **ADMIN TOOLS**\n\n"
-            response += "**🛠️ Management & Moderation**\n"
-            response += "• `/compare_models` - Compare responses from multiple AI models (admin only)\n"
-            response += "• `/ban_user` - Ban a user from using the bot (admin only)\n"
-            response += "• `/unban_user` - Unban a user (admin only)\n\n"
-            # Note: reload_docs, regenerate_embeddings, refresh_docs, archive_channel are listed under Document Management
+            # Key Command Areas
+            response += "## **KEY COMMAND AREAS**\n\n"
+            response += "I offer commands for:\n"
+            response += "• **Document & Image Management:** Adding, listing, removing, searching, summarizing docs/images.\n"
+            response += "• **Conversation Management:** Viewing, deleting, archiving, and swapping conversation history.\n"
+            response += "• **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting pronouns.\n\n"
+            response += "**For a full list of all commands and their descriptions, please use the `/list_commands` command.**\n\n"
 
             # Tips
             response += "## **TIPS FOR BEST RESULTS**\n\n"
-            response += "• Ask specific questions for more accurate answers\n"
-            response += "• If I don't know something, add relevant documents or images to my database\n"
-            response += "• Use Google Docs integration for large, regularly updated documents\n"
-            response += "• Include links to Google Docs in your queries for on-the-fly context\n"
-            response += "• For creative writing, try DeepSeek-R1\n"
-            response += "• For factual accuracy, try Gemini 2.0 Flash or Claude 3.5 Haiku\n\n"
+            response += "• Ask specific questions.\n"
+            response += "• Use `/add_info`, `Publicia! add_doc`, or `/add_googledoc` to expand my knowledge.\n"
+            response += "• Choose models based on your needs (e.g., Gemini 2.5 Flash for facts, Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
+
             response += "*my genetically enhanced brain is always ready to help... just ask!*"
-            
+
             # Send the response in chunks
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
-                
+
         except Exception as e:
             logger.error(f"Error displaying help: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to display help information.")

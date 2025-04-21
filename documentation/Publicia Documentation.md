@@ -380,7 +380,7 @@ The bot will display a startup banner and initialize all components.
 
 - `/list_commands`: Show all available commands
 
-- `/help`: Detailed help information
+- `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
 
 - `/export_prompt`: Export the complete prompt for a query
   - **Parameters**: `question` (your query), `private` (visibility toggle)
