@@ -351,7 +351,7 @@ def register_commands(bot):
             # Tips
             response += "## **TIPS FOR BEST RESULTS**\n\n"
             response += "• Avoid queries that are too specific, or too vague/broad.\n"
-            response += "• I use a semantic search for finding information from my documents, and so a best practice is to include keywords in your queries that help point me to the correct documents.\n"
+            response += "• I use a semantic search for finding information from my documents, and so a best practice is to include keywords in your queries that help point me to the correct documents. A vague query will not let me access enough relevant documents (try using `/query_full_context` for those sorts of questions).\n"
             response += "• If you want me to speak more concisely and drop the roleplay, use the command `/toggle_prompt_mode`.\n"
             response += "• Ask my creator skellia if you require help or explanations for anything.\n"
             response += "• Use `/add_info`, `Publicia! add_doc`, or `/add_googledoc` to expand my knowledge.\n"
