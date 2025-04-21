@@ -321,7 +321,9 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             response = "# **PUBLICIA HELP GUIDE**\n\n"
-            response += "*greetings, human! my genetically enhanced brain is ready to assist you with imperial knowledge. here's a quick overview:*\n\n"
+            response += "Greetings! I am a Discord bot that roleplays as the abhuman Publicia. I act as a lore repository for our world and setting that can be queried.\n"
+            response += "My purpose is primarily to answer questions about the lore of Ledus Banum 77 and the Infinite Empire (the setting of Season 7/this Discord roleplay server). I am helpful for trying to find information about the various natives of the planet or about the Empire. I can also engage in roleplay!\n"
+            response += "Here's a quick overview of my functionality, limitations, and commands:\n\n"
 
             # Core functionality
             response += "## **CORE FUNCTIONALITY**\n\n"
@@ -334,7 +336,7 @@ def register_commands(bot):
 
             # How I Work & Limitations
             response += "## **HOW I WORK & LIMITATIONS**\n\n"
-            response += "**🧠 Neural Processing:** I use semantic search on my internal knowledge base (documents & images) to find relevant info. I can synthesize answers and cite sources. I remember our conversation history for context (last 50 messages).\n\n"
+            response += "**🧠 Neural Processing:** I use semantic search on my internal knowledge base (documents & images) to find relevant info. I can synthesize answers and cite sources. When mentioning me I remember our conversation history for context (last 50 messages).\n\n"
             response += "**🖼️ Image Analysis:** I can analyze images attached to mentions, via `/query` URLs, or from my internal image database (if the model supports vision, e.g., Gemini Flash, Claude Haiku).\n\n"
             response += "**⚠️ Limitations:** My knowledge is limited to uploaded documents/images. I cannot access the internet. Very broad queries or questions requiring info from many sources might yield poor results; try breaking down complex questions.\n\n"
 
@@ -343,16 +345,19 @@ def register_commands(bot):
             response += "I offer commands for:\n"
             response += "• **Document & Image Management:** Adding, listing, removing, searching, summarizing docs/images.\n"
             response += "• **Conversation Management:** Viewing, deleting, archiving, and swapping conversation history.\n"
-            response += "• **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting pronouns.\n\n"
+            response += "• **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting your preferred pronouns.\n\n"
             response += "**For a full list of all commands and their descriptions, please use the `/list_commands` command.**\n\n"
 
             # Tips
             response += "## **TIPS FOR BEST RESULTS**\n\n"
-            response += "• Ask specific questions.\n"
+            response += "• Avoid queries that are too specific, or too vague/broad.\n"
+            response += "• I use a semantic search for finding information from my documents, and so a best practice is to include keywords in your queries that help point me to the correct documents.\n"
+            response += "• If you want me to speak more concisely and drop the roleplay, use the command /toggle_prompt_mode.\n"
+            response += "• Ask my creator skellia if you require help or explanations for anything.\n"
             response += "• Use `/add_info`, `Publicia! add_doc`, or `/add_googledoc` to expand my knowledge.\n"
             response += "• Choose models based on your needs (e.g., Gemini 2.5 Flash for facts, Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
 
-            response += "*my genetically enhanced brain is always ready to help... just ask!*"
+            response += "*My genetically enhanced brain is always ready to help... just ask!*"
 
             # Send the response in chunks
             for chunk in split_message(response):
