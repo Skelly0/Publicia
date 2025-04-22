@@ -46,7 +46,7 @@ class Config:
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
             # Gemini models 
-            "google/gemini-2.5-flash-preview": 17,
+            "google/gemini-2.5-flash-preview": 18,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
             "google/gemini-2.5-pro-exp-03-25:free": 20, # Added new model
             # Nous Hermes models
@@ -60,7 +60,7 @@ class Config:
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
             "qwen/qwq-32b:free": 20,
-            "qwen/qwq-32b": 14, 
+            "qwen/qwq-32b": 16, 
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
             "eva-unit-01/eva-qwen-2.5-72b": 9,
@@ -79,7 +79,7 @@ class Config:
             "openai/gpt-4.1-mini": 11,
             "openai/gpt-4.1-nano": 17,
             # X AI Models
-            "x-ai/grok-3-mini-beta": 6,
+            "x-ai/grok-3-mini-beta": 14,
         }
         
         # Validate required environment variables
