@@ -330,7 +330,21 @@ def register_commands(bot):
                 os.remove(file_path)
                 await interaction.followup.send("*AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*... memory wiped! I've forgotten our conversations... Who are you again?")
             else:
-                await interaction.followup.send("hmm, i don't seem to have any memories of our conversations to wipe!")
+                await interaction.followup.send("Hmm, I don't seem to have any memories of our conversations to wipe!")
         except Exception as e:
             logger.error(f"Error clearing conversation history: {e}")
             await interaction.followup.send("oops, something went wrong while trying to clear my memory!")
+
+    @bot.tree.command(name="memory_clear", description="Wipe your conversation history with the bot (no torture involved)")
+    async def memory_clear(interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            file_path = bot.conversation_manager.get_file_path(interaction.user.name)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                await interaction.followup.send("My memory has been cleared. I've forgotten our conversation.")
+            else:
+                await interaction.followup.send("Hmm, I don't seem to have any memories of our conversations to wipe!")
+        except Exception as e:
+            logger.error(f"Error clearing conversation history: {e}")
+            await interaction.followup.send("Oops, something went wrong while trying to clear my memory!")

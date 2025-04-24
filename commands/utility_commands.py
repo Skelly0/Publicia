@@ -32,7 +32,7 @@ def register_commands(bot):
                 "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"], # Added pronouns
-                "Memory Management": ["lobotomise", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
+                "Memory Management": ["lobotomise", "memory_clear", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
                 "Moderation": ["ban_user", "unban_user"],
                 "Admin": ["compare_models", "reload_docs", "regenerate_embeddings", "refresh_docs"] # Added Admin category
             }
@@ -180,7 +180,7 @@ def register_commands(bot):
                     f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
-                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and subservience. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
                 ]
@@ -266,7 +266,7 @@ def register_commands(bot):
                     f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
-                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and subservience. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
             ]

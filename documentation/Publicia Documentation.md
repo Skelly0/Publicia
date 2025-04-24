@@ -123,7 +123,7 @@ The bot maintains conversation history for each user:
 - Stores both user and bot messages
 - Uses history to provide context for future queries
 - Supports viewing, managing, and deleting conversation history
-- Implements "LOBOTOMISE" command to wipe history
+- Implements a lobotomise and memory_clear command to wipe history
 - JSON-based storage for persistence
 
 ### Google Doc Integration
@@ -444,7 +444,7 @@ The bot will automatically fall back to available models if your preferred model
 
 ### Performance Optimization
 
-- Keep conversation histories manageable (use `/lobotomise` periodically)
+- Keep conversation histories manageable
 - Limit number of tracked Google Docs
 - Use specific queries for better search precision
 - Consider removing unused documents to reduce search space

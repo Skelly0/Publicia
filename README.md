@@ -149,6 +149,7 @@ Comprehensive tools to help troubleshoot issues:
 | `/manage_history` | View and manage history with indices |
 | `/delete_history_messages` | Delete specific messages |
 | `/lobotomise` | Wipe your conversation history |
+| `/memory_clear` | Wipe your conversation history |
 | `/archive_conversation` | Archive your current conversation history |
 | `/list_archives` | List your archived conversation histories |
 | `/swap_conversation` | Swap between current and archived conversation histories |
