@@ -97,7 +97,7 @@ class Config:
                 "order": ["Parasail"]
             },
             "qwen/qwq-32b:floor": {
-                "order": ["Nineteen", "DeepInfra", "Nebius", "Groq", "Hyperbolic"] # Corrected typo
+                "order": ["Groq", "Nineteen", "DeepInfra", "Nebius", "Hyperbolic"]
             },
             # Add any other model variants that need custom provider ordering
         }
