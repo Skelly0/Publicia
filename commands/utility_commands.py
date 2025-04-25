@@ -27,17 +27,30 @@ def register_commands(bot):
             # SLASH COMMANDS SECTION
             response += "**Slash Commands** (`/command`)\n\n"
             
+            # Define command categories
             categories = {
-                "Lore Queries": ["query", "query_full_context"], # Added query_full_context
-                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk", "set_doc_channel"],
-                "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"], # Added pronouns
-                "Memory Management": ["lobotomise", "memory_clear", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
-                "Moderation": ["ban_user", "unban_user"],
+                "Lore Queries": ["query", "query_full_context"],
+                "Document Management": ["list_docs", "search_docs", "list_googledocs", "list_files", "retrieve_file", "summarize_doc", "view_chunk"],
+                "Image Management": ["list_images", "view_image"],
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
+                "Context/Memory Management": ["history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "parse_channel"], 
+                "Admin Only": [ # Commands that add/remove info or require admin privileges
+                    "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel",
+                    "edit_image", "remove_image", "update_image_description",
+                    "ban_user", "unban_user"
+                ]
             }
             
+            response += "**Slash Commands** (`/command`)\n\n"
+            
             for category, cmd_list in categories.items():
-                response += f"__*{category}*__\n"
+                # Only display Admin Only category if the user is an admin (optional, but good practice)
+                # For now, we'll list all commands but mark Admin Only clearly
+                if category == "Admin Only":
+                     response += f"__***{category}***__ (Admin Only)\n"
+                else:
+                    response += f"__*{category}*__\n"
+
                 for cmd_name in cmd_list:
                     cmd = bot.tree.get_command(cmd_name)
                     if cmd:
@@ -52,22 +65,23 @@ def register_commands(bot):
             prefix_commands = sorted(bot.commands, key=lambda x: x.name)
             
             # Group prefix commands by category (estimate categories based on names)
+            # Assuming prefix commands are also admin-only for adding/removing info
             prefix_categories = {
-                "Document Management": [],
-                "Image Management": []
+                "Admin Only (Document Management)": [],
+                "Admin Only (Image Management)": []
             }
             
             # Sort commands into categories
             for cmd in prefix_commands:
                 if "doc" in cmd.name.lower():
-                    prefix_categories["Document Management"].append(cmd)
+                    prefix_categories["Admin Only (Document Management)"].append(cmd)
                 elif "image" in cmd.name.lower():
-                    prefix_categories["Image Management"].append(cmd)
+                    prefix_categories["Admin Only (Image Management)"].append(cmd)
             
             # Format and add each category of prefix commands
             for category, cmds in prefix_categories.items():
                 if cmds:  # Only show categories that have commands
-                    response += f"__*{category}*__\n"
+                    response += f"__***{category}***__\n"
                     for cmd in cmds:
                         brief = cmd.brief or "No description available"
                         response += f"`Publicia! {cmd.name}`: {brief}\n"
@@ -828,3 +842,55 @@ def register_commands(bot):
         except Exception as e:
             logger.error(f"Error in /pronouns command for user {interaction.user.name} ({interaction.user.id}): {e}", exc_info=True)
             await interaction.followup.send("*neural circuit overload!* An error occurred while setting your pronouns.")
+
+
+    @bot.tree.command(name="parse_channel", description="Toggle parsing of channel messages for context")
+    @app_commands.describe(
+        enabled="Whether to enable or disable parsing for this channel (true/false)",
+        message_count="How many recent messages to parse (default: 50)"
+    )
+    @app_commands.choices(enabled=[
+        app_commands.Choice(name="Enable", value="true"),
+        app_commands.Choice(name="Disable", value="false"),
+    ])
+    #@app_commands.checks.has_permissions(manage_channels=True) # Only allow users who can manage channels
+    async def parse_channel(interaction: discord.Interaction, enabled: str, message_count: int = 50):
+        """Toggles channel message parsing and sets the message count."""
+        await interaction.response.defer()
+        try:
+            if not interaction.channel:
+                await interaction.followup.send("*neural pathway error!* This command can only be used in a server channel.")
+                return
+
+            channel_id = str(interaction.channel.id)
+            enable_bool = enabled.lower() == 'true'
+
+            if message_count <= 0 or message_count > 200: # Add a reasonable upper limit
+                await interaction.followup.send("*invalid input!* Message count must be between 1 and 200.")
+                return
+
+            # Assuming a method exists in UserPreferencesManager or a dedicated ChannelSettingsManager
+            # Let's use UserPreferencesManager for now, storing channel settings under a specific key
+            success = bot.user_preferences_manager.set_channel_parsing_settings(channel_id, enable_bool, message_count)
+
+            if success:
+                if enable_bool:
+                    await interaction.followup.send(f"*channel analysis protocol activated!* I will now parse the last **{message_count}** messages in this channel for context when mentioned.")
+                else:
+                    await interaction.followup.send("*channel analysis protocol deactivated!* I will no longer parse messages in this channel for context.")
+                logger.info(f"User {interaction.user.name} ({interaction.user.id}) set channel parsing for channel {channel_id} to {enable_bool} with count {message_count}")
+            else:
+                await interaction.followup.send("*synaptic error detected!* Failed to update channel parsing settings. Please try again later.")
+                logger.error(f"Failed to set channel parsing settings for channel {channel_id}")
+
+        except Exception as e:
+            logger.error(f"Error in /parse_channel command for channel {interaction.channel.id if interaction.channel else 'N/A'}: {e}", exc_info=True)
+            await interaction.followup.send("*neural circuit overload!* An error occurred while updating channel parsing settings.")
+
+    @parse_channel.error
+    async def parse_channel_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message("*neural access denied!* You need the 'Manage Channels' permission to use this command.", ephemeral=True)
+        else:
+            logger.error(f"Unhandled error in /parse_channel: {error}")
+            await interaction.response.send_message("*neural circuit overload!* An unexpected error occurred.", ephemeral=True)

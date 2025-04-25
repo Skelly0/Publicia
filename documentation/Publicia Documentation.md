@@ -382,11 +382,61 @@ The bot will display a startup banner and initialize all components.
 
 - `/toggle_debug`: Toggle showing model info in responses
 
-- `/list_commands`: Show all available commands
+- `/list_commands`: Show all available commands, categorized by function and access level.
 
 - `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
 
-#### Admin Commands
+#### Admin Only Commands
+
+These commands are restricted to users with administrator privileges on the Discord server.
+
+- `/add_info`: Add text directly to knowledge base
+  - **Parameters**: `name` (document name), `content` (document content)
+
+- `/remove_doc`: Remove a document
+  - **Parameters**: `name` (document to remove)
+
+- `/add_googledoc`: Track a Google Doc
+  - **Parameters**: `doc_url` (URL or ID), `name` (optional custom name)
+
+- `/remove_googledoc`: Remove a tracked Google Doc
+  - **Parameters**: `identifier` (ID, URL, or name)
+
+- `/rename_document`: Rename a document
+  - **Parameters**: `current_name`, `new_name`
+
+- `/archive_channel`: Archive messages from a channel into a document
+  - **Parameters**: `channel` (The channel to archive), `message_limit` (Max messages to archive), `doc_name` (Name for the new document)
+
+- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.**
+  - **Parameters**: `channel` (The text channel to monitor)
+
+- `/edit_image`: View and edit an image description
+  - **Parameters**: `image_id` (ID of image)
+
+- `/remove_image`: Remove an image
+  - **Parameters**: `image_id` (ID of image)
+
+- `/update_image_description`: Update image description
+  - **Parameters**: `image_id` (ID of image), `description` (new description)
+
+- `/lobotomise`: Wipe your conversation history (Admin can wipe others' history)
+  - **Parameters**: `user` (optional, user to lobotomise)
+
+- `/memory_clear`: Clear the bot's short-term memory for the current conversation (Admin can clear for others)
+  - **Parameters**: `user` (optional, user whose memory to clear)
+
+- `/delete_history_messages`: Delete specific messages from history (Admin can delete for others)
+  - **Parameters**: `indices` (comma-separated list), `confirm` (must be "yes"), `user` (optional, user whose history to modify)
+
+- `/parse_channel`: Toggle parsing of channel messages for context (Admin can toggle for others)
+  - **Parameters**: `enabled` (true/false), `message_count` (number of messages), `user` (optional, user whose parsing to toggle)
+
+- `/archive_conversation`: Archive a user's conversation history
+  - **Parameters**: `user` (The user whose history to archive), `archive_name` (Name for the archive)
+
+- `/delete_archive`: Delete a conversation archive
+  - **Parameters**: `archive_name` (Name of the archive)
 
 - `/ban_user`: Ban a user from using the bot
   - **Parameters**: `user` (Discord user)
@@ -397,29 +447,21 @@ The bot will display a startup banner and initialize all components.
 - `/reload_docs`: Reload all documents from disk
 
 - `/regenerate_embeddings`: Regenerate all document embeddings
-- `/refresh_docs`: Manually refresh all tracked Google Docs
-- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.**
-  - **Parameters**: `channel` (The text channel to monitor)
 
-#### Admin-Specific Tools
+- `/refresh_docs`: Manually refresh all tracked Google Docs
+
 - `/compare_models`: Compare responses from multiple AI models
   - **Parameters**: `question`, `model_types` (optional), `max_models` (optional), `image_url` (optional), `private` (optional)
-- `/ban_user`: Ban a user from using the bot
-  - **Parameters**: `user` (Discord user)
-- `/unban_user`: Unban a user
-  - **Parameters**: `user` (Discord user)
 
 ### Prefix Commands
 
-These commands use the prefix "Publicia!" instead of slash commands:
+These commands use the prefix "Publicia!" instead of slash commands. They are generally older commands and many are now restricted to administrators.
+
+#### Admin Only Prefix Commands
 
 - `Publicia! add_doc "Document Name"`: Add document (with optional attachment). **Requires permissions.**
 
-- `Publicia! add_image "Image Name" [yes/no]`: Add image with optional auto-description
-
-- `Publicia! edit_image [image_id]`: View and edit an image description 
-
-- `Publicia! edit_image [image_id]`: View and edit an image description 
+- `Publicia! add_image "Image Name" [yes/no]`: Add image with optional auto-description. **Requires permissions.**
 
 ## Advanced Usage
 
