@@ -29,7 +29,7 @@ def register_commands(bot):
             
             categories = {
                 "Lore Queries": ["query", "query_full_context"], # Added query_full_context
-                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk"],
+                "Document Management": ["add_info", "list_docs", "remove_doc", "search_docs", "add_googledoc", "list_googledocs", "remove_googledoc", "rename_document", "list_files", "retrieve_file", "archive_channel", "summarize_doc", "view_chunk", "set_doc_channel"],
                 "Image Management": ["list_images", "view_image", "edit_image", "remove_image", "update_image_description"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"], # Added pronouns
                 "Memory Management": ["lobotomise", "memory_clear", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
