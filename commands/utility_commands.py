@@ -53,7 +53,7 @@ def register_commands(bot):
             admin_command_names = {
                 "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel",
                 "edit_image", "remove_image", "update_image_description",
-                "ban_user", "unban_user", "parse_channel", # parse_channel requires manage_channels permission
+                "ban_user", "unban_user"
                 "archive_conversation", "delete_archive"
             }
 
