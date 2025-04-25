@@ -9,6 +9,7 @@ import os
 import aiohttp
 import base64
 from datetime import datetime
+from dotenv import set_key, find_dotenv # Added for modifying .env
 from utils.helpers import check_permissions
 from prompts.system_prompt import SYSTEM_PROMPT
 
@@ -346,3 +347,55 @@ def register_commands(bot):
         except Exception as e:
             logger.error(f"Error regenerating embeddings: {e}")
             await interaction.followup.send(f"*neural circuit overload!* Error regenerating embeddings: {str(e)}")
+
+    @bot.tree.command(name="set_doc_channel", description="Set the channel for automatic Google Doc tracking (admin only)")
+    @app_commands.describe(channel="The text channel to monitor for Google Doc links")
+    @app_commands.check(check_permissions)
+    async def set_doc_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+        """Sets the channel ID for automatic Google Doc tracking."""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_id = str(channel.id)
+            env_file_path = find_dotenv()
+
+            if not env_file_path:
+                # If .env doesn't exist, create it in the current working directory or a sensible default
+                env_file_path = os.path.join(os.getcwd(), '.env')
+                logger.warning(f".env file not found. Creating a new one at: {env_file_path}")
+                # Create the file if it doesn't exist
+                with open(env_file_path, 'a'):
+                    os.utime(env_file_path, None)
+
+            logger.info(f"Attempting to set DOC_TRACKING_CHANNEL_ID={channel_id} in {env_file_path}")
+
+            # Update the .env file
+            success = set_key(env_file_path, "DOC_TRACKING_CHANNEL_ID", channel_id)
+
+            if success:
+                logger.info(f"Successfully updated DOC_TRACKING_CHANNEL_ID in {env_file_path}")
+                # Also update the config object in memory for the current session
+                # Note: This won't persist restarts, ConfigManager needs to reload from .env
+                if bot.config:
+                    bot.config.DOC_TRACKING_CHANNEL_ID = int(channel_id)
+                    logger.info(f"Updated bot.config.DOC_TRACKING_CHANNEL_ID in memory to {channel_id}")
+
+                await interaction.followup.send(
+                    f"Document tracking channel set to {channel.mention} (ID: {channel_id}).\n"
+                    f"**Important:** Please restart the bot for this change to be fully loaded and persistent.",
+                    ephemeral=True
+                )
+            else:
+                logger.error(f"Failed to update DOC_TRACKING_CHANNEL_ID in {env_file_path} using set_key.")
+                await interaction.followup.send(
+                    f"Error: Failed to update the `.env` file. Please check file permissions and try again.",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            logger.error(f"Error in set_doc_channel command: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await interaction.followup.send(
+                f"*neural circuit overload!* An error occurred while setting the document channel: {e}",
+                ephemeral=True
+            )

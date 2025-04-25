@@ -20,7 +20,7 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 - **Image Analysis**: Can process, store, and analyze images related to the lore using vision-capable models.
 - **Conversation Memory**: Remembers conversation history for contextual responses and context-aware searching.
 - **Multiple AI Models**: Supports various AI models with automatic fallback and retry mechanisms.
-- **Google Doc Integration**: Can fetch and index content from Google Docs, automatically detecting changes using content hashing.
+- **Google Doc Integration**: Can fetch and index content from Google Docs, automatically detecting changes using content hashing. Also supports designating a specific channel where posted Google Doc links will be automatically added/refreshed.
 - **Role-Playing**: Maintains character as Publicia while providing information.
 - **File Management**: Allows listing and retrieving stored documents and lorebooks.
 
@@ -133,6 +133,7 @@ Unique capability to work with Google Docs:
 - Track Google Docs with custom names.
 - Automatically refresh content on a schedule.
 - **Efficient Change Detection**: Uses content hashing to compare the current document content with the stored version, only processing and re-indexing if actual changes are detected.
+- **Automatic Tracking Channel**: Designate a specific channel (`/set_doc_channel`) where any Google Doc links posted will be automatically added to the bot's tracked documents. The bot will react to indicate success (✅), partial success (⚠️), or failure (❌).
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
@@ -259,6 +260,9 @@ RERANKING_ENABLED=true
 RERANKING_CANDIDATES=20  # Number of initial results to consider
 RERANKING_MIN_SCORE=0.5  # Threshold for relevance
 RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
+
+# Optional: Channel ID for automatic Google Doc tracking
+# DOC_TRACKING_CHANNEL_ID=your_channel_id_here
 ```
 
 5. Create necessary directories
@@ -394,6 +398,8 @@ The bot will display a startup banner and initialize all components.
 
 - `/regenerate_embeddings`: Regenerate all document embeddings
 - `/refresh_docs`: Manually refresh all tracked Google Docs
+- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.**
+  - **Parameters**: `channel` (The text channel to monitor)
 
 #### Admin-Specific Tools
 - `/compare_models`: Compare responses from multiple AI models

@@ -1659,12 +1659,52 @@ class DiscordBot(commands.Bot):
         # #     return search_results # Part of old logic
 
     async def on_message(self, message: discord.Message):
-        """Handle incoming messages, ignoring banned users."""
+        """Handle incoming messages, processing commands, checking for tracked docs, and responding to mentions."""
         try:
-            # Process commands first
+            # --- Document Tracking Channel Logic ---
+            # Check if this message is in the designated document tracking channel
+            doc_tracking_channel_id = getattr(self.config, 'DOC_TRACKING_CHANNEL_ID', None)
+            if doc_tracking_channel_id and message.channel.id == doc_tracking_channel_id:
+                # Ignore messages from the bot itself in this channel
+                if message.author != self.user:
+                    logger.info(f"Checking message in doc tracking channel ({doc_tracking_channel_id}) for Google Docs links.")
+                    google_doc_ids = await self._extract_google_doc_ids(message.content)
+                    if google_doc_ids:
+                        logger.info(f"Found {len(google_doc_ids)} Google Doc link(s) in message.")
+                        success_count = 0
+                        for doc_id, doc_url in google_doc_ids:
+                            try:
+                                # Fetch title to use as custom name (optional, refresh_single handles None)
+                                title = await self._fetch_google_doc_title(doc_id)
+                                logger.info(f"Attempting to add/refresh Google Doc ID: {doc_id} with title: '{title}'")
+                                # Use refresh_single_google_doc to add/update the document
+                                success = await self.refresh_single_google_doc(doc_id, custom_name=title)
+                                if success:
+                                    logger.info(f"Successfully added/refreshed Google Doc ID: {doc_id}")
+                                    success_count += 1
+                                else:
+                                    logger.error(f"Failed to add/refresh Google Doc ID: {doc_id}")
+                            except Exception as e:
+                                logger.error(f"Error processing Google Doc link ({doc_id}) from tracking channel: {e}")
+
+                        # React to the message based on success
+                        if success_count == len(google_doc_ids):
+                            await message.add_reaction('✅') # Success
+                        elif success_count > 0:
+                            await message.add_reaction('⚠️') # Partial success
+                        else:
+                            await message.add_reaction('❌') # Failure
+                    # Stop further processing for messages in the doc tracking channel
+                    # unless it's also a command or mention (handled below)
+                    # We might want to return here if we *don't* want mentions processed in this channel
+                    # return # Uncomment this line to prevent mentions from being processed in the doc channel
+
+            # --- Standard Message Processing ---
+
+            # Process commands first (might overlap with doc channel check, but process_commands handles its own logic)
             await self.process_commands(message)
 
-            # Ignore messages from self
+            # Ignore messages from self (redundant check, but safe)
             if message.author == self.user:
                 return
             
