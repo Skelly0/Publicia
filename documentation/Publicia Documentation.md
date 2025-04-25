@@ -19,6 +19,7 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 - **Document Search & Retrieval**: Uses an advanced hybrid system (vector embeddings + BM25 keyword matching) with AI-generated contextual retrieval and sophisticated reranking for highly accurate information retrieval.
 - **Image Analysis**: Can process, store, and analyze images related to the lore using vision-capable models.
 - **Conversation Memory**: Remembers conversation history for contextual responses and context-aware searching.
+- **Channel Context Parsing**: Optionally includes recent messages from the current channel as general context in the AI prompt, configurable via the `/parse_channel` command.
 - **Multiple AI Models**: Supports various AI models with automatic fallback and retry mechanisms.
 - **Google Doc Integration**: Can fetch and index content from Google Docs, automatically detecting changes using content hashing. Also supports designating a specific channel where posted Google Doc links will be automatically added/refreshed.
 - **Role-Playing**: Maintains character as Publicia while providing information.
@@ -74,8 +75,9 @@ Publicia is built on Python using discord.py, with several specialized component
 3. Performs a hybrid search using context-aware embeddings (if applicable), combining semantic similarity (vectors) and keyword matching (BM25) via score-based fusion.
 4. Search results, including AI-generated contextual enhancements for each chunk, are prepared as context.
 5. User's conversation history is added for continuity
-6. AI model generates response based on all context
-7. Response is sent back to user, potentially with images
+6. Recent channel messages (if parsing is enabled for the channel) are added as general context.
+7. AI model generates response based on all context
+8. Response is sent back to user, potentially with images
 8. Conversation history is updated
 
 ## Features
@@ -407,8 +409,8 @@ The bot will display a startup banner and initialize all components.
 
 - `/list_commands`: Show all available commands, categorized by function and indicating admin-only status.
 - `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
-- `/parse_channel`: Toggle parsing of channel messages for context (Admin can toggle for others using the `user` parameter) **(Admin Only)**
-  - **Parameters**: `enabled` (true/false), `message_count` (number of messages), `user` (optional, user whose parsing to toggle)
+- `/parse_channel`: Toggle parsing of recent channel messages to be included as general context in AI prompts **(Admin Only)**
+  - **Parameters**: `enabled` (true/false), `message_count` (number of messages, 1-200)
 - `/ban_user`: Ban a user from using the bot **(Admin Only)**
   - **Parameters**: `user` (Discord user)
 - `/unban_user`: Unban a user **(Admin Only)**

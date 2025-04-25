@@ -1916,6 +1916,42 @@ class DiscordBot(commands.Bot):
             # Add conversation history *after* potential pronoun context
             messages.extend(conversation_messages)
 
+            # --- Add Channel Parsing Context (if enabled) ---
+            if message.guild: # Only apply in guild channels
+                channel_id = str(message.channel.id)
+                parsing_enabled, message_count = self.user_preferences_manager.get_channel_parsing_settings(channel_id)
+
+                if parsing_enabled and message_count > 0:
+                    logger.info(f"Channel parsing enabled for {channel_id}. Fetching last {message_count} messages.")
+                    try:
+                        # Fetch recent messages (excluding the current one)
+                        channel_messages = await self.fetch_channel_messages(message.channel, limit=message_count + 1) # Fetch one extra to potentially exclude current
+
+                        # Filter out the current message if it was included
+                        channel_messages = [msg for msg in channel_messages if msg.get('content') != original_question] # Simple content check
+
+                        if channel_messages:
+                            # Format the channel messages for the AI
+                            formatted_channel_context = "Recent messages from this channel (for general context):\n"
+                            for msg in channel_messages:
+                                formatted_channel_context += f"- {msg['author']}: {msg['content']}\n"
+
+                            # Truncate if excessively long
+                            max_channel_context_len = 8000 # Adjust as needed
+                            if len(formatted_channel_context) > max_channel_context_len:
+                                formatted_channel_context = formatted_channel_context[:max_channel_context_len] + "\n... [Channel Context Truncated]"
+                                logger.warning(f"Channel context truncated to {max_channel_context_len} characters.")
+
+                            messages.append({
+                                "role": "system",
+                                "content": formatted_channel_context.strip()
+                            })
+                            logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
+                        else:
+                            logger.info("No recent channel messages found or fetched to add to context.")
+                    except Exception as fetch_err:
+                        logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
+            # --- End Channel Parsing Context ---
 
             if referenced_message:
                 # Get the author object from the referenced message
