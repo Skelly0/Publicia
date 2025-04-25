@@ -18,7 +18,7 @@ from PIL import Image
 from io import BytesIO
 import base64
 
-from utils.helpers import split_message, is_image
+from utils.helpers import split_message, is_image, check_permissions
 # No longer need system prompt import here
 # from prompts.system_prompt import SYSTEM_PROMPT
 
@@ -45,7 +45,8 @@ def _get_gemini_client(config):
 def register_commands(bot):
     """Register all image handling commands with the bot."""
 
-    @bot.command(name="add_image", brief="Add an image to the knowledge base. \nUsage: `Publicia! add_image \"Your Image Name\" [yes/no]` \n(yes/no controls whether to auto-generate a description, default is yes)")
+    @bot.command(name="add_image", brief="Add an image to the knowledge base. (admin only) \nUsage: `Publicia! add_image \"Your Image Name\" [yes/no]` \n(yes/no controls whether to auto-generate a description, default is yes)")
+    @commands.check(check_permissions)
     async def addimage_prefix(ctx, *, args=""):
         """Add an image via prefix command with file attachment.
         
@@ -191,7 +192,8 @@ def register_commands(bot):
             logger.error(f"Error viewing image: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving the image.")
 
-    @bot.command(name="edit_image", brief="View and edit an image description. Usage: Publicia! edit_image [image_id]")
+    @bot.command(name="edit_image", brief="View and edit an image description. Usage: Publicia! edit_image [image_id] (admin only)")
+    @commands.check(check_permissions)
     async def edit_image_prefix(ctx, image_id: str):
         """View and edit an image description with a conversational flow."""
         try:
@@ -250,8 +252,9 @@ def register_commands(bot):
             logger.error(f"Error editing image description: {e}")
             await ctx.send("*neural circuit overload!* An error occurred while processing the image.")
 
-    @bot.tree.command(name="remove_image", description="Remove an image from Publicia's knowledge base")
+    @bot.tree.command(name="remove_image", description="Remove an image from Publicia's knowledge base (admin only)")
     @app_commands.describe(image_id="ID of the image to remove")
+    @app_commands.check(check_permissions)
     async def remove_image(interaction: discord.Interaction, image_id: str):
         await interaction.response.defer()
         try:
@@ -266,11 +269,12 @@ def register_commands(bot):
             logger.error(f"Error removing image: {e}")
             await interaction.followup.send("*neural circuit overload!* An error occurred while removing the image.")
 
-    @bot.tree.command(name="update_image_description", description="Update the description for an image")
+    @bot.tree.command(name="update_image_description", description="Update the description for an image (admin only)")
     @app_commands.describe(
         image_id="ID of the image to update",
         description="New description for the image"
     )
+    @app_commands.check(check_permissions)
     async def update_image_description(interaction: discord.Interaction, image_id: str, description: str):
         await interaction.response.defer()
         try:

@@ -21,7 +21,7 @@ def register_commands(bot):
     async def list_commands(interaction: discord.Interaction):
         await interaction.response.defer()
         try:
-            response = "*accessing command database through enhanced synapses...*\n\n"
+            response = "*Accessing command database through enhanced synapses...*\n\n"
             response += "**AVAILABLE COMMANDS**\n\n"
             
             # SLASH COMMANDS SECTION
@@ -34,7 +34,6 @@ def register_commands(bot):
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"], # Added pronouns
                 "Memory Management": ["lobotomise", "memory_clear", "history", "manage_history", "delete_history_messages", "parse_channel", "archive_conversation", "list_archives", "swap_conversation", "delete_archive"],
                 "Moderation": ["ban_user", "unban_user"],
-                "Admin": ["compare_models", "reload_docs", "regenerate_embeddings", "refresh_docs"] # Added Admin category
             }
             
             for category, cmd_list in categories.items():
@@ -74,9 +73,8 @@ def register_commands(bot):
                         response += f"`Publicia! {cmd.name}`: {brief}\n"
                     response += "\n"
             
-            response += "\n*you can ask questions about ledus banum 77 and imperial lore by pinging/mentioning me or using the /query command!*"
-            response += "\n\n*my genetically enhanced brain is always ready to help... just ask!*"
-            response += "\n\n*for a detailed guide on all my features, use the `/help` command!*"
+            response += "\n*You can ask questions about ledus banum 77 and imperial lore by pinging/mentioning me or using the /query command!*"
+            response += "\n*My genetically enhanced brain is always ready to help... just ask!*"
             
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
@@ -326,11 +324,11 @@ def register_commands(bot):
             # Core functionality
             response += "## **CORE FUNCTIONALITY**\n\n"
             response += "**🔍 Asking Questions:**\n"
-            response += "• **Mention me** (@Publicia) with your question about Ledus Banum 77 / Imperial lore.\n"
-            response += "• Use `/query` for structured questions (supports image URLs).\n"
-            response += "• Use `/query_full_context` for deep dives using all documents (limited use).\n"
-            response += "• Attach images directly when mentioning me for visual analysis.\n"
-            response += "• Replying to a message while mentioning me provides that replied message as context to me.\n\n"
+            response += "- **Mention me** (@Publicia) with your question about Ledus Banum 77 / Imperial lore.\n"
+            response += "- Use `/query` for structured questions (supports image URLs).\n"
+            response += "- Use `/query_full_context` for deep dives using all documents (limited use).\n"
+            response += "- Attach images directly when mentioning me for visual analysis.\n"
+            response += "- Replying to a message while mentioning me provides that replied message as context to me.\n\n"
 
             # How I Work & Limitations
             response += "## **HOW I WORK & LIMITATIONS**\n\n"
@@ -341,19 +339,19 @@ def register_commands(bot):
             # Key Command Areas
             response += "## **KEY COMMAND AREAS**\n\n"
             response += "I offer commands for:\n"
-            response += "• **Document & Image Management:** Adding, listing, removing, searching, summarizing docs/images.\n"
-            response += "• **Conversation Management:** Viewing, deleting, archiving, and swapping conversation history.\n"
-            response += "• **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting your preferred pronouns.\n\n"
+            response += "- **Document & Image Management:** Adding, listing, removing, searching, summarizing docs/images.\n"
+            response += "- **Conversation Management:** Viewing, deleting, archiving, and swapping conversation history.\n"
+            response += "- **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting your preferred pronouns.\n\n"
             response += "**For a full list of all commands and their descriptions, please use the `/list_commands` command.**\n\n"
 
             # Tips
             response += "## **TIPS FOR BEST RESULTS**\n\n"
-            response += "• Avoid queries that are too specific, or too vague/broad. A vague query will not let me access enough relevant documents (try using `/query_full_context` for those sorts of questions).\n"
-            response += "• I use a semantic search for finding information from my documents, and so a best practice is to include keywords in your queries that help point me to the correct documents.\n"
-            response += "• If you want me to speak more concisely and drop the roleplay, use the command `/toggle_prompt_mode`.\n"
-            response += "• Ask my creator skellia if you require help or explanations for anything.\n"
-            response += "• Use `/add_info`, `Publicia! add_doc`, or `/add_googledoc` to expand my knowledge.\n"
-            response += "• Choose models based on your needs (e.g., Gemini 2.5 Flash for facts, Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
+            response += "- Avoid queries that are too specific, or too vague/broad. A vague query will not let me access enough relevant documents (try using `/query_full_context` for those sorts of questions).\n"
+            response += "- I use a semantic search for finding information from my documents, and so a best practice is to include keywords in your queries that help point me to the correct documents.\n"
+            response += "- If you want me to speak more concisely and drop the roleplay, use the command `/toggle_prompt_mode`.\n"
+            response += "- Ask my creator skellia if you require help or explanations for anything.\n"
+            response += "- Ask admins to add additional info (character backstories and so on) that you have written to expand my knowledge.\n"
+            response += "- Choose models based on your needs (e.g., Gemini 2.5 Flash for facts, Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
 
             response += "*My genetically enhanced brain is always ready to help... just ask!*"
 

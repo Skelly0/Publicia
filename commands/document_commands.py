@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 def register_commands(bot):
     """Register all document management commands with the bot."""
     
-    @bot.tree.command(name="add_info", description="Add new text to Publicia's mind for retrieval")
+    @bot.tree.command(name="add_info", description="Add new text to Publicia's mind for retrieval (admin only)")
     @app_commands.describe(
         name="Name of the document",
         content="Content of the document"
     )
+    @app_commands.check(check_permissions)
     async def add_document(interaction: discord.Interaction, name: str, content: str):
         await interaction.response.defer()
         try:
@@ -44,7 +45,8 @@ def register_commands(bot):
             logger.error(f"Error adding document: {e}")
             await interaction.followup.send(f"Error adding document: {str(e)}")
     
-    @bot.command(name="add_doc", brief="Add a new document to the knowledge base. Usage: Publicia! add_doc \"Document Name\"")
+    @bot.command(name="add_doc", brief="Add a new document to the knowledge base. (admin only) Usage: Publicia! add_doc \"Document Name\"")
+    @commands.check(check_permissions)
     async def adddoc_prefix(ctx, *, args):
         """Add a document via prefix command with optional file attachment."""
         try:
@@ -142,8 +144,9 @@ def register_commands(bot):
         except Exception as e:
             await interaction.followup.send(f"Error listing documents: {str(e)}")
 
-    @bot.tree.command(name="remove_doc", description="Remove a document from the knowledge base")
+    @bot.tree.command(name="remove_doc", description="Remove a document from the knowledge base (admin only)")
     @app_commands.describe(name="Name of the document to remove")
+    @app_commands.check(check_permissions)
     async def remove_document(interaction: discord.Interaction, name: str):
         await interaction.response.defer()
         try:
@@ -206,11 +209,12 @@ def register_commands(bot):
         except Exception as e:
             await interaction.followup.send(f"Error searching documents: {str(e)}")
 
-    @bot.tree.command(name="add_googledoc", description="Add a Google Doc to the tracked list")
+    @bot.tree.command(name="add_googledoc", description="Add a Google Doc to the tracked list (admin only)")
     @app_commands.describe(
         doc_url="Google Doc URL or ID",
         name="Custom name for the document (optional)"
     )
+    @app_commands.check(check_permissions)
     async def add_google_doc(interaction: discord.Interaction, doc_url: str, name: str = None):
         await interaction.response.defer()
         try:
@@ -296,11 +300,12 @@ def register_commands(bot):
             logger.error(f"Error listing Google Docs: {e}")
             await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to list Google Docs.")
 
-    @bot.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook")
+    @bot.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook (admin only)")
     @app_commands.describe(
         current_name="Current name of the document to rename",
         new_name="New name for the document"
     )
+    @app_commands.check(check_permissions)
     async def rename_document(interaction: discord.Interaction, current_name: str, new_name: str):
         await interaction.response.defer()
         try:
@@ -314,10 +319,11 @@ def register_commands(bot):
             logger.error(f"Error renaming document: {e}")
             await interaction.followup.send(f"*neural pathway error!* couldn't rename document: {str(e)}")
 
-    @bot.tree.command(name="remove_googledoc", description="Remove a Google Doc from the tracked list")
+    @bot.tree.command(name="remove_googledoc", description="Remove a Google Doc from the tracked list (admin only)")
     @app_commands.describe(
         identifier="Google Doc ID, URL, or custom name to remove"
     )
+    @app_commands.check(check_permissions)
     async def remove_google_doc(interaction: discord.Interaction, identifier: str):
         await interaction.response.defer()
         try:
