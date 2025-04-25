@@ -423,7 +423,6 @@ These commands use the prefix "Publicia!" instead of slash commands. They are ge
 #### Admin Only Prefix Commands
 
 - `Publicia! add_doc "Document Name"`: Add document (with optional attachment). **Requires permissions.**
-
 - `Publicia! add_image "Image Name" [yes/no]`: Add image with optional auto-description. **Requires permissions.**
 
 ## Advanced Usage
