@@ -22,10 +22,10 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             response = "*Accessing command database through enhanced synapses...*\n\n"
-            response += "**AVAILABLE COMMANDS**\n\n"
+            response += "# AVAILABLE COMMANDS\n\n"
             
             # SLASH COMMANDS SECTION
-            response += "**Slash Commands** (`/command`)\n\n"
+            response += "## Slash Commands** (`/command`)\n\n"
             
             # Define command categories
             categories = {
@@ -40,9 +40,7 @@ def register_commands(bot):
                     "ban_user", "unban_user"
                 ]
             }
-            
-            response += "**Slash Commands** (`/command`)\n\n"
-            
+                        
             for category, cmd_list in categories.items():
                 # Only display Admin Only category if the user is an admin (optional, but good practice)
                 # For now, we'll list all commands but mark Admin Only clearly
@@ -59,7 +57,7 @@ def register_commands(bot):
                 response += "\n"
             
             # PREFIX COMMANDS SECTION
-            response += "**Prefix Commands** (`Publicia! command`)\n\n"
+            response += "## Prefix Commands (`Publicia! command`)\n\n"
             
             # Get prefix commands from the bot
             prefix_commands = sorted(bot.commands, key=lambda x: x.name)
