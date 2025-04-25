@@ -25,30 +25,41 @@ def register_commands(bot):
             response += "# AVAILABLE COMMANDS\n\n"
             
             # SLASH COMMANDS SECTION
-            response += "## Slash Commands** (`/command`)\n\n"
-            
-            # Define command categories
+            response += "## Slash Commands (`/command`)\n\n"
+
+            # Define command categories, integrating admin commands
             categories = {
                 "Lore Queries": ["query", "query_full_context"],
-                "Document Management": ["list_docs", "search_docs", "list_googledocs", "list_files", "retrieve_file", "summarize_doc", "view_chunk"],
-                "Image Management": ["list_images", "view_image"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
-                "Context/Memory Management": ["history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "parse_channel"], 
-                "Admin Only": [ # Commands that add/remove info or require admin privileges
-                    "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel",
-                    "edit_image", "remove_image", "update_image_description",
-                    "ban_user", "unban_user"
+                "Document Management": [
+                    "list_docs", "search_docs", "list_googledocs", "list_files", "retrieve_file", "summarize_doc", "view_chunk",
+                    "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel" # Admin Doc commands integrated
+                ],
+                "Image Management": [
+                    "list_images", "view_image",
+                    "edit_image", "remove_image", "update_image_description" # Admin Image commands integrated
+                ],
+                "Utility": [
+                    "list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new",
+                    "ban_user", "unban_user", "parse_channel" # Admin Utility/Moderation commands integrated
+                ],
+                "Context/Memory Management": [
+                    "history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives",
+                    "archive_conversation", "delete_archive" # Admin Context commands integrated
                 ]
+                # No separate "Admin Only" category needed here anymore
             }
-                        
+
+            # Define a set of admin command names for easy checking
+            admin_command_names = {
+                "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel",
+                "edit_image", "remove_image", "update_image_description",
+                "ban_user", "unban_user", "parse_channel", # parse_channel requires manage_channels permission
+                "archive_conversation", "delete_archive"
+            }
+
             for category, cmd_list in categories.items():
-                # Only display Admin Only category if the user is an admin (optional, but good practice)
-                # For now, we'll list all commands but mark Admin Only clearly
-                if category == "Admin Only":
-                     response += f"__***{category}***__ (Admin Only)\n"
-                else:
-                    response += f"__*{category}*__\n"
-                
+                response += f"__*{category}*__\n" # Simple category title
+
                 # Sort the command list alphabetically for consistent output
                 sorted_cmd_list = sorted(cmd_list)
 
@@ -56,9 +67,10 @@ def register_commands(bot):
                     cmd = bot.tree.get_command(cmd_name)
                     if cmd:
                         desc = cmd.description or "No description available"
-                        response += f"`/{cmd_name}`: {desc}\n"
+                        admin_marker = " **(Admin Only)**" if cmd_name in admin_command_names else "" # Add marker if admin
+                        response += f"`/{cmd_name}`: {desc}{admin_marker}\n"
                 response += "\n"
-            
+
             # PREFIX COMMANDS SECTION
             response += "## Prefix Commands (`Publicia! command`)\n\n"
             

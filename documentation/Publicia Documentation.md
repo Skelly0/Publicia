@@ -336,21 +336,38 @@ The bot will display a startup banner and initialize all components.
   - Downloads the requested file as a Discord attachment.
   - Uses smart matching to find files (case-insensitive, extension handling).
   - Works in conjunction with `/list_files` to discover available files.
+- `/add_info`: Add text directly to knowledge base **(Admin Only)**
+  - **Parameters**: `name` (document name), `content` (document content)
+- `/remove_doc`: Remove a document **(Admin Only)**
+  - **Parameters**: `name` (document to remove)
+- `/add_googledoc`: Track a Google Doc **(Admin Only)**
+  - **Parameters**: `doc_url` (URL or ID), `name` (optional custom name)
+- `/remove_googledoc`: Remove a tracked Google Doc **(Admin Only)**
+  - **Parameters**: `identifier` (ID, URL, or name)
+- `/rename_document`: Rename a document **(Admin Only)**
+  - **Parameters**: `current_name`, `new_name`
+- `/archive_channel`: Archive messages from a channel into a document **(Admin Only)**
+  - **Parameters**: `channel` (The channel to archive), `message_limit` (Max messages to archive), `doc_name` (Name for the new document)
+- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.** **(Admin Only)**
+  - **Parameters**: `channel` (The text channel to monitor)
+- `/reload_docs`: Reload all documents from disk **(Admin Only)**
+- `/regenerate_embeddings`: Regenerate all document embeddings **(Admin Only)**
+- `/refresh_docs`: Manually refresh all tracked Google Docs **(Admin Only)**
+
 
 #### Image Management
 
 - `/list_images`: Show all images in knowledge base
-
 - `/view_image`: View an image
   - **Parameters**: `image_id` (ID of image)
-
-- `/remove_image`: Remove an image
+- `/edit_image`: View and edit an image description **(Admin Only)**
   - **Parameters**: `image_id` (ID of image)
-
-- `/update_image_description`: Update image description
+- `/remove_image`: Remove an image **(Admin Only)**
+  - **Parameters**: `image_id` (ID of image)
+- `/update_image_description`: Update image description **(Admin Only)**
   - **Parameters**: `image_id` (ID of image), `description` (new description)
 
-#### Query and Conversation
+#### Query and Conversation / Context Management
 
 - `/query`: Ask a question with optional image
   - **Parameters**: `question` (your query), `image_url` (optional)
@@ -368,10 +385,16 @@ The bot will display a startup banner and initialize all components.
 - `/delete_history_messages`: Delete specific messages
   - **Parameters**: `indices` (comma-separated list), `confirm` (must be "yes")
 
-- `/lobotomise`: Wipe your conversation history
-
-- `/parse_channel`: Toggle parsing of channel messages for context
-  - **Parameters**: `enabled` (true/false), `message_count` (number of messages)
+- `/lobotomise`: Wipe your conversation history (Admin can wipe others' history using the `user` parameter) **(Admin Only)**
+  - **Parameters**: `user` (optional, user to lobotomise)
+- `/memory_clear`: Clear the bot's short-term memory for the current conversation (Admin can clear for others) **(Admin Only)**
+  - **Parameters**: `user` (optional, user whose memory to clear)
+- `/delete_history_messages`: Delete specific messages from history (Admin can delete for others) **(Admin Only)**
+  - **Parameters**: `indices` (comma-separated list), `confirm` (must be "yes"), `user` (optional, user whose history to modify)
+- `/archive_conversation`: Archive a user's conversation history **(Admin Only)**
+  - **Parameters**: `user` (The user whose history to archive), `archive_name` (Name for the archive)
+- `/delete_archive`: Delete a conversation archive **(Admin Only)**
+  - **Parameters**: `archive_name` (Name of the archive)
 
 #### Settings and Utilities
 
@@ -382,75 +405,15 @@ The bot will display a startup banner and initialize all components.
 
 - `/toggle_debug`: Toggle showing model info in responses
 
-- `/list_commands`: Show all available commands, categorized by function and access level.
-
+- `/list_commands`: Show all available commands, categorized by function and indicating admin-only status.
 - `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
-
-#### Admin Only Commands
-
-These commands are restricted to users with administrator privileges on the Discord server.
-
-- `/add_info`: Add text directly to knowledge base
-  - **Parameters**: `name` (document name), `content` (document content)
-
-- `/remove_doc`: Remove a document
-  - **Parameters**: `name` (document to remove)
-
-- `/add_googledoc`: Track a Google Doc
-  - **Parameters**: `doc_url` (URL or ID), `name` (optional custom name)
-
-- `/remove_googledoc`: Remove a tracked Google Doc
-  - **Parameters**: `identifier` (ID, URL, or name)
-
-- `/rename_document`: Rename a document
-  - **Parameters**: `current_name`, `new_name`
-
-- `/archive_channel`: Archive messages from a channel into a document
-  - **Parameters**: `channel` (The channel to archive), `message_limit` (Max messages to archive), `doc_name` (Name for the new document)
-
-- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.**
-  - **Parameters**: `channel` (The text channel to monitor)
-
-- `/edit_image`: View and edit an image description
-  - **Parameters**: `image_id` (ID of image)
-
-- `/remove_image`: Remove an image
-  - **Parameters**: `image_id` (ID of image)
-
-- `/update_image_description`: Update image description
-  - **Parameters**: `image_id` (ID of image), `description` (new description)
-
-- `/lobotomise`: Wipe your conversation history (Admin can wipe others' history)
-  - **Parameters**: `user` (optional, user to lobotomise)
-
-- `/memory_clear`: Clear the bot's short-term memory for the current conversation (Admin can clear for others)
-  - **Parameters**: `user` (optional, user whose memory to clear)
-
-- `/delete_history_messages`: Delete specific messages from history (Admin can delete for others)
-  - **Parameters**: `indices` (comma-separated list), `confirm` (must be "yes"), `user` (optional, user whose history to modify)
-
-- `/parse_channel`: Toggle parsing of channel messages for context (Admin can toggle for others)
+- `/parse_channel`: Toggle parsing of channel messages for context (Admin can toggle for others using the `user` parameter) **(Admin Only)**
   - **Parameters**: `enabled` (true/false), `message_count` (number of messages), `user` (optional, user whose parsing to toggle)
-
-- `/archive_conversation`: Archive a user's conversation history
-  - **Parameters**: `user` (The user whose history to archive), `archive_name` (Name for the archive)
-
-- `/delete_archive`: Delete a conversation archive
-  - **Parameters**: `archive_name` (Name of the archive)
-
-- `/ban_user`: Ban a user from using the bot
+- `/ban_user`: Ban a user from using the bot **(Admin Only)**
   - **Parameters**: `user` (Discord user)
-
-- `/unban_user`: Unban a user
+- `/unban_user`: Unban a user **(Admin Only)**
   - **Parameters**: `user` (Discord user)
-
-- `/reload_docs`: Reload all documents from disk
-
-- `/regenerate_embeddings`: Regenerate all document embeddings
-
-- `/refresh_docs`: Manually refresh all tracked Google Docs
-
-- `/compare_models`: Compare responses from multiple AI models
+- `/compare_models`: Compare responses from multiple AI models **(Admin Only)**
   - **Parameters**: `question`, `model_types` (optional), `max_models` (optional), `image_url` (optional), `private` (optional)
 
 ### Prefix Commands
