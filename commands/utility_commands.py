@@ -48,8 +48,11 @@ def register_commands(bot):
                      response += f"__***{category}***__ (Admin Only)\n"
                 else:
                     response += f"__*{category}*__\n"
+                
+                # Sort the command list alphabetically for consistent output
+                sorted_cmd_list = sorted(cmd_list)
 
-                for cmd_name in cmd_list:
+                for cmd_name in sorted_cmd_list: # Iterate over the sorted list
                     cmd = bot.tree.get_command(cmd_name)
                     if cmd:
                         desc = cmd.description or "No description available"
