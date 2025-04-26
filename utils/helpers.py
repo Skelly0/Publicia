@@ -108,10 +108,20 @@ async def check_permissions(interaction: discord.Interaction):
             return False # General error during role check
 
     # 4. If none of the above checks passed, deny permission
-    # Raise CheckFailure to give specific feedback in Discord
-    raise app_commands.CheckFailure(
-        "You do not have the required permissions (specific user ID or allowed role) to use this command."
-    )
+    # Send an ephemeral message first, then raise CheckFailure to stop execution
+    error_message = "You do not have the required permissions (specific user ID or allowed role) to use this command."
+    try:
+        # Check if the interaction response has already been sent or deferred
+        if not interaction.response.is_done():
+            await interaction.response.send_message(error_message, ephemeral=True)
+        else:
+            # If already responded/deferred, use followup
+            await interaction.followup.send(error_message, ephemeral=True)
+    except Exception as send_err:
+        # Log if sending the message fails, but still raise the CheckFailure
+        print(f"Error sending permission denied message to user {interaction.user.id}: {send_err}")
+
+    raise app_commands.CheckFailure(error_message)
 
 
 def is_image(attachment):
