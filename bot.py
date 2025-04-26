@@ -78,6 +78,7 @@ class DiscordBot(commands.Bot):
         
         # List of models that support vision capabilities
         self.vision_capable_models = [
+            "google/gemini-2.5-flash-preview:thinking",
             "google/gemini-2.5-flash-preview",
             "google/gemini-2.0-flash-001",
             "google/gemini-2.0-pro-exp-02-05:free",
@@ -196,7 +197,7 @@ class DiscordBot(commands.Bot):
             ]
             
             payload = {
-                "model": "google/gemini-2.5-flash-preview",  # Use a vision-capable model
+                "model": "google/gemini-2.5-flash-preview:thinking",  # Use a vision-capable model
                 "messages": messages,
                 "temperature": 0.1
             }
@@ -861,6 +862,7 @@ class DiscordBot(commands.Bot):
             # Google models
             elif model_family == "google":
                 fallbacks = [
+                    "google/gemini-2.5-flash-preview:thinking",
                     "google/gemini-2.5-flash-preview",
                     "google/gemini-2.5-pro-exp-03-25:free", # Add new model as a primary fallback
                     "google/gemini-2.0-flash-thinking-exp:free",
@@ -951,10 +953,9 @@ class DiscordBot(commands.Bot):
 
             # Add general fallbacks (cleaned up)
             general_fallbacks = [
-                "google/gemini-2.5-pro-exp-03-25:free",
-                "google/gemini-2.5-flash-preview",
                 "qwen/qwq-32b:free",
                 "qwen/qwq-32b:floor",
+                "google/gemini-2.5-flash-preview:thinking",
                 "google/gemini-2.5-flash-preview",
                 "google/gemini-2.0-flash-thinking-exp:free",
                 "deepseek/deepseek-r1:free",

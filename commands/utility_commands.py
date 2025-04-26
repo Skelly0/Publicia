@@ -123,7 +123,7 @@ def register_commands(bot):
     @bot.tree.command(name="set_model", description="Set your preferred AI model for responses")
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
-        app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview"),
+        app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
         #app_commands.Choice(name="Gemini 2.5 Pro Exp", value="google/gemini-2.5-pro-exp-03-25:free"), # Added new model
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
@@ -203,7 +203,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview')}).",
+                    f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
@@ -289,7 +289,7 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
-                f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview')}).",
+                f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
