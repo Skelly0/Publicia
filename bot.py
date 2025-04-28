@@ -853,8 +853,8 @@ class DiscordBot(commands.Bot):
             elif model_family == "qwen":
                 fallbacks = [
                     "qwen/qwq-32b:free",
-                    "qwen/qwq-32b:floor",
                     "qwen/qwq-32b",
+                    "qwen/qwq-32b:floor",
                     "qwen/qwen-turbo",
                     "qwen/qwen2.5-32b-instruct"
                 ]
