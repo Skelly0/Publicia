@@ -163,7 +163,7 @@ def register_commands(bot):
                 logger.info(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
                 pronoun_context_message = {
                     "role": "system",
-                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
+                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'."
                 }
             else:
                  logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
