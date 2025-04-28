@@ -366,7 +366,7 @@ def register_commands(bot):
             response += "- Use `/query` for structured questions (supports image URLs).\n"
             response += "- Use `/query_full_context` for deep dives using all documents (limited use).\n"
             response += "- Attach images directly when mentioning me for visual analysis.\n"
-            response += "- Including a Google Doc link in your message to me will provide that document as context to me.\n"
+            response += "- Including a Google Doc link when mentiong me me will provide that document as context to me.\n"
             response += "- Replying to a message while mentioning me provides that replied message as context to me.\n\n"
 
             # How I Work & Limitations
