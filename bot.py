@@ -658,53 +658,65 @@ class DiscordBot(commands.Bot):
                         return False
                     txt_content = await response.text() # Store original txt content
 
-            # --- Optional DOCX Processing ---
+            # --- Optional DOCX Processing (Conditional) ---
             processed_content = None # Will hold content after potential DOCX processing
+            should_attempt_docx_processing = False # Flag to determine if we should try DOCX
+
             if self.config.AUTO_PROCESS_GOOGLE_DOCS:
-                logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True. Attempting DOCX processing for {doc_id}.")
-                if not DOCX_AVAILABLE:
-                    logger.warning("AUTO_PROCESS_GOOGLE_DOCS is True, but 'python-docx' is not installed. Skipping lore tagging.")
+                # Check if filename contains "Region" (case-insensitive)
+                if "region" in original_name.lower():
+                    logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True and filename '{original_name}' contains 'Region'. Will attempt DOCX processing.")
+                    if not DOCX_AVAILABLE:
+                        logger.warning("...but 'python-docx' is not installed. Skipping lore tagging.")
+                    else:
+                        should_attempt_docx_processing = True # Set flag to true only if conditions met
                 else:
-                    # Define temporary path for the docx file
-                    temp_dir = Path("./temp_files")
-                    temp_dir.mkdir(exist_ok=True)
-                    docx_temp_path = temp_dir / f"{safe_filename}.docx" # Use safe filename + .docx extension
+                    logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True, but filename '{original_name}' does not contain 'Region'. Skipping DOCX processing.")
+            else:
+                logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is False. Skipping DOCX processing for {doc_id}.")
 
-                    try:
-                        # Download as DOCX
-                        async with aiohttp.ClientSession() as session_docx:
-                            docx_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
-                            async with session_docx.get(docx_url) as response_docx:
-                                if response_docx.status == 200:
-                                    # Save the DOCX file temporarily
-                                    with open(docx_temp_path, 'wb') as f_docx:
-                                        while True:
-                                            chunk = await response_docx.content.read(1024)
-                                            if not chunk:
-                                                break
-                                            f_docx.write(chunk)
-                                    logger.info(f"Successfully downloaded DOCX version to {docx_temp_path}")
+            # --- Perform DOCX Processing if Flag is Set ---
+            if should_attempt_docx_processing:
+                # Define temporary path for the docx file
+                temp_dir = Path("./temp_files")
+                temp_dir.mkdir(exist_ok=True)
+                docx_temp_path = temp_dir / f"{safe_filename}.docx" # Use safe filename + .docx extension
 
-                                    # Process the downloaded DOCX file
-                                    logger.info(f"Processing DOCX file: {docx_temp_path}")
-                                    processed_content = tag_lore_in_docx(str(docx_temp_path))
-                                    if processed_content:
-                                        logger.info(f"Successfully processed DOCX for lore tags. Using processed content.")
-                                    else:
-                                        logger.warning(f"DOCX processing failed for {docx_temp_path}. Falling back to original TXT content.")
+                try:
+                    # Download as DOCX
+                    async with aiohttp.ClientSession() as session_docx:
+                        docx_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
+                        async with session_docx.get(docx_url) as response_docx:
+                            if response_docx.status == 200:
+                                # Save the DOCX file temporarily
+                                with open(docx_temp_path, 'wb') as f_docx:
+                                    while True:
+                                        chunk = await response_docx.content.read(1024)
+                                        if not chunk:
+                                            break
+                                        f_docx.write(chunk)
+                                logger.info(f"Successfully downloaded DOCX version to {docx_temp_path}")
+
+                                # Process the downloaded DOCX file
+                                logger.info(f"Processing DOCX file: {docx_temp_path}")
+                                processed_content = tag_lore_in_docx(str(docx_temp_path))
+                                if processed_content:
+                                    logger.info(f"Successfully processed DOCX for lore tags. Using processed content.")
                                 else:
-                                    logger.error(f"Failed to download DOCX version of {doc_id}: {response_docx.status}")
+                                    logger.warning(f"DOCX processing failed for {docx_temp_path}. Falling back to original TXT content.")
+                            else:
+                                logger.error(f"Failed to download DOCX version of {doc_id}: {response_docx.status}")
 
-                    except Exception as docx_err:
-                        logger.error(f"Error during DOCX download/processing for {doc_id}: {docx_err}", exc_info=True)
-                    finally:
-                        # Clean up the temporary docx file
-                        if docx_temp_path.exists():
-                            try:
-                                docx_temp_path.unlink()
-                                logger.info(f"Cleaned up temporary file: {docx_temp_path}")
-                            except Exception as cleanup_err:
-                                logger.error(f"Error cleaning up temporary file {docx_temp_path}: {cleanup_err}")
+                except Exception as docx_err:
+                    logger.error(f"Error during DOCX download/processing for {doc_id}: {docx_err}", exc_info=True)
+                finally:
+                    # Clean up the temporary docx file
+                    if 'docx_temp_path' in locals() and docx_temp_path.exists(): # Check if var exists before accessing
+                        try:
+                            docx_temp_path.unlink()
+                            logger.info(f"Cleaned up temporary file: {docx_temp_path}")
+                        except Exception as cleanup_err:
+                            logger.error(f"Error cleaning up temporary file {docx_temp_path}: {cleanup_err}")
 
             # Determine final content to use (processed or original txt)
             final_content = processed_content if processed_content is not None else txt_content
