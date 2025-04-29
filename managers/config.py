@@ -49,7 +49,7 @@ class Config:
             "google/gemini-2.5-flash-preview": 18,
             "google/gemini-2.5-flash-preview:thinking": 16,
             "google/gemini-2.0-pro-exp-02-05:free": 20,
-            "google/gemini-2.5-pro-exp-03-25:free": 20, # Added new model
+            "google/gemini-2.5-pro-preview-03-25": 10, # Added new model
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
             # Claude models

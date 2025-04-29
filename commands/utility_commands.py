@@ -124,9 +124,9 @@ def register_commands(bot):
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
         app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
+        #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro-preview-03-25"), # Added new model
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
         app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b"),
-        #app_commands.Choice(name="Gemini 2.5 Pro Exp", value="google/gemini-2.5-pro-exp-03-25:free"), # Added new model
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
@@ -146,12 +146,16 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             # Check if user is allowed to use Claude 3.7 Sonnet
-            if model == "anthropic/claude-3.7-sonnet:beta" and str(interaction.user.id) != "203229662967627777" and not (interaction.guild and interaction.user.guild_permissions.administrator):
+            if model == "anthropic/claude-3.7-sonnet:beta" and str(interaction.user.id) != "203229662967627777":
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
 
-            if model == "anthropic/claude-3.5-sonnet:beta" and str(interaction.user.id) != "203229662967627777" and not (interaction.guild and interaction.user.guild_permissions.administrator):
+            if model == "anthropic/claude-3.5-sonnet:beta" and str(interaction.user.id) != "203229662967627777":
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
+                return
+            
+            if model == "google/gemini-2.5-pro-preview-03-25" and str(interaction.user.id) != "203229662967627777":
+                await interaction.followup.send("*neural access denied!* Gemini 2.5 Pro is restricted to administrators only.")
                 return
                 
             success = bot.user_preferences_manager.set_preferred_model(str(interaction.user.id), model)
@@ -165,8 +169,8 @@ def register_commands(bot):
                 model_name = "DeepSeek-R1"
             elif "meta-llama/llama-4-maverick" in model:
                 model_name = "Llama 4 Maverick"
-            elif model == "google/gemini-2.5-pro-exp-03-25:free":
-                model_name = "Gemini 2.5 Pro Exp"
+            elif "google/gemini-2.5-pro-preview-03-25" in model:
+                model_name = "Gemini 2.5 Pro"
             elif "google/gemini-2.5-flash" in model:
                 model_name = "Gemini 2.5 Flash"
             elif model.startswith("google/"): # Keep this as a fallback for other google models
@@ -207,6 +211,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
+                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
@@ -256,8 +261,8 @@ def register_commands(bot):
                 model_name = "DeepSeek-R1"
             elif "meta-llama/llama-4-maverick" in preferred_model:
                 model_name = "Llama 4 Maverick"
-            elif preferred_model == "google/gemini-2.5-pro-exp-03-25:free":
-                model_name = "Gemini 2.5 Pro Exp"
+            elif "google/gemini-2.5-pro-preview-03-25" in preferred_model:
+                model_name = "Gemini 2.5 Pro"
             elif "google/gemini-2.5-flash" in preferred_model:
                 model_name = "Gemini 2.5 Flash"
             elif preferred_model.startswith("google/"): # Keep this as a fallback for other google models
@@ -296,6 +301,7 @@ def register_commands(bot):
             # Create a description of all model strengths
             model_descriptions = [
                     f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
+                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
