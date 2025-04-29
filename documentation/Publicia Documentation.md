@@ -263,6 +263,9 @@ RERANKING_CANDIDATES=20  # Number of initial results to consider
 RERANKING_MIN_SCORE=0.5  # Threshold for relevance
 RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
 
+# Optional: Auto-process Google Docs with lore tagging
+# AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
+
 # Optional: Channel ID for automatic Google Doc tracking
 # DOC_TRACKING_CHANNEL_ID=your_channel_id_here
 ```
@@ -354,7 +357,8 @@ The bot will display a startup banner and initialize all components.
   - **Parameters**: `channel` (The text channel to monitor)
 - `/reload_docs`: Reload all documents from disk **(Admin Only)**
 - `/regenerate_embeddings`: Regenerate all document embeddings **(Admin Only)**
-- `/refresh_docs`: Manually refresh all tracked Google Docs **(Admin Only)**
+- `/refresh_docs`: Manually refresh all tracked Google Docs (checks for changes) **(Admin Only)**
+- `/force_refresh_googledocs`: Force refresh and process ALL tracked Google Docs (bypasses change detection) **(Admin Only)**
 - `/process_docx_lore`: Process a `.docx` file to tag specific colored text (#980000) with `<post-invasion_lore>` XML tags. Requires `python-docx` library.
   - **Parameters**: `docx_file` (The `.docx` file attachment), `output_filename` (Optional name for the output `.txt` file)
 

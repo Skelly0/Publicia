@@ -124,6 +124,9 @@ class Config:
             self.DOC_TRACKING_CHANNEL_ID = int(doc_tracking_channel_id_str)
         elif doc_tracking_channel_id_str:
             logger.warning(f"Invalid DOC_TRACKING_CHANNEL_ID: '{doc_tracking_channel_id_str}'. Must be an integer. Disabling feature.")
+
+        # Auto-processing setting for Google Docs
+        self.AUTO_PROCESS_GOOGLE_DOCS = bool(os.getenv('AUTO_PROCESS_GOOGLE_DOCS', 'False').lower() in ('true', '1', 'yes'))
         
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):

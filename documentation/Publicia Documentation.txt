@@ -261,6 +261,9 @@ RERANKING_ENABLED=true
 RERANKING_CANDIDATES=20  # Number of initial results to consider
 RERANKING_MIN_SCORE=0.5  # Threshold for relevance
 RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
+
+# Optional: Auto-process Google Docs with lore tagging
+# AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
 ```
 
 5. Create necessary directories
@@ -399,7 +402,8 @@ The bot will display a startup banner and initialize all components.
 - `/reload_docs`: Reload all documents from disk
 
 - `/regenerate_embeddings`: Regenerate all document embeddings
-- `/refresh_docs`: Manually refresh all tracked Google Docs
+- `/refresh_docs`: Manually refresh all tracked Google Docs (checks for changes)
+- `/force_refresh_googledocs`: Force refresh and process ALL tracked Google Docs (bypasses change detection)
 - `/parse_channel`: Toggle parsing of channel messages for context (Admin can toggle for others)
   - **Parameters**: `enabled` (true/false), `message_count` (number of messages), `user` (optional, user whose parsing to toggle)
 

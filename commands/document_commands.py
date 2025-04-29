@@ -552,6 +552,22 @@ def register_commands(bot):
             logger.error(f"Error during manual Google Docs refresh: {e}")
             await interaction.followup.send(f"*neural circuit overload!* An error occurred during refresh: {str(e)}")
 
+    @bot.tree.command(name="force_refresh_googledocs", description="Force refresh/process all tracked Google Docs (admin only)")
+    @app_commands.check(check_permissions)
+    async def force_refresh_googledocs(interaction: discord.Interaction):
+        """Manually trigger the refresh and processing for ALL tracked Google Docs, bypassing change detection."""
+        await interaction.response.defer()
+        try:
+            await interaction.followup.send("*neural pathways activating... initiating FORCE refresh and processing sequence for ALL Google Docs...*")
+            
+            # Call the refresh method with force_process=True
+            await bot.refresh_google_docs(force_process=True)
+            
+            await interaction.followup.send("*neural synchronization complete!* Google Docs force refresh finished.")
+        except Exception as e:
+            logger.error(f"Error during manual Google Docs force refresh: {e}")
+            await interaction.followup.send(f"*neural circuit overload!* An error occurred during force refresh: {str(e)}")
+
     @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document (admin only)")
     @app_commands.describe(
         channel="The channel to archive messages from",

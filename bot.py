@@ -29,6 +29,8 @@ from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # A
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
 from utils.logging import sanitize_for_logging
+# Import the docx processing function and availability flag
+from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
 
 from commands import (
     document_commands,
@@ -457,8 +459,19 @@ class DiscordBot(commands.Bot):
                 except:
                     pass  # If even this fails, give up
 
-    async def refresh_google_docs(self):
-        """Refresh all tracked Google Docs."""
+    async def refresh_google_docs(self, force_process: bool = False):
+        """
+        Refresh all tracked Google Docs.
+
+        Args:
+            force_process (bool): If True, process all docs regardless of change detection.
+                                  Defaults to False.
+        """
+        if force_process:
+            logger.info("Starting FORCE refresh of all tracked Google Docs...")
+        else:
+            logger.info("Starting scheduled refresh of tracked Google Docs...")
+
         tracked_file = Path(self.document_manager.base_dir) / "tracked_google_docs.json"
         if not tracked_file.exists():
             return
@@ -477,46 +490,67 @@ class DiscordBot(commands.Bot):
                     if not original_name.endswith('.txt'):
                         original_name += '.txt'
                     sanitized_name = self.document_manager._sanitize_name(original_name)
-                    logger.info(f"Refresh: Processing Google Doc ID {doc_id}: Original='{original_name}', Sanitized='{sanitized_name}'")
+                    log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]"
+                    logger.info(f"{log_prefix} Processing Google Doc ID {doc_id}: Original='{original_name}', Sanitized='{sanitized_name}'")
 
-                    # Check if document has changed using sanitized name for metadata lookup
-                    changed = await self._has_google_doc_changed(doc_id, sanitized_name)
-                    
-                    if changed:
-                        logger.info(f"Google Doc {doc_id} has changed, updating")
-                        
-                        async with aiohttp.ClientSession() as session:
-                            url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-                            async with session.get(url) as response:
-                                if response.status != 200:
-                                    logger.error(f"Failed to download {doc_id}: {response.status}")
-                                    continue
-                                content = await response.text()
-
-                        # Save to file using SANITIZED name
-                        file_path = self.document_manager.base_dir / sanitized_name
-                        try:
-                            with open(file_path, 'w', encoding='utf-8') as f:
-                                f.write(content)
-                            logger.info(f"Refresh: Saved Google Doc {doc_id} content to file: '{file_path}'")
-                        except Exception as write_err:
-                            logger.error(f"Refresh: Failed to write Google Doc content to '{file_path}': {write_err}", exc_info=True)
-                            continue # Skip to next doc if write fails
-
-                        # Add/Update document in manager using ORIGINAL name
-                        logger.info(f"Refresh: Adding/Updating document in manager with original name: '{original_name}'")
-                        # Use save_to_disk=False to batch the final save
-                        add_success = await self.document_manager.add_document(original_name, content, save_to_disk=False)
-                        if add_success:
-                            updated_docs = True
-                        else:
-                             logger.error(f"Refresh: Document manager failed to add/update document for '{original_name}'")
+                    # Check if document has changed using sanitized name for metadata lookup, OR if force_process is True
+                    changed = False # Default to false
+                    if force_process:
+                        logger.info(f"{log_prefix} Force processing enabled, skipping change detection for {doc_id}.")
+                        changed = True
                     else:
-                        logger.info(f"Refresh: Google Doc {doc_id} ('{original_name}') has not changed, skipping")
-                        
+                        changed = await self._has_google_doc_changed(doc_id, sanitized_name)
+
+                    if changed:
+                        # Log reason for processing
+                        if force_process:
+                            logger.info(f"{log_prefix} Force processing Google Doc {doc_id}")
+                        else:
+                            logger.info(f"{log_prefix} Google Doc {doc_id} has changed, updating")
+
+                        # Call refresh_single_google_doc which now contains the download/process/add logic
+                        # Pass the original_name determined here
+                        single_refresh_success = await self.refresh_single_google_doc(doc_id, custom_name=original_name)
+
+                        if single_refresh_success:
+                             updated_docs = True # Mark that at least one doc was processed/updated
+                        else:
+                             logger.error(f"{log_prefix} Failed to refresh/process Google Doc ID: {doc_id}")
+
+                        # --- Old logic moved to refresh_single_google_doc ---
+                        # async with aiohttp.ClientSession() as session:
+                        #     url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                        #     async with session.get(url) as response:
+                        #         if response.status != 200:
+                        #             logger.error(f"Failed to download {doc_id}: {response.status}")
+                        #             continue
+                        #         content = await response.text()
+                        #
+                        # # Save to file using SANITIZED name
+                        # file_path = self.document_manager.base_dir / sanitized_name
+                        # try:
+                        #     with open(file_path, 'w', encoding='utf-8') as f:
+                        #         f.write(content)
+                        #     logger.info(f"Refresh: Saved Google Doc {doc_id} content to file: '{file_path}'")
+                        # except Exception as write_err:
+                        #     logger.error(f"Refresh: Failed to write Google Doc content to '{file_path}': {write_err}", exc_info=True)
+                        #     continue # Skip to next doc if write fails
+                        #
+                        # # Add/Update document in manager using ORIGINAL name
+                        # logger.info(f"Refresh: Adding/Updating document in manager with original name: '{original_name}'")
+                        # # Use save_to_disk=False to batch the final save
+                        # add_success = await self.document_manager.add_document(original_name, content, save_to_disk=False)
+                        # if add_success:
+                        #     updated_docs = True
+                        # else:
+                        #      logger.error(f"Refresh: Document manager failed to add/update document for '{original_name}'")
+                        # --- End old logic ---
+                    else:
+                        logger.info(f"{log_prefix} Google Doc {doc_id} ('{original_name}') has not changed, skipping")
+
                 except Exception as e:
-                    logger.error(f"Error refreshing doc {doc_id}: {e}")
-            
+                    logger.error(f"Error refreshing doc {doc_id}: {e}") # Correct indentation for the except block
+
             # Save to disk once at the end if any docs were updated
             if updated_docs:
                 self.document_manager._save_to_disk()
@@ -597,18 +631,71 @@ class DiscordBot(commands.Bot):
                 url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
                 async with session.get(url) as response:
                     if response.status != 200:
-                        logger.error(f"Failed to download {doc_id}: {response.status}")
+                        logger.error(f"Failed to download {doc_id} as TXT: {response.status}")
                         return False
-                    content = await response.text()
-            
-            # Save to file using the SAFE FILENAME
+                    txt_content = await response.text() # Store original txt content
+
+            # --- Optional DOCX Processing ---
+            processed_content = None # Will hold content after potential DOCX processing
+            if self.config.AUTO_PROCESS_GOOGLE_DOCS:
+                logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True. Attempting DOCX processing for {doc_id}.")
+                if not DOCX_AVAILABLE:
+                    logger.warning("AUTO_PROCESS_GOOGLE_DOCS is True, but 'python-docx' is not installed. Skipping lore tagging.")
+                else:
+                    # Define temporary path for the docx file
+                    temp_dir = Path("./temp_files")
+                    temp_dir.mkdir(exist_ok=True)
+                    docx_temp_path = temp_dir / f"{safe_filename}.docx" # Use safe filename + .docx extension
+
+                    try:
+                        # Download as DOCX
+                        async with aiohttp.ClientSession() as session_docx:
+                            docx_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
+                            async with session_docx.get(docx_url) as response_docx:
+                                if response_docx.status == 200:
+                                    # Save the DOCX file temporarily
+                                    with open(docx_temp_path, 'wb') as f_docx:
+                                        while True:
+                                            chunk = await response_docx.content.read(1024)
+                                            if not chunk:
+                                                break
+                                            f_docx.write(chunk)
+                                    logger.info(f"Successfully downloaded DOCX version to {docx_temp_path}")
+
+                                    # Process the downloaded DOCX file
+                                    logger.info(f"Processing DOCX file: {docx_temp_path}")
+                                    processed_content = tag_lore_in_docx(str(docx_temp_path))
+                                    if processed_content:
+                                        logger.info(f"Successfully processed DOCX for lore tags. Using processed content.")
+                                    else:
+                                        logger.warning(f"DOCX processing failed for {docx_temp_path}. Falling back to original TXT content.")
+                                else:
+                                    logger.error(f"Failed to download DOCX version of {doc_id}: {response_docx.status}")
+
+                    except Exception as docx_err:
+                        logger.error(f"Error during DOCX download/processing for {doc_id}: {docx_err}", exc_info=True)
+                    finally:
+                        # Clean up the temporary docx file
+                        if docx_temp_path.exists():
+                            try:
+                                docx_temp_path.unlink()
+                                logger.info(f"Cleaned up temporary file: {docx_temp_path}")
+                            except Exception as cleanup_err:
+                                logger.error(f"Error cleaning up temporary file {docx_temp_path}: {cleanup_err}")
+
+            # Determine final content to use (processed or original txt)
+            final_content = processed_content if processed_content is not None else txt_content
+            content_source = "processed DOCX" if processed_content is not None else "original TXT"
+            logger.info(f"Using content from '{content_source}' for DocumentManager.")
+
+            # Save the FINAL content to file using the SAFE FILENAME (overwrites previous txt if exists)
             file_path = self.document_manager.base_dir / safe_filename
             try:
                 # Ensure the directory exists before writing
                 self.document_manager.base_dir.mkdir(parents=True, exist_ok=True)
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                logger.info(f"Saved Google Doc {doc_id} content to file: '{file_path}'")
+                    f.write(final_content) # Write the final content (processed or original)
+                logger.info(f"Saved final Google Doc {doc_id} content ({content_source}) to file: '{file_path}'")
             except OSError as os_err:
                  # Catch specific OS errors like invalid argument
                  logger.error(f"OS Error writing Google Doc content to '{file_path}': {os_err}", exc_info=True)
@@ -627,10 +714,10 @@ class DiscordBot(commands.Bot):
                      # Use delete_document with the OLD ORIGINAL name to handle removal cleanly
                      await self.document_manager.delete_document(old_filename) # Let delete handle file removal too
 
-            # Add/Update document in the manager using the ORIGINAL name
+            # Add/Update document in the manager using the ORIGINAL name and FINAL content
             # add_document will handle internal sanitization and metadata correctly
-            logger.info(f"Adding/Updating document in manager with original name: '{original_name}'")
-            success = await self.document_manager.add_document(original_name, content) # Let add_document handle saving
+            logger.info(f"Adding/Updating document in manager with original name: '{original_name}' using content from {content_source}")
+            success = await self.document_manager.add_document(original_name, final_content) # Pass final_content
 
             if not success:
                  logger.error(f"Document manager failed to add/update document for '{original_name}'")
