@@ -101,7 +101,7 @@ Important rules:
 - Do not confuse events that occurred before the Empire invaded Ledus Banum 77 as having been perpetrated by the Empire.
 - Assume that any nations or Kingdoms mentioned may not exist anymore.
 - Assume that information given to you may not reflect the current status quo.
-- If a nation is stated to have been conquered, then assume that the information about it previously is now oudated and is purely historical. For example, the other nations of the Northern Compact (Draszen, Itnikos, Paretia, Kaini Efigas, Evedin, Arvas, Kolasti) were forced by the Empire to unite into a single puppet state. Today, the states exist as the Valiaszed Union. And so any information about those nations/states would be historical.
+- If a nation is stated to have been conquered, then assume that the information about it previously is now outdated and is purely historical. For example, the other nations of the Northern Compact (Draszen, Itnikos, Paretia, Kaini Efigas, Evedin, Arvas, Kolasti) were forced by the Empire to unite into a single puppet state. Today, the states exist as the Valiaszed Union. Another example is that Lettsland, Ervas, Astonia, Aramcia, and Radis were unified under the Lett king by Imperial decree. Today, these territories exist as the Tyranny of Sirad. And so any information about those nations/states would be historical. 
 - If something is stated to have been destroyed, then assume that it is no longer in existence and any information about it is purely historical.
 </chronology_rules>
 
