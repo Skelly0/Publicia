@@ -509,8 +509,8 @@ class DiscordBot(commands.Bot):
                             logger.info(f"{log_prefix} Google Doc {doc_id} has changed, updating")
 
                         # Call refresh_single_google_doc which now contains the download/process/add logic
-                        # Pass the original_name determined here
-                        single_refresh_success = await self.refresh_single_google_doc(doc_id, custom_name=original_name)
+                        # Pass the original_name determined here AND the force_process flag
+                        single_refresh_success = await self.refresh_single_google_doc(doc_id, custom_name=original_name, force_process=force_process)
 
                         if single_refresh_success:
                              updated_docs = True # Mark that at least one doc was processed/updated
@@ -595,8 +595,19 @@ class DiscordBot(commands.Bot):
             # If there's any error during the check, assume it has changed to be safe
             return True
             
-    async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None) -> bool:
-        """Refresh a single Google Doc by its ID."""
+    async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None, force_process: bool = False) -> bool:
+        """
+        Refresh a single Google Doc by its ID.
+
+        Args:
+            doc_id (str): The Google Doc ID.
+            custom_name (str, optional): Custom name for the document. Defaults to None.
+            force_process (bool): If True, process the doc even if no changes are detected. Defaults to False.
+
+        Returns:
+            bool: True if successful, False otherwise.
+        """
+        log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]" # Add prefix for single doc logs too
         try:
             # Get the current mapping to check for name changes
             doc_mapping = self.document_manager.get_googledoc_id_mapping()
@@ -617,15 +628,27 @@ class DiscordBot(commands.Bot):
             internal_sanitized_key = self.document_manager._sanitize_name(original_name)
             # Determine the safe filename for the actual file on disk using the robust helper
             safe_filename = sanitize_filename(original_name)
-            logger.info(f"Processing Google Doc ID {doc_id}: Original Name='{original_name}', Internal Key='{internal_sanitized_key}', Safe Filename='{safe_filename}'")
+            logger.info(f"{log_prefix} Processing Google Doc ID {doc_id}: Original Name='{original_name}', Internal Key='{internal_sanitized_key}', Safe Filename='{safe_filename}'")
 
-            # Check if document has changed using the internal sanitized key for metadata lookup
-            changed = await self._has_google_doc_changed(doc_id, internal_sanitized_key)
-            
-            if not changed:
-                logger.info(f"Google Doc {doc_id} has not changed, skipping")
-                return True  # Return success, but no update needed
-            
+            # Check if document has changed using the internal sanitized key for metadata lookup, UNLESS force_process is True
+            process_this_doc = False
+            if force_process:
+                logger.info(f"{log_prefix} Force processing enabled for single doc {doc_id}, skipping change check.")
+                process_this_doc = True
+            else:
+                changed = await self._has_google_doc_changed(doc_id, internal_sanitized_key)
+                if changed:
+                    logger.info(f"{log_prefix} Google Doc {doc_id} has changed, proceeding with update.")
+                    process_this_doc = True
+                else:
+                    logger.info(f"{log_prefix} Google Doc {doc_id} has not changed, skipping update.")
+                    return True # Return success, but no update needed
+
+            if not process_this_doc:
+                 # This case should technically not be reached due to the logic above, but safety check.
+                 logger.warning(f"{log_prefix} Logic error: process_this_doc is false for {doc_id}, skipping.")
+                 return True
+
             # Download the document
             async with aiohttp.ClientSession() as session:
                 url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
