@@ -438,7 +438,7 @@ class DocumentManager:
         
         # Fall back to original chunks
         if doc_name in self.chunks and chunk_idx < len(self.chunks[doc_name]):
-            logger.warning(f"Using original chunk for {doc_name}[{chunk_idx}] as contextualized version not found")
+            #logger.warning(f"Using original chunk for {doc_name}[{chunk_idx}] as contextualized version not found")
             return self.chunks[doc_name][chunk_idx]
         
         # Emergency fallback
@@ -1135,7 +1135,7 @@ class DocumentManager:
 
         # Log search results (using original name)
         for original_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
-            logger.info(f"Found relevant chunk in {original_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
+            #logger.info(f"Found relevant chunk in {original_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
             if image_id:
                 logger.info(f"This is an image description for image ID: {image_id}")
 
