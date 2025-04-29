@@ -12,8 +12,12 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional # Added for type hinting
 from utils.helpers import split_message, check_permissions # Consolidated import & removed sanitize
 from prompts.system_prompt import SYSTEM_PROMPT # Added for summarization
+
+# Import the new function and availability flag
+from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
 
 
 logger = logging.getLogger(__name__)
@@ -1131,5 +1135,102 @@ def register_commands(bot):
                      await interaction.channel.send(f"{interaction.user.mention} {error_message}")
                  except Exception as final_err:
                      logger.error(f"Failed to send view_chunk error message via channel: {final_err}")
-            except Exception as send_err:
-                 logger.error(f"Failed to send error message for view_chunk via followup: {send_err}")
+                 except Exception as send_err:
+                      logger.error(f"Failed to send error message for view_chunk via followup: {send_err}")
+
+    @bot.tree.command(name="process_docx_lore", description="Process a .docx file to tag specific colored text with XML tags")
+    @app_commands.describe(
+        docx_file="The .docx file to process",
+        output_filename="Optional name for the output .txt file (default: [input_name]_processed.txt)"
+    )
+    @app_commands.check(check_permissions)
+    async def process_docx_lore(interaction: discord.Interaction, docx_file: discord.Attachment, output_filename: Optional[str] = None):
+        """Processes an uploaded .docx file to add XML tags based on text color."""
+        await interaction.response.defer()
+        try:
+            # Check if python-docx is available
+            if not DOCX_AVAILABLE:
+                await interaction.followup.send("*neural error!* The required 'python-docx' library is not installed on the bot's system. This command cannot function.")
+                return
+
+            # Check if the attachment is a .docx file
+            if not docx_file.filename.lower().endswith('.docx'):
+                await interaction.followup.send("*neural error detected!* Please upload a valid .docx file.")
+                return
+
+            # Create a temporary directory if it doesn't exist
+            temp_dir = Path("./temp_files")
+            temp_dir.mkdir(exist_ok=True)
+            
+            # Define input and output paths
+            input_path = temp_dir / docx_file.filename
+            
+            # Determine output filename
+            if output_filename:
+                # Ensure it ends with .txt
+                if not output_filename.lower().endswith('.txt'):
+                    output_filename += '.txt'
+            else:
+                # Default: input filename + _processed.txt
+                base_name = Path(docx_file.filename).stem
+                output_filename = f"{base_name}_processed.txt"
+            
+            output_path = temp_dir / output_filename
+
+            # Download the attached .docx file
+            await interaction.followup.send(f"*neural pathways receiving file...* downloading `{docx_file.filename}`...")
+            await docx_file.save(input_path)
+            
+            await interaction.followup.send(f"*neural core processing...* analyzing `{docx_file.filename}` for lore tags...")
+
+            # Process the .docx file using the function from DocumentManager
+            processed_content = tag_lore_in_docx(str(input_path))
+
+            if processed_content is None:
+                await interaction.followup.send(f"*neural circuit overload!* Failed to process the document `{docx_file.filename}`. Check bot logs for details.")
+                # Clean up downloaded file
+                if input_path.exists():
+                    input_path.unlink()
+                return
+
+            # Save the processed content to the output .txt file
+            try:
+                with open(output_path, 'w', encoding='utf-8') as f:
+                    f.write(processed_content)
+            except Exception as write_err:
+                 logger.error(f"Error writing processed content to {output_path}: {write_err}")
+                 await interaction.followup.send(f"*neural storage error!* Failed to save the processed file: {write_err}")
+                 # Clean up files
+                 if input_path.exists(): input_path.unlink()
+                 if output_path.exists(): output_path.unlink()
+                 return
+
+
+            # Send the processed file back to the user
+            if output_path.exists():
+                await interaction.followup.send(
+                    content=f"*neural processing complete!* Here is the processed file `{output_filename}` with lore tags:",
+                    file=discord.File(output_path, filename=output_filename)
+                )
+            else:
+                 # This case should be rare if writing didn't throw an error, but safety check
+                 await interaction.followup.send(f"*neural error!* Processed file `{output_filename}` could not be found after saving.")
+
+
+            # Clean up temporary files
+            if input_path.exists():
+                input_path.unlink()
+            if output_path.exists():
+                output_path.unlink()
+
+        except Exception as e:
+            logger.error(f"Error processing docx lore for '{docx_file.filename}': {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await interaction.followup.send(f"*neural circuit overload!* An unexpected error occurred: {str(e)}")
+            # Attempt cleanup even on error
+            try:
+                if 'input_path' in locals() and input_path.exists(): input_path.unlink()
+                if 'output_path' in locals() and output_path.exists(): output_path.unlink()
+            except Exception as cleanup_err:
+                logger.error(f"Error during cleanup after process_docx_lore error: {cleanup_err}")

@@ -13,14 +13,116 @@ import numpy as np
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any
+# Removed duplicate typing import
 from textwrap import shorten
 from rank_bm25 import BM25Okapi
-from typing import Optional # Added for type hinting
+# Removed duplicate Optional import
+
+# Import docx components
+try:
+    import docx
+    from docx.shared import RGBColor
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+    # Define dummy classes if docx is not installed to avoid runtime errors on import
+    class RGBColor:
+        def __init__(self, r, g, b): pass
+    class Document:
+        def __init__(self): self.paragraphs = []
+    class Paragraph:
+        def __init__(self): self.runs = []
+    class Run:
+        def __init__(self): self.text = ""; self.font = Font()
+    class Font:
+        def __init__(self): self.color = Color()
+    class Color:
+        def __init__(self): self.rgb = None
+    # You might need more dummy classes depending on the exact usage
 
 from utils.logging import sanitize_for_logging
 
 logger = logging.getLogger(__name__)
+
+
+# --- New Function: tag_lore_in_docx ---
+
+def tag_lore_in_docx(docx_filepath: str) -> Optional[str]:
+    """
+    Processes a .docx file, adding XML tags around text with a specific color.
+
+    Args:
+        docx_filepath: Path to the input .docx file.
+
+    Returns:
+        A string containing the processed text with XML tags,
+        or None if python-docx is not installed or the file cannot be processed.
+    """
+    if not DOCX_AVAILABLE:
+        logger.error("The 'python-docx' library is required but not installed. Cannot process .docx file.")
+        return None
+
+    try:
+        document = docx.Document(docx_filepath)
+        target_color = RGBColor(152, 0, 0) # #980000
+        output_parts = []
+        is_in_lore_block = False
+
+        for para in document.paragraphs:
+            para_text_parts = []
+            for run in para.runs:
+                run_color = run.font.color.rgb if run.font.color else None
+
+                # Check if the run's color matches the target
+                is_target_color = run_color == target_color
+
+                # State transition logic
+                if is_target_color and not is_in_lore_block:
+                    # Entering a lore block
+                    para_text_parts.append("<post-invasion_lore>")
+                    is_in_lore_block = True
+                elif not is_target_color and is_in_lore_block:
+                    # Exiting a lore block
+                    para_text_parts.append("</post-invasion_lore>")
+                    is_in_lore_block = False
+
+                # Append the actual text of the run
+                para_text_parts.append(run.text)
+
+            # After processing all runs in a paragraph, check if still in lore block
+            if is_in_lore_block:
+                # If the paragraph ends while still in a lore block, close the tag
+                # Note: This assumes lore doesn't span paragraphs without interruption.
+                # If it can, the logic might need adjustment.
+                # For now, we close it, assuming a color change or paragraph break ends the block.
+                para_text_parts.append("</post-invasion_lore>")
+                is_in_lore_block = False # Reset for the next paragraph
+
+            # Join parts for the current paragraph and add to overall output
+            output_parts.append("".join(para_text_parts))
+
+        # Join all paragraph outputs with double newlines
+        final_text = "\n\n".join(output_parts)
+
+        # Final check: If the loop ended while inside a block (e.g., last run had target color)
+        # This case is handled by the check within the paragraph loop now.
+
+        return final_text
+
+    except FileNotFoundError:
+        logger.error(f"Error processing DOCX: File not found at {docx_filepath}")
+        return None
+    except Exception as e:
+        logger.error(f"Error processing DOCX file '{docx_filepath}': {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return None
+
+# --- End of New Function ---
+
+
+class DocumentManager:
+    """Manages document storage, embeddings, and retrieval."""
 
 
 class DocumentManager:

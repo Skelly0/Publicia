@@ -355,6 +355,8 @@ The bot will display a startup banner and initialize all components.
 - `/reload_docs`: Reload all documents from disk **(Admin Only)**
 - `/regenerate_embeddings`: Regenerate all document embeddings **(Admin Only)**
 - `/refresh_docs`: Manually refresh all tracked Google Docs **(Admin Only)**
+- `/process_docx_lore`: Process a `.docx` file to tag specific colored text (#980000) with `<post-invasion_lore>` XML tags. Requires `python-docx` library.
+  - **Parameters**: `docx_file` (The `.docx` file attachment), `output_filename` (Optional name for the output `.txt` file)
 
 
 #### Image Management
