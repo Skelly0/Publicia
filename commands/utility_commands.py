@@ -132,7 +132,7 @@ def register_commands(bot):
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
         app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
-        app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
+        #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
         app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
         #app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
@@ -214,7 +214,7 @@ def register_commands(bot):
                     f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}).",
-                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
+                    #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
@@ -303,7 +303,7 @@ def register_commands(bot):
                     f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",
                     f"**Claude 3.5 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-sonnet')}).",
-                    f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
+                    #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
