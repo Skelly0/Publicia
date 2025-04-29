@@ -247,6 +247,8 @@ def register_commands(bot):
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in preferred_model:
                 model_name = "Qwen QwQ 32B"
+            elif "qwen/qwen3-235b-a22b" in preferred_model:
+                model_name = "Qwen 3 235B A22B"
             elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in preferred_model:

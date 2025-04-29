@@ -125,6 +125,7 @@ def register_commands(bot):
     @app_commands.choices(model=[
         app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
+        app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b"),
         #app_commands.Choice(name="Gemini 2.5 Pro Exp", value="google/gemini-2.5-pro-exp-03-25:free"), # Added new model
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
@@ -180,6 +181,8 @@ def register_commands(bot):
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in model:
                 model_name = "Qwen QwQ 32B"
+            elif "qwen/qwen3-235b-a22b" in model:
+                model_name = "Qwen 3 235B A22B"
             elif "unslopnemo" in model or "eva-unit-01/eva-qwen-2.5-72b" in model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in model:
@@ -205,6 +208,7 @@ def register_commands(bot):
                 model_descriptions = [
                     f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                    f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
@@ -268,6 +272,8 @@ def register_commands(bot):
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in preferred_model:
                 model_name = "Qwen QwQ 32B"
+            elif "qwen/qwen3-235b-a22b" in preferred_model:
+                model_name = "Qwen 3 235B A22B"
             elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in preferred_model:
@@ -289,8 +295,9 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
-                f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
+                    f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
+                    f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
                     #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25:free')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Similar to V3 0324 but with reasoning. Great for roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity (less so than 0324 though). With free version uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1:free')}) search results, otherwise uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1')}).", # Updated description slightly for clarity
