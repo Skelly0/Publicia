@@ -29,6 +29,7 @@ from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # A
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
 from utils.logging import sanitize_for_logging
+from managers.keywords import KeywordManager # Added import
 # Import the docx processing function and availability flag
 from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
 
@@ -63,7 +64,8 @@ class DiscordBot(commands.Bot):
         self.image_manager = image_manager
         self.conversation_manager = conversation_manager
         self.user_preferences_manager = user_preferences_manager
-        
+        self.keyword_manager = KeywordManager() # Initialize KeywordManager
+
         # Add search caching
         self.search_cache = {}  # Store previous search results by user
         
@@ -1959,6 +1961,20 @@ class DiscordBot(commands.Bot):
             # Log the results
             logger.info(f"Found {len(search_results)} relevant document sections via hybrid search")
 
+            # --- Keyword Extraction from Search Results ---
+            found_keywords_in_chunks = set()
+            if search_results:
+                logger.info("Scanning search result chunks for keywords...")
+                for _, chunk, _, _, _, _ in search_results:
+                    keywords_in_chunk = self.keyword_manager.find_keywords_in_text(chunk)
+                    if keywords_in_chunk:
+                        found_keywords_in_chunks.update(keywords_in_chunk)
+                if found_keywords_in_chunks:
+                    logger.info(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
+                else:
+                    logger.info("No keywords found in search chunks.")
+            # --- End Keyword Extraction ---
+
             # Load Google Doc ID mapping for citation links
             googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
 
@@ -2136,8 +2152,31 @@ class DiscordBot(commands.Bot):
             # Add channel context
             messages.append({
                 "role": "system",
-                "content": f"You are responding to a message in the Discord channel: {channel_name}"
+                    "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
+
+            # --- Add Keyword Context ---
+            if found_keywords_in_chunks:
+                keyword_context_parts = []
+                for keyword in found_keywords_in_chunks:
+                    info = self.keyword_manager.get_info_for_keyword(keyword)
+                    if info:
+                        keyword_context_parts.append(f"- {keyword.capitalize()}: {info}") # Capitalize keyword for display
+                
+                if keyword_context_parts:
+                    keyword_context_str = "Additional Context from Keyword Database:\n" + "\n".join(keyword_context_parts)
+                    # Truncate if necessary
+                    max_keyword_context_len = 4000 # Adjust as needed
+                    if len(keyword_context_str) > max_keyword_context_len:
+                         keyword_context_str = keyword_context_str[:max_keyword_context_len] + "\n... [Keyword Context Truncated]"
+                         logger.warning(f"Keyword context truncated to {max_keyword_context_len} characters.")
+                    
+                    messages.append({
+                        "role": "system",
+                        "content": keyword_context_str
+                    })
+                    logger.info(f"Added context for {len(keyword_context_parts)} keywords.")
+            # --- End Keyword Context ---
 
             # Add image context summary system message
             total_api_images = len(image_ids) + len(all_api_image_attachments)
