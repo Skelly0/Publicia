@@ -1964,8 +1964,13 @@ class DiscordBot(commands.Bot):
             # --- Keyword Extraction from Search Results ---
             found_keywords_in_chunks = set()
             if search_results:
-                logger.info("Scanning search result chunks for keywords...")
-                for _, chunk, _, _, _, _ in search_results:
+                # Limit the number of chunks to check based on config
+                limit = self.config.KEYWORD_CHECK_CHUNK_LIMIT
+                logger.info(f"Scanning up to {limit} search result chunks for keywords...")
+                for i, (_, chunk, _, _, _, _) in enumerate(search_results):
+                    if i >= limit:
+                        logger.info(f"Reached keyword check limit ({limit}), stopping scan.")
+                        break # Stop checking after reaching the limit
                     keywords_in_chunk = self.keyword_manager.find_keywords_in_text(chunk)
                     if keywords_in_chunk:
                         found_keywords_in_chunks.update(keywords_in_chunk)
@@ -2164,7 +2169,7 @@ class DiscordBot(commands.Bot):
                         keyword_context_parts.append(f"- {keyword.capitalize()}: {info}") # Capitalize keyword for display
                 
                 if keyword_context_parts:
-                    keyword_context_str = "Additional Context from Keyword Database:\n" + "\n".join(keyword_context_parts)
+                    keyword_context_str = "Additional Context from Keyword Database (not all keywords/terms will necessarily be supplied):\n" + "\n".join(keyword_context_parts)
                     # Truncate if necessary
                     max_keyword_context_len = 4000 # Adjust as needed
                     if len(keyword_context_str) > max_keyword_context_len:

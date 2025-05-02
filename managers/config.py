@@ -114,6 +114,9 @@ class Config:
 
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
+        # Keyword checking configuration
+        self.KEYWORD_CHECK_CHUNK_LIMIT = int(os.getenv('KEYWORD_CHECK_CHUNK_LIMIT', '5')) # Number of chunks to check for keywords
+
         # Permission settings (comma-separated IDs)
         self.ALLOWED_USER_IDS = [int(uid.strip()) for uid in os.getenv('ALLOWED_USER_IDS', '').split(',') if uid.strip().isdigit()]
         self.ALLOWED_ROLE_IDS = [int(rid.strip()) for rid in os.getenv('ALLOWED_ROLE_IDS', '').split(',') if rid.strip().isdigit()]
