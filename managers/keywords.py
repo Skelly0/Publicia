@@ -17,7 +17,7 @@ class KeywordManager:
     Stores multiple definitions per keyword if present in the source file.
     """
 
-    def __init__(self, config: Config, db_path: str = "keyword_database.json"):
+    def __init__(self, config: Config, db_path: str = "keyword_database_simpler.json"):
         """
         Initializes the KeywordManager.
 
