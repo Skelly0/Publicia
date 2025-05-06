@@ -200,6 +200,52 @@ def register_commands(bot):
                     "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context)}"
                 })
 
+            # --- Add Keyword Context ---
+            found_keywords_in_chunks = set()
+            if search_results:
+                # Limit the number of chunks to check based on config
+                limit = bot.config.KEYWORD_CHECK_CHUNK_LIMIT
+                logger.info(f"Scanning up to {limit} search result chunks for keywords in /query...")
+                for i, (_, chunk, _, _, _, _) in enumerate(search_results):
+                    if i >= limit:
+                        logger.info(f"Reached keyword check limit ({limit}), stopping scan.")
+                        break # Stop checking after reaching the limit
+                    # Use bot.keyword_manager here
+                    keywords_in_chunk = bot.keyword_manager.find_keywords_in_text(chunk)
+                    if keywords_in_chunk:
+                        found_keywords_in_chunks.update(keywords_in_chunk)
+                if found_keywords_in_chunks:
+                    logger.info(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
+                else:
+                    logger.info("No keywords found in search chunks.")
+
+            if found_keywords_in_chunks:
+                keyword_context_parts = []
+                definitions_count = 0 # Track total definitions added
+                for keyword in found_keywords_in_chunks:
+                    # get_info_for_keyword now returns Optional[List[str]]
+                    definitions = bot.keyword_manager.get_info_for_keyword(keyword)
+                    if definitions: # Check if the list is not None and not empty
+                        for definition in definitions:
+                            keyword_context_parts.append(f"- {keyword.capitalize()}: {definition}")
+                            definitions_count += 1
+
+                if keyword_context_parts:
+                    # Adjust the introductory text slightly if needed
+                    keyword_context_str = f"Additional Context from Keyword Database ({definitions_count} entries found, duplicates possible):\n" + "\n".join(keyword_context_parts)
+                    # Truncate if necessary
+                    max_keyword_context_len = 4000 # Adjust as needed
+                    if len(keyword_context_str) > max_keyword_context_len:
+                         keyword_context_str = keyword_context_str[:max_keyword_context_len] + "\n... [Keyword Context Truncated]"
+                         logger.warning(f"Keyword context truncated to {max_keyword_context_len} characters.")
+
+                    messages.append({
+                        "role": "system",
+                        "content": keyword_context_str
+                    })
+                    logger.info(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords) to /query.")
+            # --- End Keyword Context ---
+
             # Add the query itself
             messages.append({
                 "role": "user",

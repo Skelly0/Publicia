@@ -2164,24 +2164,33 @@ class DiscordBot(commands.Bot):
             # --- Add Keyword Context ---
             if found_keywords_in_chunks:
                 keyword_context_parts = []
+                definitions_count = 0 # Track total definitions added
                 for keyword in found_keywords_in_chunks:
-                    info = self.keyword_manager.get_info_for_keyword(keyword)
-                    if info:
-                        keyword_context_parts.append(f"- {keyword.capitalize()}: {info}") # Capitalize keyword for display
+                    # get_info_for_keyword now returns Optional[List[str]]
+                    definitions = self.keyword_manager.get_info_for_keyword(keyword)
+                    if definitions: # Check if the list is not None and not empty
+                        for definition in definitions:
+                            # Add each definition as a separate entry or combine them
+                            # Option 1: Separate entries (might be verbose)
+                            # keyword_context_parts.append(f"- {keyword.capitalize()}: {definition}")
+                            # Option 2: Combine under one keyword heading (more concise)
+                            keyword_context_parts.append(f"- {keyword.capitalize()}: {definition}") # Using separate for now, easier to manage length
+                            definitions_count += 1
                 
                 if keyword_context_parts:
-                    keyword_context_str = "Additional Context from Keyword Database (not all keywords/terms will necessarily be supplied):\n" + "\n".join(keyword_context_parts)
+                    # Adjust the introductory text slightly if needed
+                    keyword_context_str = f"Additional Context from Keyword Database ({definitions_count} entries found, duplicates possible):\n" + "\n".join(keyword_context_parts)
                     # Truncate if necessary
                     max_keyword_context_len = 4000 # Adjust as needed
                     if len(keyword_context_str) > max_keyword_context_len:
                          keyword_context_str = keyword_context_str[:max_keyword_context_len] + "\n... [Keyword Context Truncated]"
                          logger.warning(f"Keyword context truncated to {max_keyword_context_len} characters.")
-                    
+
                     messages.append({
                         "role": "system",
                         "content": keyword_context_str
                     })
-                    logger.info(f"Added context for {len(keyword_context_parts)} keywords.")
+                    logger.info(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords).")
             # --- End Keyword Context ---
 
             # Add image context summary system message
