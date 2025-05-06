@@ -4,25 +4,41 @@ import re
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
+# Import Config to check the enabled status
+from managers.config import Config  
+
 logger = logging.getLogger(__name__)
 
 class KeywordManager:
-    """Manages loading and querying a keyword database."""
+    """Manages loading and querying a keyword database, respecting the enable/disable config."""
 
-    def __init__(self, db_path: str = "keyword_database.json"):
+    def __init__(self, config: Config, db_path: str = "keyword_database.json"):
         """
         Initializes the KeywordManager.
 
         Args:
+            config (Config): The application configuration object.
             db_path (str): Path to the keyword database JSON file.
         """
+        self.config = config
         self.db_path = Path(db_path)
         self.keyword_data: Dict[str, str] = {}
         self.keywords: Set[str] = set()
-        self._load_database()
+        
+        if self.config.KEYWORD_DATABASE_ENABLED:
+            self._load_database()
+        else:
+            logger.info("Keyword database system is disabled via configuration.")
 
     def _load_database(self):
-        """Loads the keyword database from the JSON file."""
+        """Loads the keyword database from the JSON file if the system is enabled."""
+        # Double-check enablement in case reload is called directly
+        if not self.config.KEYWORD_DATABASE_ENABLED:
+             logger.warning("Attempted to load keyword database, but the system is disabled.")
+             self.keyword_data = {}
+             self.keywords = set()
+             return
+            
         try:
             if self.db_path.exists():
                 with open(self.db_path, 'r', encoding='utf-8') as f:
@@ -54,10 +70,11 @@ class KeywordManager:
         Returns:
             Set[str]: A set of lowercase keywords found in the text.
         """
-        found_keywords = set()
-        if not self.keywords or not text:
-            return found_keywords
+        # Return immediately if the system is disabled or no keywords/text
+        if not self.config.KEYWORD_DATABASE_ENABLED or not self.keywords or not text:
+            return set()
 
+        found_keywords = set()
         # Use regex to find whole words matching keywords, case-insensitive
         # \b ensures we match whole words only
         try:
@@ -85,11 +102,19 @@ class KeywordManager:
             keyword (str): The keyword (case-insensitive).
 
         Returns:
-            Optional[str]: The information string if the keyword exists, otherwise None.
+            Optional[str]: The information string if the keyword exists and the system is enabled, otherwise None.
         """
+        if not self.config.KEYWORD_DATABASE_ENABLED:
+            return None
         return self.keyword_data.get(keyword.lower())
 
     def reload_database(self):
-        """Reloads the keyword database from the file."""
+        """Reloads the keyword database from the file if the system is enabled."""
+        if not self.config.KEYWORD_DATABASE_ENABLED:
+            logger.info("Keyword database system is disabled. Skipping reload.")
+            self.keyword_data = {}
+            self.keywords = set()
+            return
+            
         logger.info(f"Reloading keyword database from {self.db_path}...")
         self._load_database()

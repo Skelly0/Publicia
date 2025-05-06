@@ -131,6 +131,9 @@ class Config:
 
         # Auto-processing setting for Google Docs
         self.AUTO_PROCESS_GOOGLE_DOCS = bool(os.getenv('AUTO_PROCESS_GOOGLE_DOCS', 'False').lower() in ('true', '1', 'yes'))
+
+        # Keyword database system enable/disable setting
+        self.KEYWORD_DATABASE_ENABLED = bool(os.getenv('KEYWORD_DATABASE_ENABLED', 'True').lower() in ('true', '1', 'yes'))
         
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):

@@ -64,7 +64,8 @@ class DiscordBot(commands.Bot):
         self.image_manager = image_manager
         self.conversation_manager = conversation_manager
         self.user_preferences_manager = user_preferences_manager
-        self.keyword_manager = KeywordManager() # Initialize KeywordManager
+        # Pass the config object to KeywordManager
+        self.keyword_manager = KeywordManager(config=self.config) 
 
         # Add search caching
         self.search_cache = {}  # Store previous search results by user
