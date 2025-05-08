@@ -585,7 +585,7 @@ class DocumentManager:
             # OpenRouter API headers - same as used elsewhere in the bot
             headers = {
                 "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.com", 
+                "HTTP-Referer": "Publicia for DPS Season 7 - https://discord.gg/dpsrp", 
                 "X-Title": "Publicia - Context Generation",
                 "Content-Type": "application/json"
             }
