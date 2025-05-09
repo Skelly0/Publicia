@@ -176,8 +176,8 @@ class DiscordBot(commands.Bot):
             # Prepare API call
             headers = {
                 "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "Publicia for DPS Season 7 - https://discord.gg/dpsrp",
-                "X-Title": "Publicia - Image Describer",
+                "HTTP-Referer": "https://discord.gg/dpsrp",
+                "X-Title": "Publicia for DPS Season 7 - https://discord.gg/dpsrp",
                 "Content-Type": "application/json"
             }
             
@@ -1069,8 +1069,8 @@ class DiscordBot(commands.Bot):
         # Headers for API calls
         headers = {
             "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-            "HTTP-Referer": "Publicia for DPS Season 7 - https://discord.gg/dpsrp",
-            "X-Title": "Publicia - DPS",
+            "HTTP-Referer": "https://discord.gg/dpsrp",
+            "X-Title": "Publicia for DPS Season 7 - https://discord.gg/dpsrp",
             "Content-Type": "application/json"
         }
 
