@@ -598,177 +598,143 @@ class DiscordBot(commands.Bot):
             # If there's any error during the check, assume it has changed to be safe
             return True
             
-    async def refresh_single_google_doc(self, doc_id: str, custom_name: str = None, force_process: bool = False) -> bool:
+    async def refresh_single_google_doc(self, doc_id: str, custom_name: Optional[str] = None, force_process: bool = False, interaction_for_feedback: Optional[discord.Interaction] = None) -> Tuple[bool, Optional[str]]:
         """
-        Refresh a single Google Doc by its ID.
+        Refresh a single Google Doc: fetch, process, add to DocumentManager, and track.
 
         Args:
             doc_id (str): The Google Doc ID.
-            custom_name (str, optional): Custom name for the document. Defaults to None.
-            force_process (bool): If True, process the doc even if no changes are detected. Defaults to False.
+            custom_name (str, optional): Custom name for the document.
+            force_process (bool): If True, process even if no changes detected.
+            interaction_for_feedback (Optional[discord.Interaction]): For sending followup messages.
 
         Returns:
-            bool: True if successful, False otherwise.
+            Tuple[bool, Optional[str]]: (success_status, internal_doc_uuid or None)
         """
-        log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]" # Add prefix for single doc logs too
-        try:
-            # Get the current mapping to check for name changes
-            doc_mapping = self.document_manager.get_googledoc_id_mapping()
-            old_filename = None
-            
-            # Find if this doc_id exists with a different filename
-            for filename, mapped_id in doc_mapping.items():
-                if mapped_id == doc_id and filename != (custom_name or f"googledoc_{doc_id}.txt"):
-                    old_filename = filename
-                    break
-            
-            # Determine the intended original file name
-            original_name = custom_name or f"googledoc_{doc_id}.txt"
-            if not original_name.endswith('.txt'):
-                original_name += '.txt'
+        log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]"
+        original_name_for_doc_mgr = custom_name or f"googledoc_{doc_id}"
+        # Ensure .txt is not part of the original_name stored in metadata, DocumentManager handles file extensions.
+        if original_name_for_doc_mgr.endswith(".txt"):
+            original_name_for_doc_mgr = original_name_for_doc_mgr[:-4]
 
-            # Determine the sanitized name for internal DocumentManager keys
-            internal_sanitized_key = self.document_manager._sanitize_name(original_name)
-            # Determine the safe filename for the actual file on disk using the robust helper
-            safe_filename = sanitize_filename(original_name)
-            logger.info(f"{log_prefix} Processing Google Doc ID {doc_id}: Original Name='{original_name}', Internal Key='{internal_sanitized_key}', Safe Filename='{safe_filename}'")
+        logger.info(f"{log_prefix} Processing Google Doc ID {doc_id}: User-facing Name='{original_name_for_doc_mgr}'")
 
-            # Check if document has changed using the internal sanitized key for metadata lookup, UNLESS force_process is True
-            process_this_doc = False
-            if force_process:
-                logger.info(f"{log_prefix} Force processing enabled for single doc {doc_id}, skipping change check.")
+        # Check if this Google Doc is already tracked to get its existing internal_doc_uuid for an update
+        existing_internal_uuid = None
+        tracked_gdocs_file = self.document_manager.base_dir / "tracked_google_docs.json"
+        if tracked_gdocs_file.exists():
+            try:
+                with open(tracked_gdocs_file, 'r', encoding='utf-8') as f:
+                    tracked_docs = json.load(f)
+                for entry in tracked_docs:
+                    if entry.get('google_doc_id') == doc_id:
+                        existing_internal_uuid = entry.get('internal_doc_uuid')
+                        logger.info(f"Found existing tracking for GDoc ID {doc_id}. Internal UUID: {existing_internal_uuid}")
+                        break
+            except Exception as e_read_track:
+                logger.error(f"Error reading tracked_google_docs.json for GDoc ID {doc_id}: {e_read_track}")
+        
+        process_this_doc = False
+        if force_process:
+            logger.info(f"{log_prefix} Force processing enabled for {doc_id}.")
+            process_this_doc = True
+        else:
+            # _has_google_doc_changed now needs the internal_doc_uuid to check against stored hash in metadata
+            # If not tracked yet (no existing_internal_uuid), it's considered "changed" or new.
+            changed = True # Assume new/changed if not tracked
+            if existing_internal_uuid:
+                 # Pass internal UUID to _has_google_doc_changed
+                changed = await self._has_google_doc_changed(doc_id, existing_internal_uuid)
+            
+            if changed:
+                logger.info(f"{log_prefix} Google Doc {doc_id} is new or has changed, proceeding with update.")
                 process_this_doc = True
             else:
-                changed = await self._has_google_doc_changed(doc_id, internal_sanitized_key)
-                if changed:
-                    logger.info(f"{log_prefix} Google Doc {doc_id} has changed, proceeding with update.")
-                    process_this_doc = True
-                else:
-                    logger.info(f"{log_prefix} Google Doc {doc_id} has not changed, skipping update.")
-                    return True # Return success, but no update needed
+                logger.info(f"{log_prefix} Google Doc {doc_id} has not changed, skipping update.")
+                # If interaction is provided, send feedback
+                if interaction_for_feedback:
+                    try: await interaction_for_feedback.followup.send(f"Google Doc '{original_name_for_doc_mgr}' (ID: {doc_id}) already up-to-date.", ephemeral=True)
+                    except: pass # Ignore if followup fails
+                return True, existing_internal_uuid # Success, no update needed, return existing UUID
 
-            if not process_this_doc:
-                 # This case should technically not be reached due to the logic above, but safety check.
-                 logger.warning(f"{log_prefix} Logic error: process_this_doc is false for {doc_id}, skipping.")
-                 return True
+        if not process_this_doc:
+            logger.warning(f"{log_prefix} Logic error: process_this_doc is false for {doc_id}, skipping.")
+            return True, existing_internal_uuid # Should not be reached if logic above is correct
 
-            # Download the document
-            async with aiohttp.ClientSession() as session:
-                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to download {doc_id} as TXT: {response.status}")
-                        return False
-                    txt_content = await response.text() # Store original txt content
+        # Download the document as TXT
+        async with aiohttp.ClientSession() as session:
+            url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+            async with session.get(url) as response:
+                if response.status != 200:
+                    logger.error(f"Failed to download {doc_id} as TXT: {response.status}")
+                    if interaction_for_feedback:
+                        try: await interaction_for_feedback.followup.send(f"Failed to download Google Doc ID {doc_id}. Status: {response.status}", ephemeral=True)
+                        except: pass
+                    return False, None
+                txt_content = await response.text()
 
-            # --- Optional DOCX Processing (Conditional) ---
-            processed_content = None # Will hold content after potential DOCX processing
-            should_attempt_docx_processing = False # Flag to determine if we should try DOCX
+        final_content = txt_content # Start with TXT content
+        content_source_log = "original TXT"
 
-            if self.config.AUTO_PROCESS_GOOGLE_DOCS:
-                # Check if filename contains "Region" (case-insensitive)
-                if "region" in original_name.lower():
-                    logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True and filename '{original_name}' contains 'Region'. Will attempt DOCX processing.")
-                    if not DOCX_AVAILABLE:
-                        logger.warning("...but 'python-docx' is not installed. Skipping lore tagging.")
-                    else:
-                        should_attempt_docx_processing = True # Set flag to true only if conditions met
-                else:
-                    logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is True, but filename '{original_name}' does not contain 'Region'. Skipping DOCX processing.")
-            else:
-                logger.info(f"AUTO_PROCESS_GOOGLE_DOCS is False. Skipping DOCX processing for {doc_id}.")
-
-            # --- Perform DOCX Processing if Flag is Set ---
-            if should_attempt_docx_processing:
-                # Define temporary path for the docx file
-                temp_dir = Path("./temp_files")
-                temp_dir.mkdir(exist_ok=True)
-                docx_temp_path = temp_dir / f"{safe_filename}.docx" # Use safe filename + .docx extension
-
+        # Optional DOCX Processing
+        if self.config.AUTO_PROCESS_GOOGLE_DOCS and "region" in original_name_for_doc_mgr.lower():
+            if DOCX_AVAILABLE:
+                logger.info(f"Attempting DOCX processing for '{original_name_for_doc_mgr}' (ID: {doc_id})")
+                temp_dir = Path("./temp_files"); temp_dir.mkdir(parents=True, exist_ok=True)
+                docx_temp_path = temp_dir / f"{sanitize_filename(original_name_for_doc_mgr)}.docx"
                 try:
-                    # Download as DOCX
                     async with aiohttp.ClientSession() as session_docx:
                         docx_url = f"https://docs.google.com/document/d/{doc_id}/export?format=docx"
                         async with session_docx.get(docx_url) as response_docx:
                             if response_docx.status == 200:
-                                # Save the DOCX file temporarily
                                 with open(docx_temp_path, 'wb') as f_docx:
                                     while True:
                                         chunk = await response_docx.content.read(1024)
-                                        if not chunk:
-                                            break
+                                        if not chunk: break
                                         f_docx.write(chunk)
-                                logger.info(f"Successfully downloaded DOCX version to {docx_temp_path}")
-
-                                # Process the downloaded DOCX file
-                                logger.info(f"Processing DOCX file: {docx_temp_path}")
-                                processed_content = tag_lore_in_docx(str(docx_temp_path))
-                                if processed_content:
-                                    logger.info(f"Successfully processed DOCX for lore tags. Using processed content.")
-                                else:
-                                    logger.warning(f"DOCX processing failed for {docx_temp_path}. Falling back to original TXT content.")
-                            else:
-                                logger.error(f"Failed to download DOCX version of {doc_id}: {response_docx.status}")
-
-                except Exception as docx_err:
-                    logger.error(f"Error during DOCX download/processing for {doc_id}: {docx_err}", exc_info=True)
+                                processed_docx_content = tag_lore_in_docx(str(docx_temp_path))
+                                if processed_docx_content:
+                                    final_content = processed_docx_content
+                                    content_source_log = "processed DOCX"
+                                else: logger.warning(f"DOCX processing failed for {doc_id}, using TXT.")
+                            else: logger.error(f"Failed to download DOCX for {doc_id}: {response_docx.status}")
+                except Exception as e_docx: logger.error(f"Error during DOCX processing for {doc_id}: {e_docx}", exc_info=True)
                 finally:
-                    # Clean up the temporary docx file
-                    if 'docx_temp_path' in locals() and docx_temp_path.exists(): # Check if var exists before accessing
-                        try:
-                            docx_temp_path.unlink()
-                            logger.info(f"Cleaned up temporary file: {docx_temp_path}")
-                        except Exception as cleanup_err:
-                            logger.error(f"Error cleaning up temporary file {docx_temp_path}: {cleanup_err}")
+                    if docx_temp_path.exists():
+                        try: docx_temp_path.unlink()
+                        except Exception as e_clean: logger.error(f"Error cleaning temp DOCX {docx_temp_path}: {e_clean}")
+            else: logger.warning("DOCX processing skipped for GDoc: python-docx not available.")
+        
+        logger.info(f"Using content from '{content_source_log}' for DocumentManager for GDoc ID {doc_id}.")
+        
+        # Add/Update document in DocumentManager
+        # Pass existing_internal_uuid to update the correct document if it's already tracked
+        internal_doc_uuid = await self.document_manager.add_document(
+            original_name=original_name_for_doc_mgr, 
+            content=final_content,
+            existing_uuid=existing_internal_uuid # This ensures we update if it exists
+        )
 
-            # Determine final content to use (processed or original txt)
-            final_content = processed_content if processed_content is not None else txt_content
-            content_source = "processed DOCX" if processed_content is not None else "original TXT"
-            logger.info(f"Using content from '{content_source}' for DocumentManager.")
+        if not internal_doc_uuid:
+            logger.error(f"DocumentManager failed to add/update GDoc ID {doc_id} ('{original_name_for_doc_mgr}')")
+            if interaction_for_feedback:
+                try: await interaction_for_feedback.followup.send(f"Failed to save content of Google Doc '{original_name_for_doc_mgr}' to knowledge base.", ephemeral=True)
+                except: pass
+            return False, None
 
-            # Save the FINAL content to file using the SAFE FILENAME (overwrites previous txt if exists)
-            file_path = self.document_manager.base_dir / safe_filename
-            try:
-                # Ensure the directory exists before writing
-                self.document_manager.base_dir.mkdir(parents=True, exist_ok=True)
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(final_content) # Write the final content (processed or original)
-                logger.info(f"Saved final Google Doc {doc_id} content ({content_source}) to file: '{file_path}'")
-            except OSError as os_err:
-                 # Catch specific OS errors like invalid argument
-                 logger.error(f"OS Error writing Google Doc content to '{file_path}': {os_err}", exc_info=True)
-                 return False # Abort if file write fails
-            except Exception as write_err:
-                 logger.error(f"General Error writing Google Doc content to '{file_path}': {write_err}", exc_info=True)
-                 return False # Abort if file write fails
-
-            # If the custom name changed, we might need to remove data associated with the OLD internal key
-            # Note: old_filename here is the *original* name from the mapping before the change
-            if old_filename:
-                 old_internal_key = self.document_manager._sanitize_name(old_filename)
-                 # Compare internal keys, not filenames
-                 if old_internal_key != internal_sanitized_key and old_internal_key in self.document_manager.metadata:
-                     logger.info(f"Removing old document data for previous name '{old_filename}' (internal key: {old_internal_key})")
-                     # Use delete_document with the OLD ORIGINAL name to handle removal cleanly
-                     await self.document_manager.delete_document(old_filename) # Let delete handle file removal too
-
-            # Add/Update document in the manager using the ORIGINAL name and FINAL content
-            # add_document will handle internal sanitization and metadata correctly
-            logger.info(f"Adding/Updating document in manager with original name: '{original_name}' using content from {content_source}")
-            success = await self.document_manager.add_document(original_name, final_content) # Pass final_content
-
-            if not success:
-                 logger.error(f"Document manager failed to add/update document for '{original_name}'")
-                 # Clean up the file we just saved if add failed? Maybe not necessary if add_document handles errors well.
-                 return False
-
-            return True
-            
-            return True
+        # Track the document (this will update if entry exists, or add if new)
+        self.document_manager.track_google_doc(doc_id, internal_doc_uuid, original_name_for_doc_mgr)
+        logger.info(f"Successfully processed and tracked GDoc ID {doc_id} ('{original_name_for_doc_mgr}') with internal UUID {internal_doc_uuid}.")
+        
+        # No need to save physical file here, add_document in DocumentManager handles it (<uuid>.txt)
+        return True, internal_doc_uuid
                 
-        except Exception as e:
-            logger.error(f"Error downloading doc {doc_id}: {e}")
-            return False
+        """except Exception as e:
+            logger.error(f"Error processing single Google Doc {doc_id}: {e}", exc_info=True)
+            if interaction_for_feedback:
+                try: await interaction_for_feedback.followup.send(f"An error occurred while processing Google Doc ID {doc_id}.", ephemeral=True)
+                except: pass
+            return False, None # Corrected to return a tuple"""
 
     async def setup_hook(self):
         """Initial setup hook called by discord.py."""
@@ -1804,7 +1770,8 @@ class DiscordBot(commands.Bot):
                                 title = await self._fetch_google_doc_title(doc_id)
                                 logger.info(f"Attempting to add/refresh Google Doc ID: {doc_id} with title: '{title}'")
                                 # Use refresh_single_google_doc to add/update the document
-                                success = await self.refresh_single_google_doc(doc_id, custom_name=title)
+                                # refresh_single_google_doc now returns (bool, Optional[str])
+                                success, _ = await self.refresh_single_google_doc(doc_id, custom_name=title)
                                 if success:
                                     logger.info(f"Successfully added/refreshed Google Doc ID: {doc_id}")
                                     success_count += 1

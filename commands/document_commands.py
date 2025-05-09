@@ -303,51 +303,25 @@ def register_commands(bot):
             
             # Download the document content first
             await interaction.followup.send(f"*neural pathways connecting to Google Doc ID: {doc_id}... fetching content...*")
-            # Assuming bot.refresh_single_google_doc fetches, processes, and adds to DocumentManager,
-            # and now returns the internal_doc_uuid upon successful addition.
-            # We need to modify bot.refresh_single_google_doc or have a helper that does this.
-            # For now, let's assume refresh_single_google_doc is adapted or we call add_document directly after fetching.
-
-            # Placeholder for fetching content and adding to DocumentManager:
-            # This logic would typically be in bot.refresh_single_google_doc or a similar helper.
-            # For this refactor, we'll assume bot.refresh_single_google_doc is updated to:
+            
+            name_for_doc_mgr = name or f"googledoc_{doc_id}" # Use custom name or default if name is None
+            
+            # The bot.refresh_single_google_doc method has been refactored to:
             # 1. Fetch content.
-            # 2. Call bot.document_manager.add_document(original_name=name_for_doc_mgr, content=fetched_content)
-            # 3. Return the internal_doc_uuid.
-            
-            name_for_doc_mgr = name or f"googledoc_{doc_id}" # Use custom name or default
-            
-            # This call needs to be to a function that fetches content AND adds it, returning the UUID
-            # Let's assume bot.refresh_single_google_doc is refactored to do this.
-            # If it only fetches, we'd do:
-            # fetched_content = await bot._fetch_google_doc_content(doc_id) # Hypothetical fetcher
-            # internal_doc_uuid = await bot.document_manager.add_document(name_for_doc_mgr, fetched_content)
-            
-            # For now, assuming refresh_single_google_doc handles adding to DocumentManager and returns the UUID
-            # This part of the bot's logic (refresh_single_google_doc) will also need refactoring.
-            # Let's simulate the expected outcome:
-            
-            # Simulate fetching and adding (actual implementation is in the bot's main logic)
-            # In a real scenario, refresh_single_google_doc would call document_manager.add_document
-            # and get the UUID.
-            # For now, we'll call a placeholder that implies this.
-            # This command will likely need further adjustment once bot.refresh_single_google_doc is refactored.
-            
-            # The `refresh_single_google_doc` should now handle adding to DocumentManager and getting the UUID.
-            # It should then call `track_google_doc` internally or return enough info for this command to do so.
-            # Let's assume `refresh_single_google_doc` is updated to:
-            # 1. Fetch content.
-            # 2. Call `doc_uuid = await self.document_manager.add_document(name_for_doc_mgr, content)`
-            # 3. Call `self.document_manager.track_google_doc(google_doc_id, doc_uuid, name_for_doc_mgr)`
-            # 4. Return success/failure.
-
-            success_refresh, returned_uuid = await bot.refresh_single_google_doc(doc_id, name_for_doc_mgr, interaction_for_feedback=interaction) # Pass interaction for feedback within
+            # 2. Process it (including optional DOCX lore tagging).
+            # 3. Add it to DocumentManager (which assigns/uses an internal_doc_uuid).
+            # 4. Call DocumentManager.track_google_doc to update tracking.
+            # 5. Return (success_bool, internal_doc_uuid_or_none).
+            success_refresh, returned_uuid = await bot.refresh_single_google_doc(
+                doc_id, 
+                custom_name=name_for_doc_mgr, # Pass the determined name
+                interaction_for_feedback=interaction # For followup messages during the process
+            )
 
             if success_refresh and returned_uuid:
-                # track_google_doc is now called within refresh_single_google_doc after getting the UUID
                 await interaction.followup.send(f"Google Doc '{name_for_doc_mgr}' (ID: {doc_id}) processed and added to knowledge base with internal UUID: `{returned_uuid}`. Tracking established.")
-            elif success_refresh and not returned_uuid: # Should not happen if refresh_single_google_doc is correct
-                 await interaction.followup.send(f"Google Doc '{name_for_doc_mgr}' (ID: {doc_id}) content fetched, but failed to add to document manager or get UUID.")
+            elif success_refresh and not returned_uuid: 
+                 await interaction.followup.send(f"Google Doc '{name_for_doc_mgr}' (ID: {doc_id}) content may have been fetched, but it failed to be added to the document manager or a UUID was not returned.")
             else:
                 await interaction.followup.send(f"*neural connection established but document download or processing failed for '{name_for_doc_mgr}' (ID: {doc_id}). Try refreshing later.*")
         except Exception as e:
@@ -931,23 +905,24 @@ def register_commands(bot):
                     continue # Skip this part if adding failed
 
                 # For sending to Discord, we might need to save it temporarily if it's large or for consistency
-                temp_discord_upload_path = temp_archive_dir / original_doc_name
+                safe_temp_filename = sanitize_filename(original_doc_name) # Sanitize for local temp file path
+                temp_discord_upload_path = temp_archive_dir / safe_temp_filename
                 try:
                     temp_discord_upload_path.write_text(doc_content_to_save, encoding='utf-8')
                     processed_doc_info.append({
-                        "original_name": original_doc_name,
+                        "original_name": original_doc_name, # Keep original for Discord display name
                         "uuid": doc_uuid_assigned,
-                        "discord_path": temp_discord_upload_path
+                        "discord_path": temp_discord_upload_path,
+                        "safe_filename_for_discord": safe_temp_filename # Store the sanitized name if needed for discord.File
                     })
                 except Exception as e_write_temp:
-                    logger.error(f"Failed to write temporary archive part {original_doc_name} for Discord upload: {e_write_temp}")
-                    # We can still proceed without the temp file for Discord if needed, but log it.
+                    logger.error(f"Failed to write temporary archive part {original_doc_name} (safe: {safe_temp_filename}) for Discord upload: {e_write_temp}")
                     processed_doc_info.append({
                         "original_name": original_doc_name,
                         "uuid": doc_uuid_assigned,
-                        "discord_path": None # Indicate temp file failed
+                        "discord_path": None, 
+                        "safe_filename_for_discord": safe_temp_filename
                     })
-
 
             if not processed_doc_info:
                 await interaction.followup.send("Failed to process and save any archive parts.")
@@ -959,11 +934,12 @@ def register_commands(bot):
                 doc_info = processed_doc_info[0]
                 discord_file_to_send = None
                 if doc_info["discord_path"] and doc_info["discord_path"].exists():
+                    # Use original_name for the filename presented to the user in Discord.
                     discord_file_to_send = discord.File(doc_info["discord_path"], filename=doc_info["original_name"])
                 
                 feedback_content = (
                     f"*Neural archiving complete!* Successfully archived {len(messages)} messages from #{channel.name}.\n\n"
-                    f"• Document Name: `{doc_info['original_name']}` (UUID: `{doc_info['uuid']}`)\n"
+                    f"• Document Name: `{doc_info['original_name']}` (UUID: `{doc_info['uuid']}`)\n" # Display original name
                     f"• Messages: {message_count}\n"
                     f"• Attachments: {attachment_count}\n"
                     f"• Reactions: {reaction_count}\n"
@@ -981,14 +957,15 @@ def register_commands(bot):
                 first_doc_info = processed_doc_info[0]
                 discord_file_to_send = None
                 if first_doc_info["discord_path"] and first_doc_info["discord_path"].exists():
+                     # Use original_name for the filename presented to the user in Discord.
                      discord_file_to_send = discord.File(first_doc_info["discord_path"], filename=first_doc_info["original_name"])
 
-                doc_names_and_uuids = ', '.join([f"`{info['original_name']}` (UUID: `{info['uuid']}`)" for info in processed_doc_info])
+                doc_names_and_uuids = ', '.join([f"`{info['original_name']}` (UUID: `{info['uuid']}`)" for info in processed_doc_info]) # Display original names
                 
                 feedback_content = (
                     f"*Neural archiving complete!* Successfully archived {len(messages)} messages from #{channel.name}.\n\n"
                     f"• Document parts: {len(processed_doc_info)}\n"
-                    f"• Document Names & UUIDs: {doc_names_and_uuids}\n"
+                    f"• Document Names & UUIDs: {doc_names_and_uuids}\n" # Display original names
                     f"• Total Messages: {message_count}\n"
                     f"• Total Attachments: {attachment_count}\n"
                     f"• Total Reactions: {reaction_count}\n"
