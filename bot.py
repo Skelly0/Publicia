@@ -486,8 +486,10 @@ class DiscordBot(commands.Bot):
             updated_docs = False  # Track if any docs were updated
             
             for doc in tracked_docs:
+                doc_id_for_logging = "UNKNOWN_OR_MALFORMED_ENTRY" # Initialize before try
                 try:
-                    doc_id = doc['id']
+                    doc_id = doc['google_doc_id'] # Corrected key
+                    doc_id_for_logging = doc_id # Update after successful assignment
                     # Determine original and sanitized names
                     original_name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
                     if not original_name.endswith('.txt'):
@@ -552,7 +554,7 @@ class DiscordBot(commands.Bot):
                         logger.info(f"{log_prefix} Google Doc {doc_id} ('{original_name}') has not changed, skipping")
 
                 except Exception as e:
-                    logger.error(f"Error refreshing doc {doc_id}: {e}") # Correct indentation for the except block
+                    logger.error(f"Error refreshing doc (Entry ID for log: {doc_id_for_logging}): {e}") # Correct indentation for the except block
 
             # Save to disk once at the end if any docs were updated
             if updated_docs:
