@@ -15,6 +15,8 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Analyzes and processes images with vision-capable AI models
 - Remembers conversations with individual users for contextual responses
 - Imports documents from text files or Google Docs with automatic refresh and change detection
+- Manages documents using robust UUIDs for identification
+- Processes `.docx` files to automatically tag specific colored text for lore integration (e.g., `<post-invasion_lore>`)
 - Uses multiple AI models with fallback mechanisms for reliability
 - Performs advanced hybrid search (semantic + keyword) with contextual retrieval and reranking
 - Supports user-selectable AI models for different interaction styles
@@ -159,18 +161,19 @@ Comprehensive tools to help troubleshoot issues:
 #### Document Management
 | Command | Description |
 |---------|-------------|
-| `/add_info` | Add text directly to knowledge base |
-| `/list_docs` | List all documents |
-| `/remove_doc` | Remove a document |
+| `/add_info` | Add text directly to knowledge base (UUID assigned automatically) |
+| `/list_docs` | List all documents (shows names and UUIDs) |
+| `/remove_doc` | Remove a document by its UUID (`doc_uuid`) |
 | `/search_docs` | Search documents directly |
 | `/add_googledoc` | Track a Google Doc |
 | `/list_googledocs` | List all tracked Google Docs |
 | `/remove_googledoc` | Remove a tracked Google Doc |
-| `/rename_document` | Rename a document |
-| `/retrieve_file` | Retrieve a specific file (Document or Lorebook) |
-| `/archive_channel` | Archive messages from a Discord channel as a document (admin only) |
-| `/summarize_doc` | Generate a summary of a document |
-| `/view_chunk` | View the content of a specific document chunk |
+| `/rename_document` | Rename a document (identified by current UUID or original name) |
+| `/retrieve_file` | Retrieve a specific file by its UUID (`doc_uuid`) |
+| `/archive_channel` | Archive messages from a Discord channel as a document (admin only). Params: `channel`, `message_limit`, `document_name`, `include_bots`, `include_attachments`. |
+| `/summarize_doc` | Generate a summary of a document by its UUID or original name. Param: `identifier`. |
+| `/view_chunk` | View the content of a specific document chunk by UUID or original name. Params: `identifier`, `chunk_index`, `contextualized`. |
+| `/process_docx_lore` | Process a .docx file to tag specific colored text with XML tags (admin only). Params: `docx_file`, `output_filename`. |
 
 #### Image Management
 | Command | Description |

@@ -115,7 +115,8 @@ def register_commands(bot):
 
             # Extract image IDs from search results
             image_ids = []
-            for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
+            # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
+            for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
                     logger.info(f"Found relevant image: {image_id}")
@@ -133,21 +134,26 @@ def register_commands(bot):
             # Format raw results with citation info
             # import urllib.parse # Removed from here
             raw_doc_contexts = []
-            for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
+            # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
+            for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id:
                     # This is an image description
                     image_name = bot.image_manager.metadata[image_id]['name'] if image_id in bot.image_manager.metadata else "Unknown Image"
                     raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
-                elif doc in googledoc_mapping:
+                # Use original_name for display and doc_uuid for mapping if needed.
+                # The original code used 'doc' which likely corresponded to original_name.
+                elif original_name in googledoc_mapping: 
                     # Create citation link for Google Doc
-                    doc_id = googledoc_mapping[doc]
+                    # Assuming googledoc_mapping keys are original_names that map to Google Doc IDs
+                    doc_id = googledoc_mapping[original_name]
                     words = chunk.split()
                     search_text = ' '.join(words[:min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
-                    raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
                 else:
-                    raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
+                    # Display original_name for non-Google Docs
+                    raw_doc_contexts.append(f"From document '{original_name}' (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
             # Add fetched Google Doc content to context
             google_doc_context = []
@@ -206,7 +212,8 @@ def register_commands(bot):
                 # Limit the number of chunks to check based on config
                 limit = bot.config.KEYWORD_CHECK_CHUNK_LIMIT
                 logger.info(f"Scanning up to {limit} search result chunks for keywords in /query...")
-                for i, (_, chunk, _, _, _, _) in enumerate(search_results):
+                # Unpack 7 items, ignoring those not used in this loop
+                for i, (_, _, chunk, _, _, _, _) in enumerate(search_results):
                     if i >= limit:
                         logger.info(f"Reached keyword check limit ({limit}), stopping scan.")
                         break # Stop checking after reaching the limit
