@@ -270,7 +270,7 @@ class DocumentManager:
             user_prompt = f"""<document> \n{document_content} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{chunk_content} \n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7 - https://discord.gg/dpsrp", "Content-Type": "application/json"}
-            fallback_models = ["cohere/command-r-08-2024", "google/gemini-2.5-flash-preview", "nousresearch/nous-hermes-2-mixtral-8x7b-dpo", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
+            fallback_models = ["cohere/command-r-08-2024", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
                 for _ in range(2): 
