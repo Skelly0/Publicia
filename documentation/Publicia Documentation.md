@@ -16,14 +16,15 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 
 ### Key Capabilities
 
-- **Document Search & Retrieval**: Uses an advanced hybrid system (vector embeddings + BM25 keyword matching) with AI-generated contextual retrieval and sophisticated reranking for highly accurate information retrieval.
+- **Document Search & Retrieval**: Uses an advanced hybrid system (vector embeddings + BM25 keyword matching) with AI-generated contextual retrieval and sophisticated reranking for highly accurate information retrieval. Documents are managed internally using unique UUIDs.
 - **Image Analysis**: Can process, store, and analyze images related to the lore using vision-capable models.
 - **Conversation Memory**: Remembers conversation history for contextual responses and context-aware searching.
 - **Channel Context Parsing**: Optionally includes recent messages from the current channel as general context in the AI prompt, configurable via the `/parse_channel` command.
 - **Multiple AI Models**: Supports various AI models with automatic fallback and retry mechanisms.
-- **Google Doc Integration**: Can fetch and index content from Google Docs, automatically detecting changes using content hashing. Also supports designating a specific channel where posted Google Doc links will be automatically added/refreshed.
+- **Google Doc Integration**: Can fetch and index content from Google Docs (linking them to internal document UUIDs), automatically detecting changes using content hashing. Also supports designating a specific channel where posted Google Doc links will be automatically added/refreshed.
 - **Role-Playing**: Maintains character as Publicia while providing information.
-- **File Management**: Allows listing and retrieving stored documents and lorebooks.
+- **File Management**: Allows listing and retrieving stored documents (identified by UUIDs).
+- **DOCX Processing**: Can process `.docx` files to automatically tag specific colored text (e.g., #980000) with XML tags like `<post-invasion_lore>` for specialized lore integration.
 
 ### Lore Context
 
@@ -62,7 +63,7 @@ Publicia is built on Python using discord.py, with several specialized component
 ### Key Classes
 
 1. **DiscordBot**: Main bot class that handles Discord integration and commands
-2. **DocumentManager**: Manages document storage, embedding generation (including contextualized embeddings), BM25 indexing, hybrid search (vector + BM25 with score fusion), contextual retrieval, and reranking.
+2. **DocumentManager**: Manages document storage (using UUIDs as primary keys), embedding generation (including contextualized embeddings), BM25 indexing, hybrid search (vector + BM25 with score fusion), contextual retrieval, reranking, and handles migration from older name-based document systems.
 3. **ImageManager**: Handles image storage, retrieval, and description generation
 4. **ConversationManager**: Maintains conversation history for users
 5. **UserPreferencesManager**: Handles user preferences like AI model selection
@@ -86,16 +87,23 @@ Publicia is built on Python using discord.py, with several specialized component
 
 The bot uses an advanced hybrid search system combining vector embeddings and BM25 keyword matching:
 
-- Documents are chunked into smaller sections for precise retrieval
-- Documents are chunked into smaller sections for precise retrieval.
+- Documents are chunked into smaller sections for precise retrieval and identified internally by unique UUIDs.
 - **Contextual Retrieval**: Before embedding, each chunk is enhanced with AI-generated context explaining its relationship to the whole document. This significantly improves relevance.
 - Contextualized chunks are converted to vector embeddings using Google's Generative AI (`models/text-embedding-004`).
 - **BM25 Indexing**: A separate BM25 index is maintained for efficient keyword matching.
 - **Hybrid Search Execution**: Queries are processed using both the vector embeddings (for semantic meaning) and the BM25 index (for keywords).
 - **Score-Based Fusion**: Results from both search methods are combined using a weighted scoring system (e.g., 60% embedding score, 40% BM25 score) to produce a final relevance ranking.
-- Queries are matched to the most relevant document chunks
-- Similarity scores determine the best matches
-- Documents can be added, removed, or searched directly
+- Queries are matched to the most relevant document chunks.
+- Similarity scores determine the best matches.
+- Documents can be added (assigned a UUID), removed (by UUID), or searched directly.
+
+### DOCX Lore Processing
+
+Publicia includes a feature to process `.docx` files, specifically looking for text colored with `#980000` (a dark red). This text is then wrapped with `<post-invasion_lore>` XML-like tags.
+- This is handled by the `tag_lore_in_docx` function within the `DocumentManager`.
+- The purpose is to allow for easy marking and extraction/identification of specific lore sections within Word documents.
+- This functionality requires the `python-docx` library to be installed in the bot's environment.
+- The processed text (with tags) is typically saved as a new `.txt` document within Publicia's knowledge base.
 
 ### Contextual Retrieval (Integrated into Document Management)
 
@@ -132,14 +140,14 @@ The bot maintains conversation history for each user:
 
 Unique capability to work with Google Docs:
 
-- Track Google Docs with custom names.
+- Track Google Docs with custom names. These are linked internally to a unique document UUID within Publicia.
 - Automatically refresh content on a schedule.
 - **Efficient Change Detection**: Uses content hashing to compare the current document content with the stored version, only processing and re-indexing if actual changes are detected.
 - **Automatic Tracking Channel**: Designate a specific channel (`/set_doc_channel`) where any Google Doc links posted will be automatically added to the bot's tracked documents. The bot will react to indicate success (✅), partial success (⚠️), or failure (❌).
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
-- Support renaming and removing tracked documents
+- Support renaming and removing tracked documents (which updates the link to the internal UUID).
 
 ### AI Model Selection
 
@@ -308,52 +316,64 @@ The bot will display a startup banner and initialize all components.
 
 #### Document Management
 
-- `/add_info`: Add text directly to knowledge base
-  - **Parameters**: `name` (document name), `content` (document content)
+- `/add_info`: Add text directly to the knowledge base. A unique UUID will be assigned to the new document. **(Admin Only)**
+  - **Parameters**: `name` (Original name for the document), `content` (Text content of the document).
 
-- `/list_docs`: Show all documents in the knowledge base, sorted alphabetically.
+- `/list_docs`: Show all documents in the knowledge base, sorted alphabetically by their original name. The list includes the original name and its corresponding UUID.
 
-- `/remove_doc`: Remove a document
-  - **Parameters**: `name` (document to remove)
+- `/remove_doc`: Remove a document from the knowledge base using its UUID. **(Admin Only)**
+  - **Parameters**: `doc_uuid` (The UUID of the document to remove).
 
-- `/search_docs`: Search documents directly
-  - **Parameters**: `query` (search term)
+- `/search_docs`: Search documents directly based on content.
+  - **Parameters**: `query` (The search term or question).
 
-- `/add_googledoc`: Track a Google Doc
-  - **Parameters**: `doc_url` (URL or ID), `name` (optional custom name)
+- `/add_googledoc`: Track a Google Doc, linking it to an internal document UUID. **(Admin Only)**
+  - **Parameters**: `doc_url` (The URL or ID of the Google Doc), `name` (Optional custom original name for this document in Publicia).
 
-- `/list_googledocs`: List all tracked Google Docs
+- `/list_googledocs`: List all tracked Google Docs, showing their original names, Google Doc IDs, and internal Publicia UUIDs.
 
-- `/remove_googledoc`: Remove a tracked Google Doc
-  - **Parameters**: `identifier` (ID, URL, or name)
+- `/remove_googledoc`: Remove a tracked Google Doc. This removes the tracking entry and the associated local document (by its internal UUID). **(Admin Only)**
+  - **Parameters**: `identifier` (The Google Doc ID, URL, or its custom original name in Publicia).
 
-- `/rename_document`: Rename a document
-  - **Parameters**: `current_name`, `new_name`
+- `/rename_document`: Rename the user-facing original name of a document. The document is identified by its UUID or current original name. **(Admin Only)**
+  - **Parameters**: `current_name` (The document's current UUID or original name), `new_name` (The new original name for the document).
 
-- `/retrieve_file`: Retrieve a file from Publicia's storage
-  - **Parameters**: `file_name` (Name of the file), `file_type` (Document or Lorebook)
-  - Downloads the requested file as a Discord attachment.
-  - Uses smart matching to find files (case-insensitive, extension handling).
-- `/add_info`: Add text directly to knowledge base **(Admin Only)**
-  - **Parameters**: `name` (document name), `content` (document content)
-- `/remove_doc`: Remove a document **(Admin Only)**
-  - **Parameters**: `name` (document to remove)
-- `/add_googledoc`: Track a Google Doc **(Admin Only)**
-  - **Parameters**: `doc_url` (URL or ID), `name` (optional custom name)
-- `/remove_googledoc`: Remove a tracked Google Doc **(Admin Only)**
-  - **Parameters**: `identifier` (ID, URL, or name)
-- `/rename_document`: Rename a document **(Admin Only)**
-  - **Parameters**: `current_name`, `new_name`
-- `/archive_channel`: Archive messages from a channel into a document **(Admin Only)**
-  - **Parameters**: `channel` (The channel to archive), `message_limit` (Max messages to archive), `doc_name` (Name for the new document)
+- `/retrieve_file`: Retrieve a document from Publicia's storage by its UUID.
+  - **Parameters**: `doc_uuid` (The UUID of the document to retrieve).
+  - Downloads the requested file as a Discord attachment, using its original name.
+
+- `/archive_channel`: Archive messages from a specified Discord channel into a new document in the knowledge base. A UUID will be assigned to the new document(s). **(Admin Only)**
+  - **Parameters**:
+    - `channel`: The Discord text channel to archive.
+    - `message_limit`: Maximum number of messages to fetch (0 for all, default: 1000, max: 10000).
+    - `document_name`: Optional name for the saved document (default: `channel_archive_[channel_name]_[timestamp]`).
+    - `include_bots`: Whether to include messages from bots (default: True).
+    - `include_attachments`: Whether to include attachment URLs in the archive (default: True).
+
+- `/summarize_doc`: Generate a concise summary of a document using an LLM. The document can be specified by its UUID or original name.
+  - **Parameters**: `identifier` (The UUID or original name of the document to summarize).
+
+- `/view_chunk`: View the content of a specific chunk from a document. The document can be specified by its UUID or original name.
+  - **Parameters**:
+    - `identifier`: The UUID or original name of the document.
+    - `chunk_index`: The 1-based index of the chunk to view.
+    - `contextualized`: (Optional, default: False) Whether to view the contextualized version of the chunk (used for embeddings) or the original chunk text.
+
+- `/process_docx_lore`: Process an uploaded `.docx` file to identify text colored with `#980000` and wrap it with `<post-invasion_lore>` XML-like tags. The result is typically saved as a new `.txt` document. Requires the `python-docx` library. **(Admin Only)**
+  - **Parameters**:
+    - `docx_file`: The `.docx` file to process (as a Discord attachment).
+    - `output_filename`: (Optional) Custom name for the output `.txt` file. If not provided, defaults to `[input_filename_stem]_processed.txt`.
+
 - `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.** **(Admin Only)**
-  - **Parameters**: `channel` (The text channel to monitor)
-- `/reload_docs`: Reload all documents from disk **(Admin Only)**
-- `/regenerate_embeddings`: Regenerate all document embeddings **(Admin Only)**
-- `/refresh_docs`: Manually refresh all tracked Google Docs (checks for changes) **(Admin Only)**
-- `/force_refresh_googledocs`: Force refresh and process ALL tracked Google Docs (bypasses change detection) **(Admin Only)**
-- `/process_docx_lore`: Process a `.docx` file to tag specific colored text (#980000) with `<post-invasion_lore>` XML tags. Requires `python-docx` library.
-  - **Parameters**: `docx_file` (The `.docx` file attachment), `output_filename` (Optional name for the output `.txt` file)
+  - **Parameters**: `channel` (The text channel to monitor).
+
+- `/reload_docs`: Reload all documents from disk, re-processing them. **(Admin Only)**
+
+- `/regenerate_embeddings`: Regenerate all document embeddings. **(Admin Only)**
+
+- `/refresh_docs`: Manually refresh all tracked Google Docs (checks for changes based on content hashes). **(Admin Only)**
+
+- `/force_refresh_googledocs`: Force refresh and re-process ALL tracked Google Docs (bypasses change detection). **(Admin Only)**
 
 
 #### Image Management
