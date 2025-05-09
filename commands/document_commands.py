@@ -14,7 +14,7 @@ import uuid # Added for UUID validation
 from datetime import datetime
 from pathlib import Path
 from typing import Optional # Added for type hinting
-from utils.helpers import split_message, check_permissions # Consolidated import & removed sanitize
+from utils.helpers import split_message, check_permissions, sanitize_filename # Consolidated import & removed sanitize
 from prompts.system_prompt import SYSTEM_PROMPT # Added for summarization
 
 # Import the new function and availability flag
@@ -372,10 +372,6 @@ def register_commands(bot):
                 await interaction.followup.send(f"{current_header}\n{chunk_content}")
         except Exception as e:
             logger.error(f"Error listing Google Docs: {e}", exc_info=True)
-            for chunk in split_message(response):
-                await interaction.followup.send(chunk)
-        except Exception as e:
-            logger.error(f"Error listing Google Docs: {e}")
             await interaction.followup.send("*neural circuit overload!* I encountered an error while trying to list Google Docs.")
 
     @bot.tree.command(name="rename_document", description="Rename any document, Google Doc, or lorebook (admin only)")
@@ -848,10 +844,10 @@ def register_commands(bot):
                     doc_count += 1
                     
                     # Reset counters for next part
-                    message_count_so_far = message_count
-                    attachment_count_so_far = attachment_count
-                    reaction_count_so_far = reaction_count
-                    embed_count_so_far = embed_count
+                    # message_count_so_far = message_count # Unused
+                    # attachment_count_so_far = attachment_count # Unused
+                    # reaction_count_so_far = reaction_count # Unused
+                    # embed_count_so_far = embed_count # Unused
                     
                     # Start new document with header
                     current_doc_content = f"# DISCORD CHANNEL ARCHIVE: {channel.name} (PART {doc_count})\n"
@@ -1179,9 +1175,9 @@ def register_commands(bot):
 
             # Sanitize the raw chunk content *before* splitting
             # Assuming bot has sanitize_discord_text method, otherwise remove/adjust
-            sanitized_content = chunk_content # Default if sanitize method doesn't exist or causes issues
+            sanitized_content = chunk_content_to_display # Default if sanitize method doesn't exist or causes issues
             if hasattr(bot, 'sanitize_discord_text') and callable(bot.sanitize_discord_text):
-                 sanitized_content = bot.sanitize_discord_text(chunk_content)
+                 sanitized_content = bot.sanitize_discord_text(chunk_content_to_display)
             else:
                  logger.warning("bot.sanitize_discord_text method not found or not callable.")
 
@@ -1208,7 +1204,7 @@ def register_commands(bot):
 
 
         except Exception as e:
-            logger.error(f"Error viewing chunk {chunk_index} from '{document_name}': {e}")
+            logger.error(f"Error viewing chunk {chunk_index} from '{original_name_for_display}': {e}")
             import traceback
             logger.error(traceback.format_exc())
             # Always use followup.send for errors after deferral
@@ -1227,8 +1223,6 @@ def register_commands(bot):
                      await interaction.channel.send(f"{interaction.user.mention} {error_message}")
                  except Exception as final_err:
                      logger.error(f"Failed to send view_chunk error message via channel: {final_err}")
-                 except Exception as send_err:
-                      logger.error(f"Failed to send error message for view_chunk via followup: {send_err}")
 
     @bot.tree.command(name="process_docx_lore", description="Process a .docx file to tag specific colored text with XML tags")
     @app_commands.describe(
