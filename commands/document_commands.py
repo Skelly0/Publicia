@@ -143,7 +143,7 @@ def register_commands(bot):
                     added_formatted = added_raw
                 
                 # Store as tuple for sorting: (original_name_lower, display_string)
-                display_string = f"`{doc_uuid}` - {original_name} ({chunks} chunks, Added: {added_formatted})"
+                display_string = f"{original_name} - {doc_uuid} ({chunks} chunks, Added: {added_formatted})"
                 doc_items.append((original_name.lower(), display_string))
 
             doc_items.sort(key=lambda item: item[0]) # Sort by original name

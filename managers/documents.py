@@ -729,6 +729,93 @@ class DocumentManager:
         await self._update_document_list_file()
         logger.info(f"--- DocumentManager: _load_documents finished. Metadata entries: {len(self.metadata)} ---")
 
+    async def convert_tracked_gdocs_to_uuid_format(self):
+        """
+        Converts an old-format tracked_google_docs.json (with 'id', 'custom_name')
+        to the new format (with 'google_doc_id', 'internal_doc_uuid', 'original_name_at_import').
+        This is a one-time utility function to fix the format if it was reverted.
+        """
+        logger.info("Attempting to convert tracked_google_docs.json to new UUID format...")
+        tracked_gdocs_file = self.base_dir / "tracked_google_docs.json"
+        if not tracked_gdocs_file.exists():
+            logger.warning(f"{tracked_gdocs_file} not found. Cannot convert.")
+            return False
+
+        try:
+            with open(tracked_gdocs_file, 'r', encoding='utf-8') as f:
+                old_format_docs = json.load(f)
+        except Exception as e:
+            logger.error(f"Error reading {tracked_gdocs_file} for conversion: {e}")
+            return False
+
+        if not old_format_docs or not isinstance(old_format_docs, list):
+            logger.info(f"{tracked_gdocs_file} is empty or not a list. No conversion needed or possible.")
+            return True # Assuming already correct or empty
+
+        # Check if already in new format
+        if all('google_doc_id' in entry and 'internal_doc_uuid' in entry for entry in old_format_docs):
+            logger.info(f"{tracked_gdocs_file} appears to be already in the new format. No conversion performed.")
+            return True
+
+        logger.info(f"Found {len(old_format_docs)} entries in old format. Converting...")
+        new_format_docs = []
+        name_to_uuid_map = {meta.get('original_name'): uuid_key for uuid_key, meta in self.metadata.items()}
+
+        for old_entry in old_format_docs:
+            google_doc_id_old = old_entry.get('id')
+            custom_name = old_entry.get('custom_name')
+            added_at = old_entry.get('added_at', datetime.now().isoformat())
+
+            if not google_doc_id_old or not custom_name:
+                logger.warning(f"Skipping entry due to missing 'id' or 'custom_name': {old_entry}")
+                continue
+
+            internal_doc_uuid = name_to_uuid_map.get(custom_name)
+            
+            # Try a common variation if the first lookup failed (e.g. if .txt was part of the name in metadata)
+            if not internal_doc_uuid and not custom_name.endswith(".txt"):
+                 internal_doc_uuid = name_to_uuid_map.get(f"{custom_name}.txt")
+            if not internal_doc_uuid and custom_name.endswith(".txt"):
+                 internal_doc_uuid = name_to_uuid_map.get(custom_name[:-4])
+
+
+            if not internal_doc_uuid:
+                # Attempt to find by looking for a document whose original name *contains* the custom_name
+                # This is a looser match, useful if names were slightly altered.
+                for meta_uuid, meta_data in self.metadata.items():
+                    meta_orig_name = meta_data.get('original_name', '')
+                    if custom_name in meta_orig_name:
+                        internal_doc_uuid = meta_uuid
+                        logger.info(f"Loosely matched '{custom_name}' to '{meta_orig_name}' (UUID: {internal_doc_uuid})")
+                        break
+            
+            if not internal_doc_uuid:
+                 # Last resort: check if a document with original_name like "googledoc_{google_doc_id_old}" exists
+                potential_gdoc_name = f"googledoc_{google_doc_id_old}"
+                internal_doc_uuid = name_to_uuid_map.get(potential_gdoc_name)
+                if not internal_doc_uuid:
+                    internal_doc_uuid = name_to_uuid_map.get(f"{potential_gdoc_name}.txt")
+
+            if internal_doc_uuid:
+                new_format_docs.append({
+                    "google_doc_id": google_doc_id_old,
+                    "internal_doc_uuid": internal_doc_uuid,
+                    "original_name_at_import": custom_name,
+                    "added_at": added_at,
+                    "updated_at": datetime.now().isoformat() 
+                })
+                logger.info(f"Converted entry for '{custom_name}' (ID: {google_doc_id_old}) to use UUID: {internal_doc_uuid}")
+            else:
+                logger.warning(f"Could not find internal_doc_uuid for Google Doc '{custom_name}' (ID: {google_doc_id_old}). This entry will be dropped from tracking.")
+        
+        try:
+            with open(tracked_gdocs_file, 'w', encoding='utf-8') as f:
+                json.dump(new_format_docs, f, indent=2)
+            logger.info(f"Successfully converted and saved {len(new_format_docs)} entries to {tracked_gdocs_file}.")
+            return True
+        except Exception as e:
+            logger.error(f"Error writing converted data to {tracked_gdocs_file}: {e}")
+            return False
 
     async def reload_documents(self):
         """Reload all documents from disk, regenerating embeddings."""

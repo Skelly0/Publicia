@@ -379,13 +379,49 @@ async def run_cli():
     # Process the query
     await process_cli_query(args, config, doc_manager, image_manager, pref_manager)
 
+async def run_convert_gdocs_format():
+    """Initializes DocumentManager and runs the GDoc conversion utility."""
+    logger.info("Starting Google Docs tracking file conversion utility...")
+    config, doc_manager, _, _ = await initialize_managers()
+    
+    # Ensure documents (and thus metadata) are loaded before attempting conversion
+    if not doc_manager.metadata:
+        logger.info("Metadata not loaded, attempting to load documents first...")
+        await doc_manager._load_documents() # This loads metadata
+        if not doc_manager.metadata:
+            logger.error("Failed to load document metadata. Cannot proceed with conversion.")
+            print("Error: Failed to load document metadata. Conversion aborted.", file=sys.stderr)
+            return
+
+    logger.info("Calling convert_tracked_gdocs_to_uuid_format...")
+    success = await doc_manager.convert_tracked_gdocs_to_uuid_format()
+    if success:
+        print("Google Docs tracking file conversion process completed successfully.")
+        logger.info("Google Docs tracking file conversion process completed successfully.")
+    else:
+        print("Google Docs tracking file conversion process failed. Check logs for details.", file=sys.stderr)
+        logger.error("Google Docs tracking file conversion process failed.")
+
 if __name__ == "__main__":
-    try:
-        asyncio.run(run_cli())
-    except KeyboardInterrupt:
-        logger.info("CLI execution interrupted by user.")
-        print("\nOperation cancelled.", file=sys.stderr)
-    except Exception as e:
-        logger.critical(f"An unexpected error occurred: {e}", exc_info=True)
-        print(f"\nFatal Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Check for a special argument to run the conversion
+    if "--convert-gdocs-format" in sys.argv:
+        sys.argv.remove("--convert-gdocs-format") # Remove it so argparse doesn't see it
+        try:
+            asyncio.run(run_convert_gdocs_format())
+        except KeyboardInterrupt:
+            logger.info("GDoc conversion interrupted by user.")
+            print("\nConversion operation cancelled.", file=sys.stderr)
+        except Exception as e:
+            logger.critical(f"An unexpected error occurred during GDoc conversion: {e}", exc_info=True)
+            print(f"\nFatal Error during GDoc conversion: {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        try:
+            asyncio.run(run_cli())
+        except KeyboardInterrupt:
+            logger.info("CLI execution interrupted by user.")
+            print("\nOperation cancelled.", file=sys.stderr)
+        except Exception as e:
+            logger.critical(f"An unexpected error occurred: {e}", exc_info=True)
+            print(f"\nFatal Error: {e}", file=sys.stderr)
+            sys.exit(1)
