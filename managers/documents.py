@@ -9,14 +9,14 @@ import logging
 import aiohttp
 import asyncio
 import urllib.parse
+import uuid 
+import hashlib 
 import numpy as np
 from datetime import datetime
 from typing import List, Dict, Tuple, Optional, Any
 from pathlib import Path
-# Removed duplicate typing import
 from textwrap import shorten
 from rank_bm25 import BM25Okapi
-# Removed duplicate Optional import
 
 # Import docx components
 try:
@@ -38,7 +38,6 @@ except ImportError:
         def __init__(self): self.color = Color()
     class Color:
         def __init__(self): self.rgb = None
-    # You might need more dummy classes depending on the exact usage
 
 from utils.logging import sanitize_for_logging
 
@@ -72,41 +71,22 @@ def tag_lore_in_docx(docx_filepath: str) -> Optional[str]:
             para_text_parts = []
             for run in para.runs:
                 run_color = run.font.color.rgb if run.font.color else None
-
-                # Check if the run's color matches the target
                 is_target_color = run_color == target_color
 
-                # State transition logic
                 if is_target_color and not is_in_lore_block:
-                    # Entering a lore block
                     para_text_parts.append("<post-invasion_lore>")
                     is_in_lore_block = True
                 elif not is_target_color and is_in_lore_block:
-                    # Exiting a lore block
                     para_text_parts.append("</post-invasion_lore>")
                     is_in_lore_block = False
-
-                # Append the actual text of the run
                 para_text_parts.append(run.text)
 
-            # After processing all runs in a paragraph, check if still in lore block
-            if is_in_lore_block:
-                # If the paragraph ends while still in a lore block, close the tag
-                # Note: This assumes lore doesn't span paragraphs without interruption.
-                # If it can, the logic might need adjustment.
-                # For now, we close it, assuming a color change or paragraph break ends the block.
+            if is_in_lore_block: # If paragraph ends mid-lore
                 para_text_parts.append("</post-invasion_lore>")
-                is_in_lore_block = False # Reset for the next paragraph
-
-            # Join parts for the current paragraph and add to overall output
+                is_in_lore_block = False 
             output_parts.append("".join(para_text_parts))
-
-        # Join all paragraph outputs with double newlines
+        
         final_text = "\n\n".join(output_parts)
-
-        # Final check: If the loop ended while inside a block (e.g., last run had target color)
-        # This case is handled by the check within the paragraph loop now.
-
         return final_text
 
     except FileNotFoundError:
@@ -122,1995 +102,841 @@ def tag_lore_in_docx(docx_filepath: str) -> Optional[str]:
 
 
 class DocumentManager:
-    """Manages document storage, embeddings, and retrieval."""
+    """Manages document storage, embeddings, and retrieval using UUIDs as primary keys."""
 
-
-class DocumentManager:
-    """Manages document storage, embeddings, and retrieval."""
-
-    def _sanitize_name(self, name: str) -> str:
-        """Sanitizes a string to be safe for use as a filename or dictionary key."""
-        if not isinstance(name, str):
-            name = str(name) # Ensure it's a string
-
-        # Replace potentially problematic characters with underscores
-        # Includes Windows reserved chars: <>:"/\|?*
-        # Also includes control characters (0-31)
-        sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '_', name)
-
-        # Replace leading/trailing dots and spaces
-        sanitized = sanitized.strip('. ')
-
-        # Collapse multiple consecutive underscores
-        sanitized = re.sub(r'_+', '_', sanitized)
-
-        # Ensure the name is not empty after sanitization
-        if not sanitized:
-            sanitized = "untitled"
-        # Optional: Limit length?
-        # max_len = 200
-        # sanitized = sanitized[:max_len]
-        return sanitized
-
-    def _get_original_name(self, sanitized_name: str) -> str:
-        """Retrieve the original document name from metadata given the sanitized name."""
-        if sanitized_name in self.metadata:
-            return self.metadata[sanitized_name].get('original_name', sanitized_name)
-        return sanitized_name # Fallback if not found (shouldn't happen often)
-
-    def _get_sanitized_name_from_original(self, original_name: str) -> Optional[str]:
-        """
-        Find the sanitized name corresponding to an original name.
-        Handles cases where the input might have a .txt extension but the stored name doesn't.
-        """
-        if not original_name: # Handle empty input
-            return None
-
-        # 1. Check direct match (input name == stored original_name)
-        # Iterate through metadata first to handle potential sanitization collisions
-        logger.debug(f"Attempt 1: Checking direct match for '{original_name}'") # ADDED LOGGING
-        for s_name, meta in self.metadata.items():
-            stored_original = meta.get('original_name') # ADDED LOGGING
-            logger.debug(f"Comparing '{original_name}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
-            if stored_original == original_name:
-                logger.debug(f"Found direct match for '{original_name}' -> sanitized '{s_name}'")
-                return s_name
-
-        # 2. Check if input has .txt and stored original_name doesn't
-        name_without_txt = None
-        if original_name.endswith('.txt'):
-            name_without_txt = original_name[:-4]
-            if name_without_txt: # Ensure not empty after stripping
-                logger.debug(f"Attempt 2: Checking match for '{name_without_txt}' (removed .txt)") # ADDED LOGGING
-                for s_name, meta in self.metadata.items():
-                    stored_original = meta.get('original_name') # ADDED LOGGING
-                    logger.debug(f"Comparing '{name_without_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
-                    if stored_original == name_without_txt:
-                        logger.debug(f"Found match for '{original_name}' by removing .txt ('{name_without_txt}') -> sanitized '{s_name}'")
-                        return s_name
-
-        # 3. Check if input *doesn't* have .txt but stored original_name *does* (less common)
-        name_with_txt = f"{original_name}.txt"
-        logger.debug(f"Attempt 3: Checking match for '{name_with_txt}' (added .txt)") # ADDED LOGGING
-        for s_name, meta in self.metadata.items():
-             stored_original = meta.get('original_name') # ADDED LOGGING
-             logger.debug(f"Comparing '{name_with_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
-             if stored_original == name_with_txt:
-                 logger.debug(f"Found match for '{original_name}' by adding .txt ('{name_with_txt}') -> sanitized '{s_name}'")
-                 return s_name
-
-        # 4. Fallback: Check if the sanitized version of the input exists as a key
-        # This helps if the original_name field in metadata is somehow incorrect/missing
-        # but the sanitized key itself matches.
-        logger.debug(f"Attempt 4: Checking fallback using sanitized key") # ADDED LOGGING
-        s_name_direct = self._sanitize_name(original_name)
-        if s_name_direct in self.metadata:
-            logger.warning(f"Found sanitized key '{s_name_direct}' matching input '{original_name}', but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
-            return s_name_direct
-        # Also check sanitized version without .txt if applicable
-        if name_without_txt:
-            s_name_direct_no_txt = self._sanitize_name(name_without_txt)
-            if s_name_direct_no_txt in self.metadata:
-                 logger.warning(f"Found sanitized key '{s_name_direct_no_txt}' matching input '{original_name}' (without .txt), but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
-                 return s_name_direct_no_txt
-
-
-        logger.warning(f"Could not find any matching sanitized name for original name: '{original_name}'")
-        return None # Not found
+    def _get_original_name(self, doc_uuid: str) -> str:
+        """Retrieve the original document name from metadata given the document's UUID."""
+        if doc_uuid in self.metadata:
+            return self.metadata[doc_uuid].get('original_name', doc_uuid) 
+        return doc_uuid
 
     def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Store top_k as instance variable
         self.top_k = top_k
         self.config = config
         
-        # Initialize Google Generative AI embedding model
         try:
             logger.info("Initializing Google Generative AI embedding model")
-            # Check if API key is available
             if not config or not config.GOOGLE_API_KEY:
                 logger.error("GOOGLE_API_KEY environment variable not set")
                 raise ValueError("GOOGLE_API_KEY environment variable not set")
-                
             import google.generativeai as genai
             genai.configure(api_key=config.GOOGLE_API_KEY)
-            
-            # Set embedding model
             self.embedding_model = config.EMBEDDING_MODEL if config else 'models/text-embedding-004'
             self.embedding_dimensions = config.EMBEDDING_DIMENSIONS if config and config.EMBEDDING_DIMENSIONS > 0 else None
-            
             logger.info(f"Using Google embedding model: {self.embedding_model}")
             if self.embedding_dimensions:
                 logger.info(f"Truncating embeddings to {self.embedding_dimensions} dimensions")
             else:
-                logger.info("Using full 3072 dimensions. Consider setting EMBEDDING_DIMENSIONS to 1024 or 512 for better storage efficiency.")
-            
+                logger.info("Using full embedding dimensions.")
             logger.info(f"Gemini embedding model initialized successfully")
-            
         except Exception as e:
             logger.error(f"Error initializing Google Generative AI: {e}")
             raise
         
-        # Storage for documents and embeddings
         self.chunks: Dict[str, List[str]] = {}
         self.embeddings: Dict[str, np.ndarray] = {}
         self.metadata: Dict[str, Dict] = {}
         self.contextualized_chunks: Dict[str, List[str]] = {}
+        self.bm25_indexes: Dict[str, BM25Okapi] = {}
         
-        # BM25 indexes for text search
-        self.bm25_indexes = {}
-        
-        # Load existing documents
-        logger.info("Starting document loading")
-        # Actual loading is done asynchronously in _load_documents()
-        # For now we just initialize with empty data
-        logger.info("Document loading will be done asynchronously")
-
-        # Define the name for the internal document list
-        self._internal_list_doc_name = "_internal_document_list.txt"
-
+        logger.info("Document loading will be done asynchronously via _load_documents.")
+        self._internal_list_doc_name = "_internal_document_list.txt" 
 
     async def _update_document_list_file(self):
-        """Creates or updates a special document listing all other documents."""
         logger.info("Updating internal document list file...")
         try:
-            # Get original document names from metadata, excluding the list file itself
-            s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
-            original_doc_names = sorted([
-                self._get_original_name(s_name) for s_name in self.metadata.keys()
-                if s_name != s_internal_list_name
-            ])
+            doc_items_for_list = []
+            internal_list_doc_uuid_to_skip = None
+            for doc_uuid_key, meta_val in self.metadata.items():
+                if meta_val.get('original_name') == self._internal_list_doc_name:
+                    internal_list_doc_uuid_to_skip = doc_uuid_key
+                    break
+            
+            for doc_uuid, meta in self.metadata.items():
+                if doc_uuid == internal_list_doc_uuid_to_skip:
+                    continue
+                original_name = meta.get('original_name', doc_uuid)
+                doc_items_for_list.append(f"{original_name} (UUID: {doc_uuid})")
 
-            # Format the content using original names
-            if not original_doc_names:
-                content = "No documents are currently managed."
-            else:
-                content = "Managed Documents:\n\n" + "\n".join(f"- {orig_name}" for orig_name in original_doc_names)
-
-            # Check if the document exists and if content needs updating
-            # Use sanitized name for file path
-            needs_update = True
-            list_doc_path = self.base_dir / s_internal_list_name
-            if list_doc_path.exists():
-                try:
-                    with open(list_doc_path, 'r', encoding='utf-8-sig') as f:
-                        existing_content = f.read()
-                    if existing_content == content:
-                        needs_update = False
-                        logger.info("Internal document list content is already up-to-date.")
-                except Exception as e:
-                    logger.warning(f"Could not read existing internal document list file ({list_doc_path}): {e}. Will overwrite.")
-
-            if needs_update:
-                logger.info(f"Content for internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}) requires update. Adding/updating document.")
-                # Use add_document with the ORIGINAL name, it will handle sanitization internally
-                # Pass _internal_call=True to prevent recursion
-                success = await self.add_document(self._internal_list_doc_name, content, save_to_disk=True, _internal_call=True)
-                if success:
-                    logger.info(f"Successfully updated and saved internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}).")
-                else:
-                    logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}', sanitized: {s_internal_list_name}) due to errors during processing or saving.")
-            else:
-                 # Even if content didn't change, ensure metadata reflects check time
-                 # Use sanitized name for lookup
-                 if s_internal_list_name in self.metadata:
-                     self.metadata[s_internal_list_name]['checked'] = datetime.now().isoformat()
-                     # No need to save just for a timestamp check unless other changes happened
-
-        except Exception as e:
-            logger.error(f"Failed to update internal document list file: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-
+            doc_items_for_list.sort() 
+            content = "Managed Documents:\n\n" + "\n".join(f"- {item}" for item in doc_items_for_list) if doc_items_for_list else "No documents are currently managed."
+            
+            returned_uuid = await self.add_document(
+                original_name=self._internal_list_doc_name, 
+                content=content, 
+                save_to_disk=True, 
+                existing_uuid=internal_list_doc_uuid_to_skip,
+                _internal_call=True
+            )
+            if returned_uuid: logger.info(f"Successfully updated internal list doc ('{self._internal_list_doc_name}', UUID: {returned_uuid}).")
+            else: logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}').")
+        except Exception as e: logger.error(f"Failed to update internal document list file: {e}", exc_info=True)
 
     async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None) -> Optional[np.ndarray]:
-        """Helper function to asynchronously get a single embedding from Google API."""
-        if not text or not text.strip():
-            logger.warning("Skipping empty text for embedding")
-            return None
-
-        api_key = self.config.GOOGLE_API_KEY
-        if not api_key:
-            logger.error("Google API Key not configured for async embedding.")
-            return None
-
-        # Construct the API URL
-        # The self.embedding_model variable already contains the "models/" prefix.
-        api_url = f"https://generativelanguage.googleapis.com/v1beta/{self.embedding_model}:embedContent?key={api_key}"
-
-        payload = {
-            "content": {"parts": [{"text": text}]},
-            "task_type": task_type,
-        }
-        if title and task_type == "retrieval_document":
-            payload["title"] = title
-
+        if not text or not text.strip(): return None
+        if not self.config.GOOGLE_API_KEY: return None
+        api_url = f"https://generativelanguage.googleapis.com/v1beta/{self.embedding_model}:embedContent?key={self.config.GOOGLE_API_KEY}"
+        payload = {"content": {"parts": [{"text": text}]}, "task_type": task_type}
+        if title and task_type == "retrieval_document": payload["title"] = title
         headers = {"Content-Type": "application/json"}
-
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(api_url, headers=headers, json=payload, timeout=60) as response:
                     if response.status == 200:
                         result = await response.json()
                         if "embedding" in result and "values" in result["embedding"]:
-                            embedding_vector = np.array(result["embedding"]["values"])
-                            # Truncate if dimensions is specified
-                            if self.embedding_dimensions and self.embedding_dimensions < len(embedding_vector):
-                                embedding_vector = embedding_vector[:self.embedding_dimensions]
-                            return embedding_vector
-                        else:
-                            logger.error(f"Unexpected embedding response structure: {result}")
-                            return None
-                    else:
-                        error_text = await response.text()
-                        logger.error(f"Google Embedding API error (Status {response.status}): {error_text}")
-                        return None
-        except asyncio.TimeoutError:
-            logger.error("Timeout calling Google Embedding API.")
-            return None
-        except Exception as e:
-            logger.error(f"Error calling Google Embedding API: {e}")
-            return None
+                            vec = np.array(result["embedding"]["values"])
+                            return vec[:self.embedding_dimensions] if self.embedding_dimensions and self.embedding_dimensions < len(vec) else vec
+                    logger.error(f"Google Embedding API error (Status {response.status}): {await response.text()}")
+        except Exception as e: logger.error(f"Error calling Google Embedding API: {e}")
+        return None
 
-    def _create_bm25_index(self, chunks: List[str]) -> BM25Okapi:
-        """Create a BM25 index from document chunks."""
-        # Tokenize chunks - simple whitespace tokenization
-        tokenized_chunks = [chunk.lower().split() for chunk in chunks]
-        return BM25Okapi(tokenized_chunks)
+    def _create_bm25_index(self, chunks: List[str]) -> Optional[BM25Okapi]:
+        tokenized_chunks = [chunk.lower().split() for chunk in chunks if chunk] 
+        return BM25Okapi(tokenized_chunks) if tokenized_chunks else None
         
-    def _search_bm25(self, query: str, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
-        """Search for chunks using BM25."""
-        if top_k is None:
-            top_k = self.top_k
-            
-        # Tokenize query
+    def _search_bm25(self, query: str, top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
+        if top_k is None: top_k = self.top_k
         query_tokens = query.lower().split()
-        
         results = []
-        # Iterate using sanitized names (s_name)
-        for s_name, chunks in self.chunks.items():
-            # Make sure we have a BM25 index for this document using sanitized name
-            if s_name not in self.bm25_indexes:
-                self.bm25_indexes[s_name] = self._create_bm25_index(
-                    self.contextualized_chunks.get(s_name, chunks) # Use s_name for lookup
-                )
-                
-            # Get BM25 scores using sanitized name
-            bm25_scores = self.bm25_indexes[s_name].get_scores(query_tokens)
+        for doc_uuid, doc_chunks in self.chunks.items():
+            if not doc_chunks: continue
+            if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None:
+                chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, doc_chunks)
+                if chunks_for_bm25:
+                    self.bm25_indexes[doc_uuid] = self._create_bm25_index(chunks_for_bm25)
+                if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None: 
+                    logger.warning(f"Could not create BM25 index for {doc_uuid}")
+                    continue
             
-            # Add top results
-            for idx, score in enumerate(bm25_scores):
-                if idx < len(chunks):  # Safety check
-                    image_id = None
-                    # Check image prefix using sanitized name
-                    if s_name.startswith("image_") and s_name.endswith(".txt"):
-                        image_id = s_name[6:-4]
-                    # Check metadata using sanitized name
-                    elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
-                        image_id = self.metadata[s_name]['image_id']
-                    
-                    # Use contextualized chunk instead of original, using sanitized name
-                    chunk = self.get_contextualized_chunk(s_name, idx)
-                    
-                    # Get the original name for the result tuple
-                    original_name = self._get_original_name(s_name)
-                    
-                    results.append((
-                        original_name, # Return original name
-                        chunk,
-                        float(score),
-                        image_id,
-                        idx + 1,
-                        len(chunks)
-                    ))
-        
-        # Sort by score and return top_k
-        results.sort(key=lambda x: x[2], reverse=True)
+            bm25_scores = self.bm25_indexes[doc_uuid].get_scores(query_tokens)
+            original_name = self._get_original_name(doc_uuid)
+            for chunk_idx, score in enumerate(bm25_scores):
+                if chunk_idx < len(doc_chunks):
+                    chunk_text = self.get_contextualized_chunk(doc_uuid, chunk_idx)
+                    image_id = self.metadata.get(doc_uuid, {}).get('image_id')
+                    results.append((doc_uuid, original_name, chunk_text, float(score), image_id, chunk_idx + 1, len(doc_chunks)))
+        results.sort(key=lambda x: x[3], reverse=True)
         return results[:top_k]
     
-    def get_contextualized_chunk(self, doc_name: str, chunk_idx: int) -> str:
-        """Get the contextualized chunk if available, otherwise fall back to the original chunk."""
-        # Check if we have contextualized chunks for this document
-        if doc_name in self.contextualized_chunks and chunk_idx < len(self.contextualized_chunks[doc_name]):
-            return self.contextualized_chunks[doc_name][chunk_idx]
-        
-        # Fall back to original chunks
-        if doc_name in self.chunks and chunk_idx < len(self.chunks[doc_name]):
-            #logger.warning(f"Using original chunk for {doc_name}[{chunk_idx}] as contextualized version not found")
-            return self.chunks[doc_name][chunk_idx]
-        
-        # Emergency fallback
-        logger.error(f"Chunk not found: {doc_name}[{chunk_idx}]")
+    def get_contextualized_chunk(self, doc_uuid: str, chunk_idx: int) -> str:
+        if doc_uuid in self.contextualized_chunks and chunk_idx < len(self.contextualized_chunks[doc_uuid]):
+            return self.contextualized_chunks[doc_uuid][chunk_idx]
+        if doc_uuid in self.chunks and chunk_idx < len(self.chunks[doc_uuid]):
+            return self.chunks[doc_uuid][chunk_idx]
+        logger.error(f"Chunk not found for UUID '{doc_uuid}' at index {chunk_idx}")
         return "Chunk not found"
 
-    def _combine_search_results(self, embedding_results: List[Tuple], bm25_results: List[Tuple], top_k: int = None) -> List[Tuple]:
-        """Combine results from embedding and BM25 search using score-based fusion."""
-        if top_k is None:
-            top_k = self.top_k
-            
-        # Create a dictionary to store combined scores
-        combined_scores = {}
-        
-        # Log the number of results from each method
-        logger.info(f"Combining {len(embedding_results)} embedding results with {len(bm25_results)} BM25 results using score-based fusion")
-        
-        # Normalize embedding scores if needed - they should already be between 0 and 1 (cosine similarity)
-        # But we'll ensure they're properly normalized anyway
-        embedding_weight = 0.85  # Weight for embedding scores (adjust as needed)
-        
-        # Process embedding results
-        # Assume embedding_results contains ORIGINAL names, need to map to sanitized for key
-        for original_name, chunk, score, image_id, chunk_idx, total_chunks in embedding_results:
-            s_name = self._get_sanitized_name_from_original(original_name)
-            if not s_name:
-                logger.warning(f"Could not find sanitized name for '{original_name}' in embedding results, skipping.")
-                continue
-            key = (s_name, chunk_idx) # Use sanitized name in key
-            # Ensure score is between 0 and 1
+    def _combine_search_results(
+        self, 
+        embedding_results: List[Tuple[str, str, str, float, Optional[str], int, int]], 
+        bm25_results: List[Tuple[str, str, str, float, Optional[str], int, int]], 
+        top_k: int = None
+    ) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
+        if top_k is None: top_k = self.top_k
+        combined_scores_data = {}
+        embedding_weight = 0.85
+        for res_tuple in embedding_results: 
+            doc_uuid, _, _, score, _, chunk_idx, _ = res_tuple
+            key = (doc_uuid, chunk_idx)
             norm_score = max(0, min(1, score))
-            combined_scores[key] = combined_scores.get(key, 0) + (norm_score * embedding_weight)
+            if key not in combined_scores_data: combined_scores_data[key] = {'score': 0, 'data': res_tuple}
+            combined_scores_data[key]['score'] += norm_score * embedding_weight
+            combined_scores_data[key]['data'] = res_tuple 
 
-            # Log some of the top embedding scores (using original name for logging)
-            if len(combined_scores) <= 3:
-                logger.info(f"Top embedding result: {original_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
-        
-        # Normalize BM25 scores to [0, 1] range
-        bm25_weight = 0.15  # Weight for BM25 scores (adjust as needed)
-        
+        bm25_weight = 0.15
         if bm25_results:
-            # Find min and max scores for normalization
-            max_bm25 = max(score for _, _, score, _, _, _ in bm25_results)
-            min_bm25 = min(score for _, _, score, _, _, _ in bm25_results)
+            all_bm25_scores = [r[3] for r in bm25_results if r[3] is not None]
+            max_bm25, min_bm25 = (max(all_bm25_scores) if all_bm25_scores else 1.0), (min(all_bm25_scores) if all_bm25_scores else 0.0)
             range_bm25 = max_bm25 - min_bm25
-            
-            # Log min/max for debugging
-            logger.info(f"BM25 score range: min={min_bm25:.4f}, max={max_bm25:.4f}")
-        else:
-            # Default values if no results
-            max_bm25, min_bm25, range_bm25 = 1.0, 0.0, 1.0
+            for res_tuple in bm25_results:
+                doc_uuid, _, _, score, _, chunk_idx, _ = res_tuple
+                key = (doc_uuid, chunk_idx)
+                norm_score = (score - min_bm25) / range_bm25 if range_bm25 > 0 else 0.5
+                if key not in combined_scores_data: combined_scores_data[key] = {'score': 0, 'data': res_tuple}
+                combined_scores_data[key]['score'] += norm_score * bm25_weight
+                if combined_scores_data[key]['data'][2] == "Chunk not found": 
+                    combined_scores_data[key]['data'] = res_tuple
         
-        # Process BM25 results
-        # Assume bm25_results contains ORIGINAL names, need to map to sanitized for key
-        for original_name, chunk, score, image_id, chunk_idx, total_chunks in bm25_results:
-            s_name = self._get_sanitized_name_from_original(original_name)
-            if not s_name:
-                logger.warning(f"Could not find sanitized name for '{original_name}' in BM25 results, skipping.")
-                continue
-            key = (s_name, chunk_idx) # Use sanitized name in key
-            # Normalize BM25 score to [0, 1] range
-            if range_bm25 > 0:
-                norm_score = (score - min_bm25) / range_bm25
-            else:
-                norm_score = 0.5  # Default if all scores are the same
-
-            combined_scores[key] = combined_scores.get(key, 0) + (norm_score * bm25_weight)
-
-            # Log some of the top BM25 scores (using original name for logging)
-            #if len([k for k in combined_scores.keys() if k == key]) <= 3:
-            #    logger.info(f"Top BM25 result: {original_name}, score: {score:.4f}, normalized: {norm_score:.4f}")
-        
-        # Safety check - ensure we have some scores
-        if not combined_scores:
-            logger.warning("No combined scores found. Returning empty results.")
-            return []
-        
-        # Create combined results
-        combined_results = []
-        # Iterate using sanitized names (s_name) from the combined_scores keys
-        for (s_name, chunk_idx), score in combined_scores.items():
-            # Use contextualized chunk instead of original, using sanitized name
-            chunk_index = chunk_idx - 1  # Convert from 1-based to 0-based indexing
-
-            # Safety check for valid index using sanitized name
-            if chunk_index < 0 or chunk_index >= len(self.chunks.get(s_name, [])):
-                logger.warning(f"Invalid chunk index {chunk_index} for sanitized doc '{s_name}' during combine.")
-                continue
-
-            # Get the contextualized chunk using sanitized name
-            chunk = self.get_contextualized_chunk(s_name, chunk_index)
-
-            image_id = None
-            # Check image prefix using sanitized name
-            if s_name.startswith("image_") and s_name.endswith(".txt"):
-                image_id = s_name[6:-4]
-            # Check metadata using sanitized name
-            elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
-                image_id = self.metadata[s_name]['image_id']
-
-            # Get the original name for the final result tuple
-            original_name = self._get_original_name(s_name)
-
-            combined_results.append((
-                original_name, # Return original name
-                chunk,
-                score,  # This is the combined score
-                image_id,
-                chunk_idx,
-                len(self.chunks[s_name]) # Use sanitized name for chunk count lookup
-            ))
-        
-        # Sort by score and return top_k
-        combined_results.sort(key=lambda x: x[2], reverse=True)
-
-        # Log top combined results (using original name)
-        for i, (original_name, _, score, _, _, _) in enumerate(combined_results[:3]):
-            logger.info(f"Top {i+1} combined result: {original_name}, score: {score:.4f}")
-        
-        return combined_results[:top_k]
+        final_results = [(d['data'][0], d['data'][1], self.get_contextualized_chunk(d['data'][0], d['data'][5]-1), d['score'], d['data'][4], d['data'][5], d['data'][6]) for d in combined_scores_data.values()]
+        final_results.sort(key=lambda x: x[3], reverse=True)
+        return final_results[:top_k]
 
     async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
-        """Generate context for a chunk using a list of fallback models via OpenRouter."""
         try:
-            # Create the prompt as messages for the API
             system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
-            
-            user_prompt = f"""
-            <document> 
-            {document_content} 
-            </document> 
-            Here is the chunk we want to situate within the whole document 
-            <chunk> 
-            {chunk_content} 
-            </chunk> 
-            Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else.
-            """
-            
-            messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-            
-            # OpenRouter API headers - same as used elsewhere in the bot
-            headers = {
-                "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "Publicia for DPS Season 7 - https://discord.gg/dpsrp", 
-                "X-Title": "Publicia - Context Generation",
-                "Content-Type": "application/json"
-            }
-            
-            # List of models to try in order
-            fallback_models = [
-                #"google/gemini-2.5-pro-exp-03-25:free", # Added new model
-                #"google/gemini-2.0-flash-thinking-exp:free",
-                #"google/gemini-2.0-flash-exp:free",
-                #"google/gemma-3-27b-it:free",
-                "cohere/command-r7b-12-2024",
-                "microsoft/phi-4-multimodal-instruct",
-                "amazon/nova-micro-v1",
-                "qwen/qwen-turbo",
-                "google/gemma-3-12b-it",
-                "google/gemini-2.0-flash-lite-001",
-                "google/gemini-2.5-flash-preview", # Fixed formatting
-                "google/gemini-flash-1.5-8b",
-            ]
-            
-            # Try each model in sequence until one works
+            user_prompt = f"""<document> \n{document_content} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{chunk_content} \n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
+            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "Publicia", "X-Title": "Publicia-Context", "Content-Type": "application/json"}
+            fallback_models = ["cohere/command-r", "microsoft/phi-3-medium-128k-instruct", "nousresearch/nous-hermes-2-mixtral-8x7b-dpo", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
-                logger.info(f"Attempting to generate chunk context with model: {model}")
-                
-                # Prepare payload with current model
-                payload = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,  # Low temperature for deterministic outputs
-                    "max_tokens": 150    # Limit token length
-                }
-                
-                # Make API call with current model
-                max_retries = 2  # Fewer retries per model since we have multiple models
-                for attempt in range(max_retries):
+                payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
+                for _ in range(2): 
                     try:
                         async with aiohttp.ClientSession() as session:
-                            async with session.post(
-                                "https://openrouter.ai/api/v1/chat/completions",
-                                headers=headers,
-                                json=payload,
-                                timeout=360  # 60 second timeout
-                            ) as response:
-                                if response.status != 200:
-                                    error_text = await response.text()
-                                    logger.error(f"API error with model {model} (Status {response.status}): {error_text}")
-                                    # If we had a non-200 status, try again or continue to next model
-                                    if attempt == max_retries - 1:
-                                        # Try next model
-                                        break
-                                    continue
-                                    
-                                completion = await response.json()
-                        
-                        # Extract context from the response
-                        if completion and completion.get('choices') and len(completion['choices']) > 0:
-                            if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
-                                context = completion['choices'][0]['message']['content'].strip()
-                                
-                                logger.info(f"Successfully generated context with model {model} ({len(context.split())} words): {context[:50]}...")
-                                return context
-                        
-                        # If we couldn't extract a valid context, try next model
-                        logger.warning(f"Failed to extract valid context from model {model}")
-                        break
-                        
-                    except Exception as e:
-                        logger.error(f"Error generating chunk context with model {model} (attempt {attempt+1}/{max_retries}): {e}")
-                        if attempt == max_retries - 1:
-                            # If we've used all retries for this model, try next model
-                            break
-                        # Otherwise, continue to next retry with same model
-                        await asyncio.sleep(1)  # Wait before retrying
-            
-            # If all models failed, return default context
-            logger.error("All models failed to generate context")
-            return f"This chunk is from document dealing with {document_content[:50]}..."
-            
-        except Exception as e:
-            logger.error(f"Unhandled error generating chunk context: {e}")
-            # Return a default context if generation fails
-            return f"This chunk is from document dealing with {document_content[:50]}..."
+                            async with session.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45) as response:
+                                if response.status == 200:
+                                    completion = await response.json()
+                                    if completion and completion.get('choices') and completion['choices'][0].get('message', {}).get('content'):
+                                        return completion['choices'][0]['message']['content'].strip()
+                                logger.error(f"API error model {model} (Status {response.status}): {await response.text()}")
+                                break 
+                    except Exception as e: logger.error(f"Ctx gen error model {model}: {e}")
+                    await asyncio.sleep(0.5)
+            return f"Chunk from document: {document_content[:50]}..."
+        except Exception as e: return f"Error in context gen: {e}"
 
 
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
-        """Generate context for each chunk and prepend to the chunk."""
-        contextualized_chunks = []
-        
-        logger.info(f"Contextualizing {len(chunks)} chunks for document: {doc_name}")
-        for i, chunk in enumerate(chunks):
-            # Generate context
-            context = await self.generate_chunk_context(document_content, chunk)
-            
-            # Prepend context to chunk
-            contextualized_chunk = f"{context} {chunk}"
-            
-            contextualized_chunks.append(contextualized_chunk)
-            
-            # Log progress for longer documents
-            if (i + 1) % 10 == 0:
-                logger.info(f"Contextualized {i + 1}/{len(chunks)} chunks for {doc_name}")
-
-        return contextualized_chunks
+        contextualized = [await self.generate_chunk_context(document_content, chunk) + " " + chunk for chunk in chunks]
+        logger.info(f"Contextualized {len(chunks)} chunks for {doc_name}.")
+        return contextualized
 
     async def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
-        """Asynchronously generate embeddings for a list of text chunks using Google's Generative AI via REST API."""
-        embeddings_list = []
+        tasks, valid_indices = [], []
         task_type = "retrieval_query" if is_query else "retrieval_document"
-
-        # Create tasks for each text embedding generation
-        tasks = []
-        valid_indices = [] # Keep track of indices for non-empty texts
         for i, text in enumerate(texts):
             if text and text.strip():
                 title = titles[i] if titles and i < len(titles) and not is_query else None
                 tasks.append(self._get_google_embedding_async(text, task_type, title))
                 valid_indices.append(i)
-            else:
-                logger.warning(f"Skipping empty text at index {i} for embedding")
-
-        # Run tasks concurrently
         results = await asyncio.gather(*tasks)
-
-        # Process results and handle potential None values (errors or empty inputs)
-        placeholder_embedding = None
-        final_embeddings = [None] * len(texts) # Initialize with None for all original texts
-
-        for i, result_embedding in enumerate(results):
-            original_index = valid_indices[i]
-            if result_embedding is not None:
-                final_embeddings[original_index] = result_embedding
-                if placeholder_embedding is None:
-                    placeholder_embedding = np.zeros_like(result_embedding) # Create placeholder based on first success
-            else:
-                # Error occurred for this text, will use placeholder later
-                logger.warning(f"Failed to get embedding for text at index {original_index}, will use placeholder.")
-
-        # Fill in placeholders for failed or empty texts
-        if placeholder_embedding is None and any(e is None for e in final_embeddings):
-             # If all failed and we couldn't create a placeholder, raise error or return empty
-             logger.error("Failed to generate any embeddings and couldn't create placeholder.")
-             # Depending on desired behavior, either raise or return empty array
-             # raise ValueError("Failed to generate any embeddings.")
-             return np.array([]) # Return empty array if all fail
-
+        final_embeddings = [None] * len(texts)
+        placeholder = None
+        for i, res_emb in enumerate(results):
+            original_idx = valid_indices[i]
+            if res_emb is not None:
+                final_embeddings[original_idx] = res_emb
+                if placeholder is None: placeholder = np.zeros_like(res_emb)
         for i in range(len(texts)):
             if final_embeddings[i] is None:
-                if placeholder_embedding is not None:
-                    final_embeddings[i] = placeholder_embedding
-                else:
-                    # This case should ideally not happen if placeholder_embedding logic is correct
-                    # If it does, it means even the placeholder failed. Maybe return empty or raise.
-                    logger.error(f"Could not provide a placeholder for failed/empty embedding at index {i}")
-                    # Decide handling: return empty array, raise error, etc.
-                    return np.array([])
-
-
-        return np.array(final_embeddings)
-
+                if placeholder is not None: final_embeddings[i] = placeholder
+                else: return np.array([]) 
+        return np.array([e for e in final_embeddings if e is not None])
 
     def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
-        """Split text into overlapping chunks."""
-        # Use config values if available, otherwise use defaults
-        if chunk_size is None:
-            chunk_size = self.config.CHUNK_SIZE if self.config else 750
-        if overlap is None:
-            overlap = self.config.CHUNK_OVERLAP if self.config else 125
-        
-        # Handle empty text
-        if not text or not text.strip():
-            return []
-            
+        chunk_size = chunk_size or (self.config.CHUNK_SIZE if self.config else 750)
+        overlap = overlap or (self.config.CHUNK_OVERLAP if self.config else 125)
+        if not text or not text.strip(): return []
         words = text.split()
-        if not words:
-            return []
-        
-        if len(words) <= chunk_size:
-            return [' '.join(words)]
-        
-        chunks = []
+        if not words or len(words) <= chunk_size: return [' '.join(words)] if words else []
+        chunks_list = []
         for i in range(0, len(words), chunk_size - overlap):
-            end_idx = min(i + chunk_size, len(words))
-            chunk = ' '.join(words[i:end_idx])
-            chunks.append(chunk)
-            
-        logger.info(f"Chunked text into {len(chunks)} chunks (size: {chunk_size}, overlap: {overlap})")
-        return chunks
+            chunks_list.append(' '.join(words[i:min(i + chunk_size, len(words))]))
+        return chunks_list
     
     def cleanup_empty_documents(self):
-        """Remove any documents with empty embeddings from the system."""
-        empty_docs = []
-        for doc_name, doc_embeddings in self.embeddings.items():
-            if len(doc_embeddings) == 0:
-                empty_docs.append(doc_name)
-        
-        for doc_name in empty_docs:
-            logger.info(f"Removing empty document: {doc_name}")
-            del self.chunks[doc_name]
-            del self.embeddings[doc_name]
-            if doc_name in self.metadata:
-                del self.metadata[doc_name]
-        
-        if empty_docs:
-            logger.info(f"Removed {len(empty_docs)} empty documents")
-            self._save_to_disk()
-        
-        return empty_docs
+        empty_docs_uuids = [uuid_key for uuid_key, embs in self.embeddings.items() if not isinstance(embs, np.ndarray) or embs.size == 0]
+        for doc_uuid in empty_docs_uuids:
+            name = self._get_original_name(doc_uuid)
+            logger.info(f"Removing empty doc: '{name}' (UUID: {doc_uuid})")
+            for store in [self.chunks, self.embeddings, self.metadata, self.contextualized_chunks, self.bm25_indexes]:
+                if doc_uuid in store: del store[doc_uuid]
+        if empty_docs_uuids: self._save_to_disk()
+        return empty_docs_uuids
 
-    async def add_document(self, name: str, content: str, save_to_disk: bool = True, _internal_call: bool = False) -> bool:
-        """
-        Add a new document to the system with contextual retrieval.
-
-        Args:
-            name (str): The name of the document.
-            content (str): The content of the document.
-            save_to_disk (bool): Whether to save changes immediately. Defaults to True.
-            _internal_call (bool): Flag to prevent recursive calls when updating the internal list doc. Defaults to False.
-
-        Returns:
-            bool: True if the document was added/updated successfully (including saving if requested), False otherwise.
-        """
+    async def add_document(self, original_name: str, content: str, save_to_disk: bool = True, existing_uuid: Optional[str] = None, _internal_call: bool = False) -> Optional[str]:
         try:
-            original_name = name # Keep original name for reference and metadata
-            s_name = self._sanitize_name(name)
+            doc_uuid = existing_uuid or str(uuid.uuid4())
+            is_update = bool(existing_uuid and doc_uuid in self.metadata)
+            logger.info(f"{'Updating' if is_update else 'Adding new'} document '{original_name}' (UUID: {doc_uuid}).")
 
-            if s_name != original_name:
-                logger.warning(f"Document name '{original_name}' sanitized to '{s_name}' for internal storage and filename.")
-
-            # Prevent direct modification of the internal list doc via this method if not internal call
-            # Use sanitized name for check
-            if s_name == self._sanitize_name(self._internal_list_doc_name) and not _internal_call:
-                 logger.warning(f"Attempted to directly modify internal document '{original_name}' (sanitized: {s_name}). Use specific commands or let the system manage it.")
-                 # Optionally, raise an error or return False
-                 # raise ValueError(f"Cannot directly modify internal document '{name}'")
-                 return False # Indicate failure
-
+            if original_name == self._internal_list_doc_name and not _internal_call:
+                logger.warning(f"Direct modification of internal list '{original_name}' denied.")
+                return None
             if not content or not content.strip():
-                logger.warning(f"Document {name} has no content. Skipping.")
-                return True # Technically not a failure, just skipped
+                logger.warning(f"Doc '{original_name}' (UUID: {doc_uuid}) has no content. Skipping.")
+                return doc_uuid if is_update else None
 
-            # Calculate word count
+            doc_file_path = self.base_dir / f"{doc_uuid}.txt"
             word_count = len(content.split())
-            max_words_for_context = 20000 # Define the limit
-            logger.info(f"Document '{original_name}' (sanitized: {s_name}) word count: {word_count}")
-
-            # Create original chunks (always needed)
+            max_words_ctx = self.config.MAX_WORDS_FOR_CONTEXT if self.config and hasattr(self.config, 'MAX_WORDS_FOR_CONTEXT') else 20000
             chunks = self._chunk_text(content)
-            if not chunks:
-                logger.warning(f"Document '{original_name}' (sanitized: {s_name}) has no content to chunk. Skipping.")
-                return True # Technically not a failure, just skipped
+            if not chunks: return doc_uuid if is_update else None
 
-            # Check if document already exists and if content has changed
-            content_changed = True
-            current_hash = None # Initialize hash variable
-            # Use sanitized name for lookup
-            if s_name in self.metadata and 'content_hash' in self.metadata[s_name]:
-                import hashlib
-                current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-                previous_hash = self.metadata[s_name]['content_hash']
-                if previous_hash and previous_hash == current_hash:
-                    content_changed = False
-                    logger.info(f"Document '{original_name}' (sanitized: {s_name}) content has not changed based on hash.")
-
-            # Determine if processing (embedding, indexing) is needed
-            # Needs processing if content changed OR if embeddings are missing for this doc
-            needs_processing = content_changed or s_name not in self.embeddings
+            current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+            content_changed = not (is_update and self.metadata.get(doc_uuid, {}).get('content_hash') == current_hash)
+            needs_processing = content_changed or doc_uuid not in self.embeddings or not is_update
 
             if needs_processing:
-                logger.info(f"Processing required for document '{original_name}' (sanitized: {s_name}) (Content changed: {content_changed}, Embeddings missing: {s_name not in self.embeddings})")
-
-                # Decide whether to contextualize based on word count
-                should_contextualize = word_count <= max_words_for_context
-                # logger.debug(f"Contextualization check for '{name}': word_count={word_count}, max_words={max_words_for_context}, should_contextualize={should_contextualize}") # DEBUG LOG REMOVED
-
-                if should_contextualize:
-                    logger.info(f"Document '{original_name}' ({word_count} words) is within limit ({max_words_for_context}). Generating contextualized chunks.")
-                    contextualized_chunks = await self.contextualize_chunks(original_name, content, chunks) # Pass original_name for context generation title?
-                    # Use contextualized chunks for embeddings and BM25
-                    chunks_for_embedding = contextualized_chunks
-                    chunks_for_bm25 = contextualized_chunks
-                    # Store the contextualized chunks using sanitized name
-                    self.contextualized_chunks[s_name] = contextualized_chunks
-                else:
-                    logger.warning(f"Document '{original_name}' ({word_count} words) exceeds limit ({max_words_for_context}). Skipping contextualization, using original chunks.")
-                    # Use original chunks for embeddings and BM25
-                    chunks_for_embedding = chunks
-                    chunks_for_bm25 = chunks
-                    # Ensure no stale contextualized chunks exist if the doc previously fit
-                    if s_name in self.contextualized_chunks:
-                        del self.contextualized_chunks[s_name]
-                        logger.info(f"Removed previous contextualized chunks for oversized document '{original_name}' (sanitized: {s_name}).")
-
-                # Generate embeddings using the selected chunks (either original or contextualized)
-                # Ensure chunks_for_embedding is not empty before proceeding
-                if not chunks_for_embedding:
-                    logger.error(f"No chunks available for embedding document '{original_name}' (sanitized: {s_name}). Skipping embedding generation.")
-                    embeddings = np.array([]) # Assign empty array if no chunks
-                else:
-                    # Use original_name for titles passed to embedding model
-                    titles = [original_name] * len(chunks_for_embedding) # Title count should match chunk count
-                    embeddings = await self.generate_embeddings(chunks_for_embedding, is_query=False, titles=titles)
-
-                # Store document data using sanitized name as key
-                self.chunks[s_name] = chunks  # Store original chunks
-                self.embeddings[s_name] = embeddings # Store the generated embeddings
-
-                # Calculate hash if not already done (e.g., if content changed but wasn't in metadata before)
-                if current_hash is None:
-                     import hashlib
-                     current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
-
-                # Update metadata using sanitized name as key
-                self.metadata[s_name] = {
-                    'original_name': original_name, # Store original name
-                    'added': self.metadata.get(s_name, {}).get('added', datetime.now().isoformat()), # Preserve original add time using sanitized key lookup
-                    'updated': datetime.now().isoformat(),
-                    'chunk_count': len(chunks),
-                    'content_hash': current_hash,
-                    'contextualized': should_contextualize # Add flag indicating if contextualized
-                }
-
-                # Create BM25 index using the selected chunks and sanitized name
-                # Ensure chunks_for_bm25 is not empty
-                if chunks_for_bm25:
-                    self.bm25_indexes[s_name] = self._create_bm25_index(chunks_for_bm25) # Use sanitized name
-                else:
-                    logger.warning(f"No chunks available for BM25 indexing document '{original_name}' (sanitized: {s_name}). Skipping BM25 index creation.")
-                    if s_name in self.bm25_indexes: # Remove stale index if it exists
-                        del self.bm25_indexes[s_name]
+                should_ctx = word_count <= max_words_ctx
+                chunks_for_processing = await self.contextualize_chunks(original_name, content, chunks) if should_ctx else chunks
+                if not chunks_for_processing and chunks: 
+                    logger.warning(f"Contextualization returned empty for '{original_name}', using original chunks.")
+                    chunks_for_processing = chunks 
+                
+                self.contextualized_chunks[doc_uuid] = chunks_for_processing if should_ctx and chunks_for_processing else []
+                
+                if chunks_for_processing:
+                    titles = [original_name] * len(chunks_for_processing)
+                    embeddings_arr = await self.generate_embeddings(chunks_for_processing, is_query=False, titles=titles)
+                else: 
+                    embeddings_arr = np.array([])
 
 
-                logger.info(f"Finished processing for document '{original_name}' (sanitized: {s_name}). Contextualized: {should_contextualize}")
-
-            else: # Content hasn't changed, just update timestamp
-                logger.info(f"Document '{original_name}' (sanitized: {s_name}) content unchanged. Updating 'checked' timestamp.")
-                if s_name in self.metadata:
-                    self.metadata[s_name]['checked'] = datetime.now().isoformat()
-                else: # Should not happen if content_changed is False, but safety check
-                     # If metadata was missing, create it with original name
-                     self.metadata[s_name] = {
-                        'original_name': original_name,
-                        'checked': datetime.now().isoformat(),
-                        'chunk_count': len(chunks) # Best guess
-                     }
-
-            # Save to disk if requested
-            if save_to_disk:
-                self._save_to_disk() # This will raise exceptions if it fails
-
-            # Log completion message
-            if needs_processing:
-                 log_context_status = self.metadata.get(s_name, {}).get('contextualized', 'N/A')
-                 logger.info(f"{'Internally added/updated' if _internal_call else 'Added/updated'} document: '{original_name}' (sanitized: {s_name}) with {len(chunks)} chunks. Contextualized: {log_context_status}")
+                self.chunks[doc_uuid] = chunks
+                self.embeddings[doc_uuid] = embeddings_arr
+                
+                meta_entry = self.metadata.get(doc_uuid, {})
+                meta_entry.update({
+                    'uuid': doc_uuid, 'original_name': original_name, 
+                    'added': meta_entry.get('added', datetime.now().isoformat()), 
+                    'updated': datetime.now().isoformat(), 'chunk_count': len(chunks),
+                    'content_hash': current_hash, 'contextualized': should_ctx and bool(chunks_for_processing)
+                })
+                self.metadata[doc_uuid] = meta_entry
+                
+                bm25_index = self._create_bm25_index(chunks_for_processing if chunks_for_processing else [])
+                if bm25_index: self.bm25_indexes[doc_uuid] = bm25_index
+                else: self.bm25_indexes.pop(doc_uuid, None)
             else:
-                 logger.info(f"Document '{original_name}' (sanitized: {s_name}) verified unchanged")
+                if doc_uuid in self.metadata: self.metadata[doc_uuid]['checked'] = datetime.now().isoformat()
 
-            # Update the document list file, unless this was an internal call
-            if not _internal_call:
-                await self._update_document_list_file() # This needs updating too
-
-            return True # Indicate success
-
+            if content_changed or not is_update:
+                with open(doc_file_path, 'w', encoding='utf-8') as f: f.write(content)
+            
+            if save_to_disk: self._save_to_disk()
+            if not _internal_call: await self._update_document_list_file()
+            return doc_uuid
         except Exception as e:
-            logger.error(f"Error adding document {name}: {e}")
-            import traceback
-            logger.error(traceback.format_exc()) # Log full traceback
-            # Avoid raising if it's an internal call failing, maybe log differently?
-            # if not _internal_call: # Keep the original logic comment but don't raise here
-            #     raise
-            return False # Indicate failure
+            logger.error(f"Error add/update doc '{original_name}': {e}", exc_info=True)
+            return None
 
-
-    def get_googledoc_id_mapping(self):
-        """Get mapping from document names to google doc IDs."""
-        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
-        if not tracked_file.exists():
-            return {}
-        
-        with open(tracked_file, 'r') as f:
-            tracked_docs = json.load(f)
-        
-        # create a mapping from document names to doc IDs
+    def get_googledoc_id_mapping(self) -> Dict[str, str]: 
+        tracked_file = self.base_dir / "tracked_google_docs.json"
+        if not tracked_file.exists(): return {}
         mapping = {}
-        for doc in tracked_docs:
-            doc_id = doc['id']
-            name = doc.get('custom_name') or f"googledoc_{doc_id}.txt"
-            if not name.endswith('.txt'):
-                name += '.txt'
-            mapping[name] = doc_id
-        
+        try:
+            with open(tracked_file, 'r', encoding='utf-8') as f: tracked_docs = json.load(f)
+            for doc_entry in tracked_docs:
+                if 'google_doc_id' in doc_entry and 'internal_doc_uuid' in doc_entry:
+                    mapping[doc_entry['google_doc_id']] = doc_entry['internal_doc_uuid']
+        except Exception as e: logger.error(f"Error reading tracked_google_docs.json: {e}")
         return mapping
 
-    def get_all_document_contents(self) -> Dict[str, str]:
-        """
-        Retrieves the full content of all managed text documents.
-
-        Returns:
-            Dict[str, str]: A dictionary where keys are *original* document names
-                            and values are the full document content.
-                            Excludes image description files and internal lists.
-        """
+    def get_all_document_contents(self) -> Dict[str, str]: 
         all_contents = {}
-        logger.info("Retrieving content for all managed text documents...")
-        # Iterate using sanitized names (s_name)
-        s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
-        for s_name in self.metadata.keys():
-            # Skip internal list file and image description files using sanitized name
-            if s_name == s_internal_list_name or \
-               (s_name.startswith("image_") and s_name.endswith(".txt")):
-                logger.debug(f"Skipping non-content document (sanitized): {s_name}")
-                continue
-
-            original_name = self._get_original_name(s_name) # Get original name for the key
-            file_path = self.base_dir / s_name # Use sanitized name for file path
-            content = None
-            if file_path.exists() and file_path.is_file():
-                try:
-                    # Use utf-8-sig to handle potential BOM
-                    with open(file_path, 'r', encoding='utf-8-sig') as f:
-                        content = f.read()
-                except Exception as e:
-                    logger.error(f"Error reading content for document '{original_name}' (sanitized: {s_name}): {e}")
-            else:
-                logger.warning(f"Document file not found for '{original_name}' (sanitized: {s_name}), attempting to reconstruct from chunks.")
-                # Fallback: Reconstruct from original chunks if file missing, using sanitized name
-                if s_name in self.chunks:
-                    content = " ".join(self.chunks[s_name])
-                else:
-                     logger.error(f"Could not retrieve content for '{original_name}' (sanitized: {s_name}) from file or chunks.")
-
-            if content is not None:
-                 all_contents[original_name] = content # Use original name as key
-
-        logger.info(f"Retrieved content for {len(all_contents)} documents.")
+        internal_list_uuid = next((uid for uid, meta in self.metadata.items() if meta.get('original_name') == self._internal_list_doc_name), None)
+        for doc_uuid, meta in self.metadata.items():
+            if doc_uuid == internal_list_uuid: continue
+            file_path = self.base_dir / f"{doc_uuid}.txt"
+            if file_path.exists():
+                try: all_contents[doc_uuid] = file_path.read_text(encoding='utf-8-sig')
+                except Exception as e: logger.error(f"Error reading {file_path}: {e}")
+            elif doc_uuid in self.chunks: all_contents[doc_uuid] = " ".join(self.chunks[doc_uuid])
         return all_contents
 
-    async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, float, Optional[str], int, int]]: # Make async
-        """
-        Search for relevant document chunks with optional re-ranking.
+    async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
+        if top_k is None: top_k = self.top_k
+        if apply_reranking is None and self.config: apply_reranking = self.config.RERANKING_ENABLED
+        if not query or not query.strip(): return []
         
-        Args:
-            query: The search query
-            top_k: Number of final results to return
-            apply_reranking: Whether to apply re-ranking (overrides config setting)
-            
-        Returns:
-            List of tuples (doc_name, chunk, similarity_score, image_id_if_applicable, chunk_index, total_chunks)
-        """
-        try:
-            if top_k is None:
-                top_k = self.top_k
-            
-            # Determine whether to apply re-ranking
-            if apply_reranking is None and self.config:
-                apply_reranking = self.config.RERANKING_ENABLED
-            
-            if not query or not query.strip():
-                logger.warning("Empty query provided to search")
-                return []
+        query_embedding_res = await self.generate_embeddings([query], is_query=True)
+        if query_embedding_res.size == 0: return []
+        query_embedding = query_embedding_res[0]
 
-            # Generate query embedding asynchronously
-            query_embedding_result = await self.generate_embeddings([query], is_query=True) # Await async call
-            if query_embedding_result.size == 0:
-                 logger.error("Failed to generate query embedding.")
-                 return []
-            query_embedding = query_embedding_result[0]
-
-
-            # Determine how many initial results to retrieve
-            initial_top_k = self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k
-            initial_top_k = max(initial_top_k, top_k)  # Always get at least top_k results
+        initial_k = (self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k) if self.config else top_k
+        initial_k = max(initial_k, top_k)
             
-            # Get initial results from embeddings
-            embedding_results = self.custom_search_with_embedding(query_embedding, top_k=initial_top_k)
+        embedding_results = self.custom_search_with_embedding(query_embedding, top_k=initial_k)
+        bm25_results = self._search_bm25(query, top_k=initial_k)
+        combined_results = self._combine_search_results(embedding_results, bm25_results, top_k=initial_k)
             
-            # Get results from BM25
-            logger.info("Performing BM25 search")
-            bm25_results = self._search_bm25(query, top_k=initial_top_k)
-            
-            # Combine results
-            logger.info(f"Combining {len(embedding_results)} embedding results with {len(bm25_results)} BM25 results")
-            combined_results = self._combine_search_results(embedding_results, bm25_results, top_k=initial_top_k)
-            
-            # Apply re-ranking if enabled and we have enough results
-            if apply_reranking and len(combined_results) > 1:
-                logger.info(f"Applying re-ranking to {len(combined_results)} initial results")
-                return await self.rerank_results(query, combined_results, top_k=top_k) # Await async call
-            else:
-                # No re-ranking, return initial results
-                logger.info(f"Skipping re-ranking (enabled={apply_reranking}, results={len(combined_results)})")
-                return combined_results[:top_k]
+        if apply_reranking and len(combined_results) > 1:
+            return await self.rerank_results(query, combined_results, top_k=top_k)
+        return combined_results[:top_k]
                 
-        except Exception as e:
-            logger.error(f"Error searching documents: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return []
-
-    def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, float, Optional[str], int, int]]:
-        """Search using a pre-generated embedding instead of creating one from text."""
-        if top_k is None:
-            top_k = self.top_k
-        
+    def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
+        if top_k is None: top_k = self.top_k
         results = []
-        logger.info("Performing custom search with pre-generated embedding")
+        for doc_uuid, doc_embeddings_array in self.embeddings.items():
+            if not isinstance(doc_embeddings_array, np.ndarray) or doc_embeddings_array.size == 0: continue
+            similarities = np.dot(doc_embeddings_array, query_embedding)
+            if len(similarities) == 0: continue
+            
+            num_chunks_for_doc = len(self.chunks.get(doc_uuid, []))
+            count_for_this_doc = min(top_k, num_chunks_for_doc, len(similarities))
+            if count_for_this_doc <=0: continue
 
-        # Iterate using sanitized names (s_name)
-        for s_name, doc_embeddings in self.embeddings.items():
-            if len(doc_embeddings) == 0:
-                logger.warning(f"Skipping document '{self._get_original_name(s_name)}' (sanitized: {s_name}) with empty embeddings")
-                continue
-
-            # Calculate similarities (dot product since embeddings are normalized)
-            similarities = np.dot(doc_embeddings, query_embedding)
-
-            if len(similarities) > 0:
-                top_indices = np.argsort(similarities)[-min(top_k, len(similarities)):]
-
-                for idx in top_indices:
-                    image_id = None
-                    # Check image prefix using sanitized name
-                    if s_name.startswith("image_") and s_name.endswith(".txt"):
-                        image_id = s_name[6:-4]
-                    # Check metadata using sanitized name
-                    elif s_name in self.metadata and 'image_id' in self.metadata[s_name]:
-                        image_id = self.metadata[s_name]['image_id']
-
-                    # Check chunk index validity using sanitized name
-                    if idx < len(self.chunks[s_name]):
-                        # Use contextualized chunk instead of original, using sanitized name
-                        chunk = self.get_contextualized_chunk(s_name, idx)
-
-                        # Get the original name for the result tuple
-                        original_name = self._get_original_name(s_name)
-
-                        results.append((
-                            original_name, # Return original name
-                            chunk,
-                            float(similarities[idx]),
-                            image_id,
-                            idx + 1,  # 1-based indexing for display
-                            len(self.chunks[s_name]) # Use sanitized name for chunk count
-                        ))
-        
-        # Sort by similarity
-        results.sort(key=lambda x: x[2], reverse=True)
-
-        # Log search results (using original name)
-        for original_name, chunk, similarity, image_id, chunk_index, total_chunks in results[:top_k]:
-            #logger.info(f"Found relevant chunk in {original_name} (similarity: {similarity:.2f}, chunk: {chunk_index}/{total_chunks})")
-            if image_id:
-                logger.info(f"This is an image description for image ID: {image_id}")
-
-            # Log whether we're using a contextualized chunk (needs sanitized name for lookup)
-            s_name = self._get_sanitized_name_from_original(original_name)
-            if s_name:
-                is_contextualized = (s_name in self.contextualized_chunks and
-                                    chunk_index - 1 < len(self.contextualized_chunks[s_name]) and
-                                    chunk == self.contextualized_chunks[s_name][chunk_index - 1])
-                #logger.info(f"Using {'contextualized' if is_contextualized else 'original'} chunk for {original_name}")
-            else:
-                #logger.info(f"Could not verify contextualization status for {original_name}")
-                pass # Avoid logging if lookup failed
-
-            #logger.info(f"Chunk content: {shorten(sanitize_for_logging(chunk), width=300, placeholder='...')}")
-
+            top_indices_for_doc = np.argsort(similarities)[-count_for_this_doc:]
+            for chunk_idx_in_doc in top_indices_for_doc:
+                if chunk_idx_in_doc < num_chunks_for_doc:
+                    original_name = self._get_original_name(doc_uuid)
+                    chunk_text = self.get_contextualized_chunk(doc_uuid, chunk_idx_in_doc)
+                    image_id = self.metadata.get(doc_uuid, {}).get('image_id')
+                    results.append((doc_uuid, original_name, chunk_text, float(similarities[chunk_idx_in_doc]), image_id, chunk_idx_in_doc + 1, num_chunks_for_doc))
+        results.sort(key=lambda x: x[3], reverse=True)
         return results[:top_k]
 
     def _save_to_disk(self):
-        """Save document data to disk."""
         try:
-            # Save chunks
-            with open(self.base_dir / 'chunks.pkl', 'wb') as f:
-                pickle.dump(self.chunks, f)
-            
-            # Save contextualized chunks
-            with open(self.base_dir / 'contextualized_chunks.pkl', 'wb') as f:
-                pickle.dump(self.contextualized_chunks, f)
-            
-            # Save embeddings
-            with open(self.base_dir / 'embeddings.pkl', 'wb') as f:
-                pickle.dump(self.embeddings, f)
-            
-            # Save metadata
-            logger.info(f"Saving metadata. Keys to save: {list(self.metadata.keys())}") # ADDED LOGGING
-            with open(self.base_dir / 'metadata.json', 'w') as f:
-                json.dump(self.metadata, f)
-            logger.info("Successfully wrote metadata.json") # ADDED LOGGING
-                
-            # Save embedding provider info
-            #with open(self.base_dir / 'embeddings_provider.txt', 'w') as f:
-            #    f.write("gemini")
-                
-        except PermissionError as pe:
-            logger.error(f"Permission denied error saving data to {self.base_dir}. Check write permissions for the directory and its contents (e.g., embeddings.pkl). Error: {pe}")
-            raise # Re-raise after specific logging
-        except Exception as e:
-            logger.error(f"Error saving document data to disk: {e}")
-            raise # Re-raise other exceptions
+            for data_dict, filename in [
+                (self.chunks, 'chunks.pkl'), (self.contextualized_chunks, 'contextualized_chunks.pkl'),
+                (self.embeddings, 'embeddings.pkl'), (self.metadata, 'metadata.json')]:
+                path = self.base_dir / filename
+                if filename.endswith('.json'):
+                    with open(path, 'w', encoding='utf-8') as f: json.dump(data_dict, f, indent=2)
+                else:
+                    with open(path, 'wb') as f: pickle.dump(data_dict, f)
+            logger.info(f"Saved all document data to {self.base_dir}")
+        except Exception as e: logger.error(f"Error saving document data: {e}", exc_info=True)
 
-    async def regenerate_all_embeddings(self): # Make async
-        """Regenerate all embeddings using the current embedding model."""
+    async def regenerate_all_embeddings(self):
+        """Regenerate all embeddings using the current embedding model, keyed by UUID."""
         try:
-            logger.info("Starting regeneration of all embeddings")
+            logger.info("Starting regeneration of all embeddings (UUID based).")
+            all_doc_uuids = list(self.chunks.keys()) 
 
-            # Iterate through all documents using sanitized names (s_name)
-            for s_name, chunks in self.chunks.items():
-                original_name = self._get_original_name(s_name)
-                logger.info(f"Regenerating embeddings for document: '{original_name}' (sanitized: {s_name})")
+            for doc_uuid in all_doc_uuids:
+                original_name = self._get_original_name(doc_uuid)
+                logger.info(f"Regenerating embeddings for document: '{original_name}' (UUID: {doc_uuid})")
 
-                # Get contextualized chunks (regenerate if needed, although ideally they exist)
-                # Use sanitized name for lookups
-                if s_name not in self.contextualized_chunks:
-                     logger.warning(f"Contextualized chunks missing for '{original_name}' (sanitized: {s_name}), regenerating...")
-                     doc_path = self.base_dir / s_name # Use sanitized name for path
-                     if doc_path.exists():
-                         with open(doc_path, 'r', encoding='utf-8-sig') as f:
-                             doc_content = f.read()
-                         # Use original name for context generation title?
-                         self.contextualized_chunks[s_name] = await self.contextualize_chunks(original_name, doc_content, chunks)
-                     else:
-                         logger.error(f"Cannot find original file '{original_name}' (sanitized: {s_name}) to regenerate contextualized chunks.")
-                         continue # Skip this document if original file is missing
+                doc_specific_chunks = self.chunks.get(doc_uuid, [])
+                if not doc_specific_chunks:
+                    logger.warning(f"No chunks found for document '{original_name}' (UUID: {doc_uuid}). Skipping.")
+                    self.embeddings[doc_uuid] = np.array([])
+                    continue
+                
+                chunks_for_embedding = self.contextualized_chunks.get(doc_uuid, [])
+                if not chunks_for_embedding: 
+                    chunks_for_embedding = doc_specific_chunks
 
-                # Use sanitized name for lookup, fallback to original chunks
-                contextualized_chunks_for_doc = self.contextualized_chunks.get(s_name, chunks)
+                max_words_ctx = self.config.MAX_WORDS_FOR_CONTEXT if self.config and hasattr(self.config, 'MAX_WORDS_FOR_CONTEXT') else 20000
+                word_count = self.metadata.get(doc_uuid, {}).get('word_count', float('inf'))
+                should_be_contextualized = word_count <= max_words_ctx
+                
+                if should_be_contextualized and (not self.contextualized_chunks.get(doc_uuid) or not self.metadata.get(doc_uuid, {}).get('contextualized')):
+                    logger.info(f"Attempting to generate/regenerate contextualized chunks for '{original_name}' (UUID: {doc_uuid}).")
+                    doc_file_path = self.base_dir / f"{doc_uuid}.txt"
+                    if doc_file_path.exists():
+                        doc_content_for_context = doc_file_path.read_text(encoding='utf-8-sig')
+                        generated_context_chunks = await self.contextualize_chunks(original_name, doc_content_for_context, doc_specific_chunks)
+                        self.contextualized_chunks[doc_uuid] = generated_context_chunks
+                        chunks_for_embedding = generated_context_chunks
+                        if doc_uuid in self.metadata: self.metadata[doc_uuid]['contextualized'] = True
+                    else:
+                        logger.error(f"Cannot find {doc_file_path} for contextualization of '{original_name}'. Using original chunks.")
+                        chunks_for_embedding = doc_specific_chunks 
 
-                # Generate new embeddings asynchronously
-                # Pass ORIGINAL name as title
-                titles = [original_name] * len(contextualized_chunks_for_doc)
-                new_embeddings = await self.generate_embeddings(contextualized_chunks_for_doc, is_query=False, titles=titles) # Await async call
+                if not chunks_for_embedding: 
+                    logger.error(f"No chunks for embedding '{original_name}' (UUID: {doc_uuid}). Skipping.")
+                    self.embeddings[doc_uuid] = np.array([])
+                    continue
 
-                # Update stored embeddings using sanitized name
-                self.embeddings[s_name] = new_embeddings
+                titles = [original_name] * len(chunks_for_embedding)
+                new_embeddings = await self.generate_embeddings(chunks_for_embedding, is_query=False, titles=titles)
+                self.embeddings[doc_uuid] = new_embeddings
+                
+                bm25_idx = self._create_bm25_index(chunks_for_embedding)
+                if bm25_idx: self.bm25_indexes[doc_uuid] = bm25_idx
+                else: self.bm25_indexes.pop(doc_uuid, None)
 
-            # Save to disk
             self._save_to_disk()
-
-            logger.info("Completed regeneration of all embeddings")
+            logger.info("Completed regeneration of all embeddings (UUID based).")
             return True
         except Exception as e:
-            logger.error(f"Error regenerating embeddings: {e}")
+            logger.error(f"Error regenerating embeddings (UUID based): {e}", exc_info=True)
             return False
 
     async def _load_documents(self, force_reload: bool = False):
-        """Load document data from disk, run migration, and add any new .txt files."""
-        # Wrap the entire loading process in a try/except
-        try:
-            logger.info("--- Starting Document Load/Migration Process ---")
-            # Reset in-memory state initially
-            self.chunks = {}
-            self.contextualized_chunks = {}
-            self.embeddings = {}
-            self.metadata = {}
-            self.bm25_indexes = {}
+        logger.info(f"--- DocumentManager: Starting _load_documents (force_reload={force_reload}) ---")
+        self.chunks, self.contextualized_chunks, self.embeddings, self.metadata, self.bm25_indexes = {}, {}, {}, {}, {}
+        migration_flag_file = self.base_dir / ".migration_to_uuid_complete"
+        metadata_path = self.base_dir / 'metadata.json'
+        needs_migration = not migration_flag_file.exists()
 
-            # --- Step 1: Attempt to load existing metadata for migration ---
-            loaded_metadata_for_migration = {}
-            metadata_path = self.base_dir / 'metadata.json'
-            if metadata_path.exists() and not force_reload:
+        if force_reload and migration_flag_file.exists():
+            needs_migration = False 
+        elif force_reload: 
+            needs_migration = True 
+
+        if needs_migration:
+            logger.warning("!!! UUID MIGRATION REQUIRED !!! Backup 'documents/' and 'lorebooks/' if not done. All docs will be re-processed.")
+            old_metadata_content = {}
+            if metadata_path.exists():
                 try:
-                    with open(metadata_path, 'r') as f:
-                        loaded_metadata_for_migration = json.load(f)
-                    logger.info(f"Loaded existing metadata from {metadata_path} for migration check.")
-                except json.JSONDecodeError:
-                    logger.error(f"Failed to decode existing metadata file {metadata_path}. Proceeding as if empty.", exc_info=True)
+                    with open(metadata_path, 'r', encoding='utf-8') as f:
+                        old_metadata_content = json.load(f)
+                    # Heuristic: if key looks like a UUID, assume already migrated (or partially)
+                    if old_metadata_content and all(len(k) > 30 and '-' in k for k in old_metadata_content.keys()):
+                        logger.info("Detected existing metadata.json appears to be UUID-keyed. Using it as base.")
+                        self.metadata = old_metadata_content # Use this as the base if it's already UUID keyed
+                        old_metadata_content = {} # Clear to prevent re-migration of these specific entries
                 except Exception as e:
-                    logger.error(f"Error loading existing metadata file {metadata_path}: {e}", exc_info=True)
-            else:
-                 logger.info("No existing metadata file found or force_reload=True. Skipping metadata load for migration.")
+                    logger.error(f"Error loading old metadata.json for migration: {e}")
+            
+            old_name_to_new_uuid_map = {}
 
-            # --- Step 2: Run Migration based on loaded metadata ---
-            migrated_count = 0
-            keys_to_migrate = list(loaded_metadata_for_migration.keys()) # Use the loaded metadata
-            needs_save_after_migration = False
-            temp_metadata_after_migration = loaded_metadata_for_migration.copy() # Work on a copy
-
-            if temp_metadata_after_migration: # Only run if metadata was loaded
-                logger.info("Checking existing document metadata for necessary migrations...")
-                for current_key in keys_to_migrate:
+            # 1. Migrate old 'documents/' based on old_metadata_content (if it's not already UUID keyed)
+            if old_metadata_content: # This ensures we only process if it's truly old, name-keyed metadata
+                logger.info("Migrating old 'documents/' based on old name-keyed metadata.json...")
+                for s_name_key, meta_val in list(old_metadata_content.items()):
+                    is_potential_uuid = False
                     try:
-                        meta = temp_metadata_after_migration.get(current_key)
-                        if not meta: continue
-
-                        original_name_in_meta = meta.get('original_name')
-                        expected_sanitized_key_if_current_is_orig = self._sanitize_name(current_key)
-
-                        needs_migration = False
-                        original_name_to_set = None
-
-                        if current_key != expected_sanitized_key_if_current_is_orig:
-                            needs_migration = True
-                            original_name_to_set = current_key
-                            logger.warning(f"Migration: Found potentially unsanitized key '{current_key}'.")
-                        elif original_name_in_meta is None:
-                            needs_migration = True
-                            original_name_to_set = current_key
-                            logger.warning(f"Migration: Found old metadata format for key '{current_key}' (missing 'original_name').")
-
-                        if needs_migration and original_name_to_set:
-                            new_sanitized_key = self._sanitize_name(original_name_to_set)
-
-                            if new_sanitized_key in temp_metadata_after_migration and new_sanitized_key != current_key:
-                                logger.error(f"Migration conflict! Cannot migrate '{current_key}' to '{new_sanitized_key}' because the target key already exists in metadata. Skipping migration for this entry.")
-                                continue
-
-                            logger.info(f"Migration: Migrating metadata entry: '{current_key}' -> '{new_sanitized_key}' (Original: '{original_name_to_set}')")
-
-                            # Update the temporary metadata dictionary
-                            if new_sanitized_key != current_key:
-                                meta_to_move = temp_metadata_after_migration.pop(current_key)
-                                meta_to_move['original_name'] = original_name_to_set
-                                temp_metadata_after_migration[new_sanitized_key] = meta_to_move
-                            else:
-                                temp_metadata_after_migration[current_key]['original_name'] = original_name_to_set
-
-                            # Attempt to rename file on disk
-                            old_file_path = self.base_dir / current_key
-                            new_file_path = self.base_dir / new_sanitized_key
-                            logger.debug(f"Migration: Checking file rename. Old path: '{old_file_path}', New path: '{new_file_path}'")
-                            if old_file_path.exists() and old_file_path != new_file_path:
-                                logger.info(f"Migration: Attempting to rename file '{old_file_path}' to '{new_file_path}'")
-                                try:
-                                    self.base_dir.mkdir(parents=True, exist_ok=True)
-                                    old_file_path.rename(new_file_path)
-                                    logger.info(f"Migration: Successfully renamed file: '{old_file_path}' -> '{new_file_path}'")
-                                except OSError as os_err:
-                                    logger.error(f"Migration: OS error renaming file '{old_file_path}' to '{new_file_path}': {os_err}", exc_info=True)
-                                except Exception as rename_err:
-                                    logger.error(f"Migration: Generic error renaming file '{old_file_path}' to '{new_file_path}': {rename_err}", exc_info=True)
-                            elif not old_file_path.exists() and new_sanitized_key != current_key:
-                                logger.warning(f"Migration: Old file path '{old_file_path}' not found, cannot rename.")
-                            elif old_file_path == new_file_path:
-                                logger.debug(f"Migration: File path '{old_file_path}' does not need renaming (already sanitized).")
-                            else:
-                                logger.debug(f"Migration: No file rename needed or possible for '{current_key}'.")
-
-                            migrated_count += 1
-                            needs_save_after_migration = True
-                    except Exception as migration_entry_error:
-                        logger.error(f"Error migrating entry for key '{current_key}': {migration_entry_error}", exc_info=True)
-
-                if migrated_count > 0:
-                    logger.info(f"Completed migration check. Migrated/updated {migrated_count} metadata entries.")
-                else:
-                    logger.info("No metadata entries required migration.")
-
-                # Update the main metadata with the migrated version
-                self.metadata = temp_metadata_after_migration
-                if needs_save_after_migration:
-                    logger.info("Saving migrated metadata structure to disk...")
-                    # Save only metadata for now, other files handled later
-                    try:
-                         with open(metadata_path, 'w') as f:
-                             json.dump(self.metadata, f)
-                    except Exception as save_err:
-                         logger.error(f"Failed to save migrated metadata: {save_err}", exc_info=True)
-            else:
-                 logger.info("Skipping migration check as no existing metadata was loaded.")
-            # --- End Migration Step ---
-
-
-            # --- Step 3: Check provider and decide on loading strategy ---
-            embeddings_provider_file = self.base_dir / 'embeddings_provider.txt'
-            provider_changed = False
-            if embeddings_provider_file.exists():
-                try:
-                    with open(embeddings_provider_file, 'r') as f:
-                        stored_provider = f.read().strip()
-                    if stored_provider != "gemini":
-                        logger.warning(f"Embedding provider changed from {stored_provider} to gemini. Embeddings will be regenerated.")
-                        provider_changed = True
-                except Exception as e:
-                    logger.error(f"Error reading embeddings provider file: {e}")
-
-            # --- Step 4: Load existing data OR regenerate based on provider change ---
-            chunks_path = self.base_dir / 'chunks.pkl'
-            embeddings_path = self.base_dir / 'embeddings.pkl'
-            contextualized_chunks_path = self.base_dir / 'contextualized_chunks.pkl'
-
-            # Decide whether to load existing pickles or start fresh/regenerate
-            should_load_existing = not force_reload and chunks_path.exists()
-
-            if should_load_existing and not provider_changed:
-                logger.info("Loading existing processed data (chunks, embeddings, contextualized chunks)...")
-                try:
-                    with open(chunks_path, 'rb') as f:
-                        self.chunks = pickle.load(f)
-                    if embeddings_path.exists():
-                         with open(embeddings_path, 'rb') as f:
-                             self.embeddings = pickle.load(f)
-                    else:
-                         logger.warning(f"Embeddings file {embeddings_path} not found. Embeddings will need regeneration.")
-                         self.embeddings = {} # Ensure it's empty if file missing
-                    if contextualized_chunks_path.exists():
-                         with open(contextualized_chunks_path, 'rb') as f:
-                             self.contextualized_chunks = pickle.load(f)
-                    else:
-                         self.contextualized_chunks = {}
-                    logger.info(f"Successfully loaded {len(self.chunks)} chunk entries and {len(self.embeddings)} embedding entries.")
-                    # Metadata was already loaded and potentially migrated
-                except (pickle.UnpicklingError, EOFError, FileNotFoundError) as load_err:
-                    logger.error(f"Error loading pickle files: {load_err}. Resetting data and proceeding.", exc_info=True)
-                    self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
-                    # Keep potentially migrated metadata
-                except Exception as e:
-                    logger.error(f"Unexpected error loading data: {e}. Resetting data.", exc_info=True)
-                    self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
-
-            elif should_load_existing and provider_changed:
-                logger.info("Provider changed. Loading chunks only and regenerating embeddings.")
-                try:
-                    with open(chunks_path, 'rb') as f:
-                        self.chunks = pickle.load(f)
-                    # Reset embeddings and contextualized chunks for regeneration
-                    self.embeddings = {}
-                    self.contextualized_chunks = {}
-                    self.bm25_indexes = {} # Reset BM25 as well
-
-                    # Regenerate embeddings (using migrated metadata)
-                    for s_name, chunks in self.chunks.items():
-                        original_name = self._get_original_name(s_name)
-                        logger.info(f"Regenerating embeddings for '{original_name}' (sanitized: {s_name}) due to provider change.")
-                        # ... (rest of regeneration logic as before) ...
-                        doc_path = self.base_dir / s_name
-                        doc_content = " ".join(chunks) # Default
-                        if doc_path.exists():
-                            try:
-                                with open(doc_path, 'r', encoding='utf-8-sig') as f:
-                                    doc_content = f.read()
-                            except Exception as read_err:
-                                logger.error(f"Error reading file {doc_path} for regeneration: {read_err}")
-
-                        contextualized = await self.contextualize_chunks(original_name, doc_content, chunks)
-                        self.contextualized_chunks[s_name] = contextualized
-                        titles = [original_name] * len(contextualized)
-                        self.embeddings[s_name] = await self.generate_embeddings(contextualized, is_query=False, titles=titles)
-                        self.bm25_indexes[s_name] = self._create_bm25_index(contextualized)
-                        # Update metadata timestamp and potentially contextualized flag
-                        if s_name in self.metadata:
-                            self.metadata[s_name]['updated'] = datetime.now().isoformat()
-                            self.metadata[s_name]['contextualized'] = True # Assume contextualized after regen
-                        else: # Should exist after migration, but safety
-                             self.metadata[s_name] = {'original_name': original_name, 'updated': datetime.now().isoformat(), 'chunk_count': len(chunks), 'contextualized': True}
-
-                    needs_save_after_migration = True # Mark for saving regenerated data
-
-                except Exception as e:
-                    logger.error(f"Error during provider change regeneration: {e}. Resetting data.", exc_info=True)
-                    self.chunks, self.embeddings, self.contextualized_chunks, self.metadata, self.bm25_indexes = {}, {}, {}, {}, {}
-
-            else: # Start fresh (force_reload or no chunks.pkl)
-                logger.info("Starting fresh: Initializing empty data structures.")
-                self.chunks, self.embeddings, self.contextualized_chunks = {}, {}, {}
-                # Keep potentially migrated metadata if it exists
-                if not self.metadata: # Only reset metadata if it wasn't loaded/migrated
-                     self.metadata = {}
-                self.bm25_indexes = {}
-
-
-            # --- Step 5: Rebuild BM25 Indexes ---
-            logger.info("Rebuilding BM25 indexes...")
-            self.bm25_indexes = {}
-            for s_name, chunks in self.chunks.items():
-                 # Use contextualized if available, otherwise original
-                 chunks_for_bm25 = self.contextualized_chunks.get(s_name, chunks)
-                 if chunks_for_bm25:
-                     self.bm25_indexes[s_name] = self._create_bm25_index(chunks_for_bm25)
-                 else:
-                      logger.warning(f"No chunks found for BM25 indexing for '{self._get_original_name(s_name)}' (sanitized: {s_name})")
-
-
-            # --- Step 6: Load New .txt Files ---
-            logger.info("Scanning for new .txt files...")
-            existing_sanitized_names = set(self.metadata.keys()) # Check against metadata keys now
-            all_txt_files_on_disk = list(self.base_dir.glob('*.txt'))
-            new_txt_files_to_load = []
-
-            for txt_file_path in all_txt_files_on_disk:
-                original_filename = txt_file_path.name
-                sanitized_filename = self._sanitize_name(original_filename)
-                # Check if the *sanitized* name is already in our metadata
-                if sanitized_filename not in existing_sanitized_names:
-                    s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
-                    if sanitized_filename == s_internal_list_name:
-                        logger.info(f"Skipping internal list file found on disk: {original_filename}")
+                        uuid.UUID(s_name_key)
+                        is_potential_uuid = True
+                    except ValueError:
+                        pass # Not a UUID, proceed with migration for this entry
+                    
+                    if is_potential_uuid:
+                        logger.info(f"Skipping key '{s_name_key}' as it appears to be a UUID during old metadata processing.")
                         continue
-                    new_txt_files_to_load.append(txt_file_path)
-                # Check if metadata needs original_name added (e.g., if migration missed it somehow)
-                elif 'original_name' not in self.metadata.get(sanitized_filename, {}):
-                     logger.warning(f"Existing document '{sanitized_filename}' missing original name in metadata. Updating.")
-                     self.metadata[sanitized_filename]['original_name'] = original_filename
 
-            if new_txt_files_to_load:
-                logger.info(f"Found {len(new_txt_files_to_load)} new .txt files to load")
-                for txt_file_path in new_txt_files_to_load:
-                    original_filename = txt_file_path.name
-                    try:
-                        with open(txt_file_path, 'r', encoding='utf-8-sig') as f:
-                            content = f.read()
-                        # Pass the ORIGINAL filename to add_document
-                        # Use save_to_disk=False to batch saving
-                        await self.add_document(original_filename, content, save_to_disk=False, _internal_call=False)
-                        logger.info(f"Loaded and processed new file: {original_filename}")
-                        needs_save_after_migration = True # Mark for saving since new docs were added
+                    original_name = meta_val.get('original_name', s_name_key)
+                    old_file_path = self.base_dir / s_name_key # s_name_key is the old sanitized filename
+                    
+                    if old_file_path.is_file():
+                        try:
+                            content = old_file_path.read_text(encoding='utf-8-sig')
+                            new_doc_uuid_for_old_file = str(uuid.uuid4())
+                            added_uuid = await self.add_document(original_name, content, save_to_disk=False, existing_uuid=new_doc_uuid_for_old_file, _internal_call=True)
+                            if added_uuid:
+                                old_name_to_new_uuid_map[original_name] = added_uuid
+                                if not original_name.endswith(".txt"): # Handle cases where .txt might have been used for lookup
+                                     old_name_to_new_uuid_map[f"{original_name}.txt"] = added_uuid
+                                old_file_path.unlink()
+                                logger.info(f"Migrated old doc '{original_name}' (was {s_name_key}) to UUID {added_uuid}")
+                        except Exception as e:
+                            logger.error(f"Error migrating old doc '{original_name}' from path {old_file_path}: {e}", exc_info=True)
+            
+            # 2. Integrate 'lorebooks/'
+            lorebooks_dir = Path(self.base_dir).parent / "lorebooks"
+            if lorebooks_dir.exists() and lorebooks_dir.is_dir():
+                logger.info("Migrating 'lorebooks/'...")
+                for lb_file in lorebooks_dir.glob("*.txt"): # Assuming lorebooks are .txt
+                    if lb_file.is_file():
+                        try:
+                            content = lb_file.read_text(encoding='utf-8-sig')
+                            new_uuid_for_lorebook = await self.add_document(lb_file.name, content, save_to_disk=False, _internal_call=True)
+                            if new_uuid_for_lorebook:
+                                old_name_to_new_uuid_map[lb_file.name] = new_uuid_for_lorebook
+                                lb_file.unlink()
+                                logger.info(f"Migrated lorebook '{lb_file.name}' to UUID {new_uuid_for_lorebook}")
+                        except Exception as e:
+                            logger.error(f"Error migrating lorebook {lb_file.name}: {e}", exc_info=True)
+                try: 
+                    if not any(lorebooks_dir.iterdir()): # Check if empty before trying to remove
+                        lorebooks_dir.rmdir()
+                        logger.info(f"Removed empty lorebooks directory: {lorebooks_dir}")
+                except Exception as e_rmdir: 
+                    logger.warning(f"Could not remove lorebooks directory {lorebooks_dir}: {e_rmdir}")
+
+
+            # 3. Update 'tracked_google_docs.json'
+            tracked_gdocs_file = self.base_dir / "tracked_google_docs.json"
+            if tracked_gdocs_file.exists():
+                logger.info("Updating 'tracked_google_docs.json'...")
+                new_gdoc_list = []
+                try:
+                    old_gdocs = json.loads(tracked_gdocs_file.read_text(encoding='utf-8'))
+                    for entry in old_gdocs:
+                        gdoc_id = entry.get('id')
+                        custom_name = entry.get('custom_name')
+                        name_key_for_map = custom_name or f"googledoc_{gdoc_id}.txt"
+                        
+                        internal_uuid = old_name_to_new_uuid_map.get(name_key_for_map)
+                        if not internal_uuid and custom_name and not custom_name.endswith(".txt"): 
+                             internal_uuid = old_name_to_new_uuid_map.get(custom_name)
+                        
+                        if internal_uuid:
+                            new_gdoc_list.append({
+                                "google_doc_id": gdoc_id, 
+                                "internal_doc_uuid": internal_uuid, 
+                                "original_name_at_import": custom_name or f"googledoc_{gdoc_id}",
+                                "added_at": entry.get('added_at', datetime.now().isoformat())
+                            })
+                        else:
+                            logger.warning(f"Could not map Google Doc ID {gdoc_id} (name key: {name_key_for_map}) to new internal UUID. Tracking entry dropped.")
+                    tracked_gdocs_file.write_text(json.dumps(new_gdoc_list, indent=2), encoding='utf-8')
+                except Exception as e:
+                    logger.error(f"Error updating tracked_google_docs.json: {e}", exc_info=True)
+
+            # 4. Cleanup unidentified files in 'documents/'
+            logger.info("Cleaning up unidentified files in 'documents/'...")
+            known_files = {"metadata.json", "chunks.pkl", "embeddings.pkl", "contextualized_chunks.pkl", 
+                           "embeddings_provider.txt", "tracked_google_docs.json", migration_flag_file.name}
+            if self.base_dir.is_dir():
+                for item in self.base_dir.iterdir():
+                    if item.is_file() and item.name not in known_files:
+                        is_uuid_txt_file = False
+                        try:
+                            uuid.UUID(item.stem)
+                            if item.suffix == '.txt':
+                                is_uuid_txt_file = True
+                        except ValueError:
+                            pass 
+                        
+                        if not is_uuid_txt_file: 
+                            logger.info(f"Deleting unidentified file: {item}")
+                            try:
+                                item.unlink()
+                            except Exception as e_unl:
+                                logger.error(f"Failed to delete {item}: {e_unl}")
+            
+            self._save_to_disk()
+            migration_flag_file.write_text(f"Migration to UUID completed on: {datetime.now().isoformat()}")
+            logger.info("--- UUID MIGRATION PROCESS COMPLETED ---")
+        else: # Normal load (migration flag exists)
+            logger.info("Loading documents using existing UUID-based system.")
+            if metadata_path.exists():
+                try: 
+                    self.metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+                    logger.info(f"Loaded {len(self.metadata)} metadata entries.")
+                except Exception as e:
+                    logger.error(f"Error loading metadata.json: {e}", exc_info=True)
+                    self.metadata = {} # Ensure it's an empty dict on error
+            
+            for data_attr_name, pickle_filename in [('chunks','chunks.pkl'), ('contextualized_chunks','contextualized_chunks.pkl'), ('embeddings','embeddings.pkl')]:
+                fpath = self.base_dir / pickle_filename
+                if fpath.exists():
+                    try: 
+                        with open(fpath, 'rb') as f:
+                            setattr(self, data_attr_name, pickle.load(f))
+                        logger.info(f"Loaded {len(getattr(self, data_attr_name))} entries from {pickle_filename}")
                     except Exception as e:
-                        logger.error(f"Error processing new file {original_filename}: {e}", exc_info=True)
-            else:
-                logger.info("No new .txt files to load.")
+                        logger.error(f"Error loading {fpath}: {e}", exc_info=True)
+                        setattr(self, data_attr_name, {}) # Ensure empty dict on error
+            
+            logger.info("Rebuilding BM25 indexes from loaded data...")
+            for doc_uuid, doc_chunks_list in self.chunks.items():
+                chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, doc_chunks_list)
+                if chunks_for_bm25: 
+                    idx = self._create_bm25_index(chunks_for_bm25)
+                    if idx: self.bm25_indexes[doc_uuid] = idx
+            logger.info(f"Rebuilt {len(self.bm25_indexes)} BM25 indexes.")
+            
+            orphans_re_added = 0
+            if self.base_dir.is_dir():
+                for item_path in self.base_dir.glob("*.txt"):
+                    try:
+                        potential_uuid = item_path.stem
+                        uuid.UUID(potential_uuid) 
+                        if potential_uuid not in self.metadata:
+                            logger.warning(f"Found orphaned document file: {item_path}. Attempting to re-add.")
+                            content = item_path.read_text(encoding='utf-8-sig')
+                            added_uuid = await self.add_document(
+                                original_name=f"orphaned_{potential_uuid}", content=content, 
+                                save_to_disk=False, existing_uuid=potential_uuid, _internal_call=True)
+                            if added_uuid: orphans_re_added +=1
+                    except ValueError: pass 
+                    except Exception as e_orphan: logger.error(f"Error processing potential orphaned file {item_path}: {e_orphan}")
+            if orphans_re_added > 0:
+                logger.info(f"Re-added {orphans_re_added} orphaned document files.")
+                self._save_to_disk()
 
+        await self._update_document_list_file()
+        logger.info(f"--- DocumentManager: _load_documents finished. Metadata entries: {len(self.metadata)} ---")
 
-            # --- Step 7: Final Updates and Save ---
-            # Update the internal document list file
-            await self._update_document_list_file()
-
-            # Save the final state (includes migrated data, regenerated embeddings, new files)
-            logger.info("Saving final document manager state to disk...")
-            self._save_to_disk() # Save everything together at the end
-
-            # Update provider file last
-            try:
-                with open(embeddings_provider_file, 'w') as f:
-                    f.write("gemini")
-            except Exception as e:
-                 logger.error(f"Failed to update embeddings provider file: {e}")
-
-            logger.info("--- Document Load/Migration Process Finished ---")
-
-        # Add the main except block for the entire _load_documents method
-        except Exception as e:
-            logger.error(f"Critical error during document loading/migration: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            # Reset state to prevent partial loads
-            self.chunks = {}
-            self.contextualized_chunks = {}
-            self.embeddings = {}
-            self.metadata = {}
-            self.bm25_indexes = {}
 
     async def reload_documents(self):
         """Reload all documents from disk, regenerating embeddings."""
         await self._load_documents(force_reload=True)
 
     def get_lorebooks_path(self):
-        """Get or create lorebooks directory path."""
-        base_path = Path(self.base_dir).parent / "lorebooks"
-        base_path.mkdir(parents=True, exist_ok=True)
-        return base_path
+        """DEPRECATED: Lorebooks are now integrated. This path is for legacy purposes if any remain."""
+        lorebook_legacy_path = self.base_dir / "legacy_lorebooks" # Changed to a subdirectory
+        # lorebook_legacy_path.mkdir(parents=True, exist_ok=True) # No need to create if it's just for checking
+        logger.warning("get_lorebooks_path() is deprecated. Lorebooks are integrated into the main document system.")
+        return lorebook_legacy_path
     
-    def track_google_doc(self, doc_id, name=None):
-        """Add a Google Doc to tracked list."""
-        # Load existing tracked docs
-        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+    def track_google_doc(self, google_doc_id: str, internal_doc_uuid: str, original_name_at_import: str):
+        """Track a Google Doc by linking its ID to an internal document UUID."""
+        tracked_file = self.base_dir / "tracked_google_docs.json"
+        tracked_docs = []
         if tracked_file.exists():
-            with open(tracked_file, 'r') as f:
-                tracked_docs = json.load(f)
-        else:
-            tracked_docs = []
-        
-        # Check if doc is already tracked
-        for i, doc in enumerate(tracked_docs):
-            if doc['id'] == doc_id:
-                # If name is provided and different from current, update it
-                if name and doc.get('custom_name') != name:
-                    old_name = doc.get('custom_name')
-                    tracked_docs[i]['custom_name'] = name
-                    
-                    # Save updated list
-                    with open(tracked_file, 'w') as f:
-                        json.dump(tracked_docs, f)
-                    
-                    return f"Google Doc {doc_id} already tracked, updated name from '{old_name}' to '{name}'"
-                return f"Google Doc {doc_id} already tracked"
-        
-        # Add new doc if not already tracked
-        tracked_docs.append({
-            'id': doc_id,
-            'custom_name': name,
-            'added_at': datetime.now().isoformat()
-        })
-        
-        # Save updated list
-        with open(tracked_file, 'w') as f:
-            json.dump(tracked_docs, f)
-        
-        return f"Added Google Doc {doc_id} to tracked list"
-
-    async def rename_document(self, old_name: str, new_name: str) -> str: # Make async
-        """Rename a document in the system (regular doc, Google Doc, or lorebook)."""
-        # Use original names for checks against internal list name
-        if old_name == self._internal_list_doc_name:
-            return f"Cannot rename the internal document list file '{old_name}'."
-        s_internal_list_name = self._sanitize_name(self._internal_list_doc_name)
-        s_new_name = self._sanitize_name(new_name)
-        if s_new_name == s_internal_list_name:
-             return f"Cannot rename a document to the internal list file name '{new_name}' (sanitized: {s_new_name})."
-
-        result_message = f"Document '{old_name}' not found in the system" # Default message
-
-        # --- Regular Document Rename ---
-        s_old_name = self._get_sanitized_name_from_original(old_name)
-
-        if s_old_name and s_old_name in self.metadata:
-            logger.info(f"Attempting to rename regular document '{old_name}' (sanitized: {s_old_name}) to '{new_name}' (sanitized: {s_new_name})")
-
-            # Check if new sanitized name conflicts with an existing document (excluding itself)
-            if s_new_name in self.metadata and s_new_name != s_old_name:
-                existing_original = self._get_original_name(s_new_name)
-                return f"Cannot rename to '{new_name}': Sanitized name '{s_new_name}' conflicts with existing document '{existing_original}'."
-
-            # Update the in-memory dictionaries using sanitized names
-            self.chunks[s_new_name] = self.chunks.pop(s_old_name)
-            if s_old_name in self.contextualized_chunks: # Handle contextualized chunks
-                self.contextualized_chunks[s_new_name] = self.contextualized_chunks.pop(s_old_name)
-            self.embeddings[s_new_name] = self.embeddings.pop(s_old_name)
-            if s_old_name in self.bm25_indexes: # Handle BM25 index
-                 self.bm25_indexes[s_new_name] = self.bm25_indexes.pop(s_old_name)
-
-            # Update metadata: pop old, update new key, store original name
-            meta = self.metadata.pop(s_old_name)
-            meta['original_name'] = new_name # Update original name field
-            meta['updated'] = datetime.now().isoformat()
-            self.metadata[s_new_name] = meta
-
-            # Save the changes to disk (pickles and json)
-            self._save_to_disk()
-
-            # Rename the actual file on disk using sanitized names
-            old_file_path = self.base_dir / s_old_name
-            if old_file_path.exists():
-                new_file_path = self.base_dir / s_new_name
-                try:
-                    old_file_path.rename(new_file_path)
-                    logger.info(f"Renamed file on disk from {s_old_name} to {s_new_name}")
-                except Exception as e:
-                    logger.error(f"Failed to rename file {old_file_path} to {new_file_path}: {e}")
-                    # Consider how to handle this - maybe revert in-memory changes?
-
-            result_message = f"Document renamed from '{old_name}' to '{new_name}'"
-            await self._update_document_list_file() # Update list after rename
-            return result_message
-
-        # Check if it's a Google Doc
-        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
-        if tracked_file.exists():
-            with open(tracked_file, 'r') as f:
-                tracked_docs = json.load(f)
-            
-            # --- Google Doc Rename ---
-            logger.info(f"Checking if '{old_name}' corresponds to a tracked Google Doc.")
-            # Check if old_name is a Google Doc custom name or filename derived from ID
-            doc_found = False
-            for i, doc in enumerate(tracked_docs):
-                doc_id = doc['id']
-                current_custom_name = doc.get('custom_name')
-                # Generate the potential filename based on ID (before sanitization)
-                id_based_filename_orig = f"googledoc_{doc_id}.txt"
-
-                # Check if old_name matches the current custom name OR the ID-based name
-                if old_name == current_custom_name or old_name == id_based_filename_orig:
-                    logger.info(f"Found matching Google Doc (ID: {doc_id}). Updating custom name to '{new_name}'.")
-                    # Update the custom name in the tracking list
-                    tracked_docs[i]['custom_name'] = new_name
-                    doc_found = True
-
-                    # Save the updated tracking list
-                    with open(tracked_file, 'w') as f:
-                        json.dump(tracked_docs, f, indent=2) # Add indent for readability
-
-                    # Now, check if this Google Doc is *also* managed internally
-                    # Determine the sanitized name it *would* have had based on its *previous* name
-                    s_old_name_gdoc = self._get_sanitized_name_from_original(current_custom_name or id_based_filename_orig)
-
-                    if s_old_name_gdoc and s_old_name_gdoc in self.metadata:
-                        logger.info(f"Google Doc '{old_name}' is also managed internally (sanitized: {s_old_name_gdoc}). Renaming internal data.")
-                        # Check for conflicts with the new sanitized name
-                        if s_new_name in self.metadata and s_new_name != s_old_name_gdoc:
-                             existing_original = self._get_original_name(s_new_name)
-                             # Revert tracking file change before returning error? Maybe not necessary.
-                             return f"Cannot rename Google Doc to '{new_name}': Sanitized name '{s_new_name}' conflicts with existing document '{existing_original}'."
-
-                        # Rename internal data similar to regular documents
-                        self.chunks[s_new_name] = self.chunks.pop(s_old_name_gdoc)
-                        if s_old_name_gdoc in self.contextualized_chunks:
-                            self.contextualized_chunks[s_new_name] = self.contextualized_chunks.pop(s_old_name_gdoc)
-                        self.embeddings[s_new_name] = self.embeddings.pop(s_old_name_gdoc)
-                        if s_old_name_gdoc in self.bm25_indexes:
-                             self.bm25_indexes[s_new_name] = self.bm25_indexes.pop(s_old_name_gdoc)
-
-                        meta = self.metadata.pop(s_old_name_gdoc)
-                        meta['original_name'] = new_name # Update original name field
-                        meta['updated'] = datetime.now().isoformat()
-                        self.metadata[s_new_name] = meta
-
-                        self._save_to_disk()
-
-                        # Rename the file on disk using sanitized names
-                        old_file_path = self.base_dir / s_old_name_gdoc
-                        if old_file_path.exists():
-                            new_file_path = self.base_dir / s_new_name
-                            try:
-                                old_file_path.rename(new_file_path)
-                                logger.info(f"Renamed Google Doc file on disk from {s_old_name_gdoc} to {s_new_name}")
-                            except Exception as e:
-                                logger.error(f"Failed to rename Google Doc file {old_file_path} to {new_file_path}: {e}")
-                    else:
-                         logger.info(f"Google Doc '{old_name}' was tracked but not found in internal document manager storage.")
-
-
-                    result_message = f"Google Doc renamed from '{old_name}' to '{new_name}' (tracking updated)"
-                    await self._update_document_list_file() # Update list if internal data changed
-                    return result_message # Exit loop once found and processed
-
-            if doc_found: # Should have returned inside loop if found
-                 pass # Should not reach here if found
-
-        # --- Lorebook Rename ---
-        # Lorebooks are not sanitized internally, handle directly by filename
-        lorebooks_path = self.get_lorebooks_path()
-        old_lorebook_path = lorebooks_path / old_name
-        # Try adding .txt if the direct name doesn't exist
-        if not old_lorebook_path.exists() and not old_name.endswith('.txt'):
-            old_lorebook_path = lorebooks_path / f"{old_name}.txt"
-
-        if old_lorebook_path.exists():
-            logger.info(f"Attempting to rename lorebook: {old_lorebook_path}")
-            # Ensure new name has .txt if old one did
-            new_lorebook_name = new_name
-            if old_lorebook_path.name.endswith('.txt') and not new_lorebook_name.endswith('.txt'):
-                new_lorebook_name += '.txt'
-
-            new_lorebook_path = lorebooks_path / new_lorebook_name
-
-            # Check for conflict
-            if new_lorebook_path.exists():
-                 return f"Cannot rename lorebook to '{new_name}': File already exists."
-
             try:
-                old_lorebook_path.rename(new_lorebook_path)
-                result_message = f"Lorebook renamed from '{old_lorebook_path.name}' to '{new_lorebook_path.name}'"
-                # Note: Lorebooks aren't in self.metadata, so list won't update automatically here.
-                return result_message
+                with open(tracked_file, 'r', encoding='utf-8') as f:
+                    tracked_docs = json.load(f)
             except Exception as e:
-                 logger.error(f"Failed to rename lorebook {old_lorebook_path} to {new_lorebook_path}: {e}")
-                 return f"Error renaming lorebook: {e}"
+                logger.error(f"Error reading {tracked_file} for GDoc tracking: {e}")
 
-        # Check if it's a lorebook
-        lorebooks_path = self.get_lorebooks_path()
-        old_file_path = lorebooks_path / old_name
-        if not old_file_path.exists() and not old_name.endswith('.txt'):
-            old_file_path = lorebooks_path / f"{old_name}.txt"
-            
-        if old_file_path.exists():
-            # Add .txt extension to new_name if it doesn't have it
-            if old_file_path.name.endswith('.txt') and not new_name.endswith('.txt'):
-                new_name += '.txt'
-            new_file_path = lorebooks_path / new_name
-            old_file_path.rename(new_file_path)
-            result_message = f"Lorebook renamed from '{old_name}' to '{new_name}'"
-            # Note: Lorebooks aren't in self.metadata, so list won't update automatically here.
-            # This might be desired behavior, or _update_document_list_file needs adjustment
-            # if lorebooks should also be listed. For now, assuming they aren't listed.
-            return result_message
-
-        return result_message # Return default "not found" if no match
-
-    async def delete_document(self, name: str) -> bool: # Make async
-        """Delete a document from the system using its original name."""
-        # Prevent deletion of the internal list document
-        if name == self._internal_list_doc_name:
-            logger.warning(f"Attempted to delete the internal document list file '{name}'. Operation aborted.")
-            return False
-
-        deleted_something = False
-        original_name_to_delete = name # Keep for logging/messages
-        logger.info(f"delete_document called with original_name_to_delete: '{original_name_to_delete}'") # ADDED LOGGING
-        s_name_to_delete = self._get_sanitized_name_from_original(original_name_to_delete)
-        logger.info(f"Resolved sanitized name: '{s_name_to_delete}'") # ADDED LOGGING
+        entry_found = False
+        for entry in tracked_docs:
+            if entry.get('google_doc_id') == google_doc_id:
+                entry['internal_doc_uuid'] = internal_doc_uuid
+                entry['original_name_at_import'] = original_name_at_import
+                entry['updated_at'] = datetime.now().isoformat()
+                entry_found = True
+                logger.info(f"Updated tracking for Google Doc ID {google_doc_id} to internal UUID {internal_doc_uuid}.")
+                break
+        
+        if not entry_found:
+            tracked_docs.append({
+                'google_doc_id': google_doc_id,
+                'internal_doc_uuid': internal_doc_uuid,
+                'original_name_at_import': original_name_at_import,
+                'added_at': datetime.now().isoformat()
+            })
+            logger.info(f"Added tracking for Google Doc ID {google_doc_id} with internal UUID {internal_doc_uuid}.")
 
         try:
-            # --- Regular Document Deletion ---
-            if s_name_to_delete and s_name_to_delete in self.metadata:
-                logger.info(f"Found document in metadata. Proceeding with deletion of '{original_name_to_delete}' (sanitized: {s_name_to_delete})") # ADDED LOGGING
-                # Remove from memory
-                if s_name_to_delete in self.chunks: del self.chunks[s_name_to_delete]
-                if s_name_to_delete in self.contextualized_chunks: del self.contextualized_chunks[s_name_to_delete]
-                if s_name_to_delete in self.embeddings: del self.embeddings[s_name_to_delete]
-                if s_name_to_delete in self.bm25_indexes: del self.bm25_indexes[s_name_to_delete]
-                
-                logger.info(f"Attempting to delete metadata entry for key: '{s_name_to_delete}'") # ADDED LOGGING
-                del self.metadata[s_name_to_delete] # Delete metadata last
-                logger.info(f"Successfully deleted metadata entry for key: '{s_name_to_delete}' from memory.") # ADDED LOGGING
-                logger.info(f"Metadata keys after deletion: {list(self.metadata.keys())}") # ADDED LOGGING
+            with open(tracked_file, 'w', encoding='utf-8') as f:
+                json.dump(tracked_docs, f, indent=2)
+            return f"Google Doc {google_doc_id} tracking updated/added with internal UUID {internal_doc_uuid}."
+        except Exception as e:
+            logger.error(f"Error writing {tracked_file} for GDoc tracking: {e}")
+            return f"Error saving GDoc tracking for {google_doc_id}."
 
-                # Save changes to pickles/json IMMEDIATELY after metadata deletion
-                logger.info(f"Attempting to save changes (especially metadata) to disk immediately after deleting '{s_name_to_delete}'...") # ADDED LOGGING
+
+    async def rename_document(self, doc_uuid: str, new_original_name: str) -> str:
+        """Rename a document's user-facing original_name given its UUID."""
+        if not doc_uuid or not new_original_name:
+            return "Error: Document UUID and new original name are required."
+
+        if doc_uuid not in self.metadata:
+            return f"Error: Document with UUID '{doc_uuid}' not found."
+
+        is_internal_list_doc = self.metadata[doc_uuid].get('original_name') == self._internal_list_doc_name
+        if new_original_name == self._internal_list_doc_name and not is_internal_list_doc:
+            return f"Error: Cannot rename a document to the internal list file name ('{self._internal_list_doc_name}')."
+        
+        for other_uuid, meta in self.metadata.items():
+            if other_uuid != doc_uuid and meta.get('original_name') == new_original_name:
+                return f"Error: Another document already has the original name '{new_original_name}'."
+
+        old_original_name = self.metadata[doc_uuid].get('original_name', doc_uuid)
+        self.metadata[doc_uuid]['original_name'] = new_original_name
+        self.metadata[doc_uuid]['updated'] = datetime.now().isoformat()
+        
+        logger.info(f"Renamed document (UUID: {doc_uuid}) from '{old_original_name}' to '{new_original_name}'.")
+
+        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+        if tracked_file.exists():
+            try:
+                with open(tracked_file, 'r', encoding='utf-8') as f: tracked_docs_list = json.load(f)
+                gdoc_updated = False
+                for gdoc_entry in tracked_docs_list:
+                    if gdoc_entry.get('internal_doc_uuid') == doc_uuid:
+                        gdoc_entry['original_name_at_import'] = new_original_name
+                        gdoc_updated = True
+                        break
+                if gdoc_updated:
+                    with open(tracked_file, 'w', encoding='utf-8') as f: json.dump(tracked_docs_list, f, indent=2)
+            except Exception as e_gdoc: logger.error(f"Error updating tracked_google_docs.json for rename: {e_gdoc}")
+
+        self._save_to_disk()
+        await self._update_document_list_file()
+        return f"Document (UUID: {doc_uuid}) original name changed from '{old_original_name}' to '{new_original_name}'."
+
+    async def delete_document(self, doc_uuid: str) -> bool: 
+        """Delete a document from the system using its UUID."""
+        if not doc_uuid: 
+            logger.error("Delete_document called with no UUID.")
+            return False
+
+        original_name = self._get_original_name(doc_uuid) 
+        
+        if original_name == self._internal_list_doc_name: 
+            logger.warning(f"Attempted to delete the internal document list file '{original_name}' (UUID: {doc_uuid}). Operation aborted.")
+            return False
+
+        if doc_uuid not in self.metadata:
+            logger.warning(f"Document with UUID '{doc_uuid}' (Original Name: '{original_name}') not found in metadata for deletion.")
+        
+        deleted_in_memory = False
+        if doc_uuid in self.metadata: del self.metadata[doc_uuid]; deleted_in_memory = True
+        if doc_uuid in self.chunks: del self.chunks[doc_uuid]; deleted_in_memory = True
+        if doc_uuid in self.contextualized_chunks: del self.contextualized_chunks[doc_uuid]; deleted_in_memory = True
+        if doc_uuid in self.embeddings: del self.embeddings[doc_uuid]; deleted_in_memory = True
+        if doc_uuid in self.bm25_indexes: del self.bm25_indexes[doc_uuid]; deleted_in_memory = True
+
+        if deleted_in_memory: logger.info(f"Removed document '{original_name}' (UUID: {doc_uuid}) from in-memory stores.")
+
+        file_path = self.base_dir / f"{doc_uuid}.txt"
+        file_deleted_from_disk = False
+        if file_path.exists():
+            try: file_path.unlink(); file_deleted_from_disk = True; logger.info(f"Deleted document file: {file_path}")
+            except Exception as e: logger.error(f"Failed to delete document file {file_path}: {e}")
+        else: logger.warning(f"Document file {file_path} not found on disk for deletion (Original: '{original_name}').")
+
+        gdoc_tracking_removed = False
+        tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
+        if tracked_file.exists():
+            try:
+                with open(tracked_file, 'r', encoding='utf-8') as f: tracked_docs_list = json.load(f)
+                initial_len = len(tracked_docs_list)
+                tracked_docs_list = [gd for gd in tracked_docs_list if gd.get('internal_doc_uuid') != doc_uuid]
+                if len(tracked_docs_list) < initial_len:
+                    with open(tracked_file, 'w', encoding='utf-8') as f: json.dump(tracked_docs_list, f, indent=2)
+                    gdoc_tracking_removed = True
+                    logger.info(f"Removed GDoc tracking for internal UUID {doc_uuid}")
+            except Exception as e: logger.error(f"Error updating tracked_google_docs.json for deletion of UUID {doc_uuid}: {e}")
+
+        if deleted_in_memory or file_deleted_from_disk or gdoc_tracking_removed:
+            try:
                 self._save_to_disk()
-                logger.info(f"Successfully saved changes to disk after deleting '{s_name_to_delete}'.") # ADDED LOGGING
-
-                # Remove file from disk using sanitized name
-                file_path = self.base_dir / s_name_to_delete
-                logger.info(f"Attempting to delete file from disk: {file_path}") # ADDED LOGGING
-                if file_path.exists():
-                    try:
-                        file_path.unlink()
-                        logger.info(f"Deleted file from disk: {file_path}")
-                    except Exception as e:
-                        logger.error(f"Failed to delete file {file_path}: {e}")
-                deleted_something = True
-            else: # ADDED ELSE BLOCK FOR LOGGING
-                logger.warning(f"Document '{original_name_to_delete}' not found in metadata (sanitized name resolved to: {s_name_to_delete}). Checking lorebooks and tracking file.") # ADDED LOGGING
-
-            # --- Lorebook Deletion ---
-            # Lorebooks use original names for files
-            lorebooks_path = self.get_lorebooks_path()
-            lorebook_path = lorebooks_path / original_name_to_delete
-            # Try adding .txt if direct name doesn't exist
-            if not lorebook_path.exists() and not original_name_to_delete.endswith('.txt'):
-                lorebook_path = lorebooks_path / f"{original_name_to_delete}.txt"
-
-            if lorebook_path.exists():
-                logger.info(f"Attempting to delete lorebook file: {lorebook_path}")
-                try:
-                    lorebook_path.unlink()
-                    logger.info(f"Deleted lorebook file: {lorebook_path}")
-                    deleted_something = True
-                except Exception as e:
-                    logger.error(f"Failed to delete lorebook file {lorebook_path}: {e}")
-
-            # --- Google Doc Tracking Deletion ---
-            tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
-            if tracked_file.exists():
-                try:
-                    with open(tracked_file, 'r') as f:
-                        tracked_docs = json.load(f)
-
-                    original_length = len(tracked_docs)
-                    # Find the doc to remove based on custom name or ID-based filename matching the *original* name provided
-                    docs_to_keep = []
-                    removed_gdoc = False
-                    for doc in tracked_docs:
-                        doc_id = doc['id']
-                        custom_name = doc.get('custom_name')
-                        id_based_filename_orig = f"googledoc_{doc_id}.txt"
-
-                        # Check if the original name matches either the custom name or the ID-based name
-                        if not (custom_name == original_name_to_delete or id_based_filename_orig == original_name_to_delete):
-                            docs_to_keep.append(doc)
-                        else:
-                            logger.info(f"Found tracked Google Doc entry corresponding to '{original_name_to_delete}' (ID: {doc_id}). Removing from tracking.")
-                            removed_gdoc = True
-
-                    if removed_gdoc:
-                        with open(tracked_file, 'w') as f:
-                            json.dump(docs_to_keep, f, indent=2)
-                        deleted_something = True # Mark as deleted if tracking entry was removed
-
-                except Exception as track_e:
-                    logger.error(f"Error updating tracked Google Docs file while deleting '{original_name_to_delete}': {track_e}")
-                    # Don't fail the whole delete operation, just log the tracking error
-
-            # --- Final Steps ---
-            if deleted_something:
-                 logger.info(f"Successfully completed deletion operations for '{original_name_to_delete}'")
-                 # Update the list file only if a *managed* document was deleted (i.e., s_name_to_delete was valid)
-                 # Moved this call to the beginning of the function to ensure it runs before potential errors during deletion/saving
-                 # if s_name_to_delete:
-                 #    await self._update_document_list_file()
-                 return True
-            else:
-                 logger.warning(f"Document, lorebook, or Google Doc tracking entry '{original_name_to_delete}' not found for deletion.")
-                 return False # Return False if nothing was found/deleted
-
-        except Exception as e:
-            logger.error(f"Error during deletion process for '{original_name_to_delete}': {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+                await self._update_document_list_file()
+                logger.info(f"Successfully deleted and saved for '{original_name}' (UUID: {doc_uuid}).")
+                return True
+            except Exception as e: logger.error(f"Error saving after deleting '{original_name}' (UUID: {doc_uuid}): {e}")
             return False
-
-        except Exception as e:
-            logger.error(f"Error deleting document {name}: {e}")
-            return False
-
-    async def delete_document(self, name: str) -> bool: # Make async
-        """Delete a document from the system using its original name."""
-        # Prevent deletion of the internal list document
-        if name == self._internal_list_doc_name:
-            logger.warning(f"Attempted to delete the internal document list file '{name}'. Operation aborted.")
-            return False
-
-        deleted_something = False
-        original_name_to_delete = name # Keep for logging/messages
-        logger.info(f"delete_document called with original_name_to_delete: '{original_name_to_delete}'") # ADDED LOGGING
-        s_name_to_delete = self._get_sanitized_name_from_original(original_name_to_delete)
-        logger.info(f"Resolved sanitized name: '{s_name_to_delete}'") # ADDED LOGGING
-
-        # Try updating the list file *before* attempting deletion, in case saving fails later
-        if s_name_to_delete:
-             try:
-                 logger.info(f"Attempting to update internal list file before deleting '{original_name_to_delete}'")
-                 await self._update_document_list_file() # Call update list early
-             except Exception as list_update_err:
-                  logger.error(f"Error updating list file before deletion: {list_update_err}")
-                  # Continue with deletion attempt even if list update fails
-
-        try:
-            # --- Regular Document Deletion ---
-            if s_name_to_delete and s_name_to_delete in self.metadata:
-                logger.info(f"Found document in metadata. Proceeding with deletion of '{original_name_to_delete}' (sanitized: {s_name_to_delete})") # ADDED LOGGING
-                # Remove from memory
-                if s_name_to_delete in self.chunks: del self.chunks[s_name_to_delete]
-                if s_name_to_delete in self.contextualized_chunks: del self.contextualized_chunks[s_name_to_delete]
-                if s_name_to_delete in self.embeddings: del self.embeddings[s_name_to_delete]
-                if s_name_to_delete in self.bm25_indexes: del self.bm25_indexes[s_name_to_delete]
-                
-                logger.info(f"Attempting to delete metadata entry for key: '{s_name_to_delete}'") # ADDED LOGGING
-                del self.metadata[s_name_to_delete] # Delete metadata last
-                logger.info(f"Successfully deleted metadata entry for key: '{s_name_to_delete}' from memory.") # ADDED LOGGING
-                logger.info(f"Metadata keys after deletion: {list(self.metadata.keys())}") # ADDED LOGGING
-
-                # Save changes to pickles/json IMMEDIATELY after metadata deletion
-                logger.info(f"Attempting to save changes (especially metadata) to disk immediately after deleting '{s_name_to_delete}'...") # ADDED LOGGING
-                self._save_to_disk()
-                logger.info(f"Successfully saved changes to disk after deleting '{s_name_to_delete}'.") # ADDED LOGGING
-
-                # Remove file from disk using sanitized name
-                file_path = self.base_dir / s_name_to_delete
-                if file_path.exists():
-                    try:
-                        file_path.unlink()
-                        logger.info(f"Deleted file from disk: {file_path}")
-                    except Exception as e:
-                        logger.error(f"Failed to delete file {file_path}: {e}")
-                deleted_something = True
-            else: # ADDED ELSE BLOCK FOR LOGGING
-                logger.warning(f"Document '{original_name_to_delete}' not found in metadata (sanitized name resolved to: {s_name_to_delete}). Checking lorebooks and tracking file.") # ADDED LOGGING
-
-            # --- Lorebook Deletion ---
-            # Lorebooks use original names for files
-            lorebooks_path = self.get_lorebooks_path()
-            lorebook_path = lorebooks_path / original_name_to_delete
-            # Try adding .txt if direct name doesn't exist
-            if not lorebook_path.exists() and not original_name_to_delete.endswith('.txt'):
-                lorebook_path = lorebooks_path / f"{original_name_to_delete}.txt"
-
-            if lorebook_path.exists():
-                logger.info(f"Attempting to delete lorebook file: {lorebook_path}")
-                try:
-                    lorebook_path.unlink()
-                    logger.info(f"Deleted lorebook file: {lorebook_path}")
-                    deleted_something = True
-                except Exception as e:
-                    logger.error(f"Failed to delete lorebook file {lorebook_path}: {e}")
-
-            # --- Google Doc Tracking Deletion ---
-            tracked_file = Path(self.base_dir) / "tracked_google_docs.json"
-            if tracked_file.exists():
-                try:
-                    with open(tracked_file, 'r') as f:
-                        tracked_docs = json.load(f)
-
-                    original_length = len(tracked_docs)
-                    # Find the doc to remove based on custom name or ID-based filename matching the *original* name provided
-                    docs_to_keep = []
-                    removed_gdoc = False
-                    for doc in tracked_docs:
-                        doc_id = doc['id']
-                        custom_name = doc.get('custom_name')
-                        id_based_filename_orig = f"googledoc_{doc_id}.txt"
-
-                        # Check if the original name matches either the custom name or the ID-based name
-                        if not (custom_name == original_name_to_delete or id_based_filename_orig == original_name_to_delete):
-                            docs_to_keep.append(doc)
-                        else:
-                            logger.info(f"Found tracked Google Doc entry corresponding to '{original_name_to_delete}' (ID: {doc_id}). Removing from tracking.")
-                            removed_gdoc = True
-
-                    if removed_gdoc:
-                        with open(tracked_file, 'w') as f:
-                            json.dump(docs_to_keep, f, indent=2)
-                        deleted_something = True # Mark as deleted if tracking entry was removed
-
-                except Exception as track_e:
-                    logger.error(f"Error updating tracked Google Docs file while deleting '{original_name_to_delete}': {track_e}")
-                    # Don't fail the whole delete operation, just log the tracking error
-
-            # --- Final Steps ---
-            if deleted_something:
-                 logger.info(f"Successfully completed deletion operations for '{original_name_to_delete}'")
-                 # Update the list file only if a *managed* document was deleted (i.e., s_name_to_delete was valid)
-                 # Moved this call to the beginning of the function to ensure it runs before potential errors during deletion/saving
-                 # if s_name_to_delete:
-                 #    await self._update_document_list_file()
-                 return True
-            else:
-                 logger.warning(f"Document, lorebook, or Google Doc tracking entry '{original_name_to_delete}' not found for deletion.")
-                 return False # Return False if nothing was found/deleted
-
-        except Exception as e:
-            logger.error(f"Error during deletion process for '{original_name_to_delete}': {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return False
-
-        except Exception as e:
-            logger.error(f"Error deleting document {name}: {e}")
-            return False
+        logger.warning(f"No action for delete_document UUID '{doc_uuid}' (Original: '{original_name}'). Not found.")
+        return False
 
 
-    async def rerank_results(self, query: str, initial_results: List[Tuple], top_k: int = None) -> List[Tuple]: # Make async
+    async def rerank_results(self, query: str, initial_results: List[Tuple[str, str, str, float, Optional[str], int, int]], top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         """
         Re-rank search results using the Gemini embedding model for more nuanced relevance.
         
         Args:
             query: The search query
-            initial_results: List of tuples (doc_name, chunk, similarity, image_id, chunk_index, total_chunks)
+            initial_results: List of tuples (doc_uuid, original_name, chunk, score, image_id, chunk_idx, total_chunks)
             top_k: Number of results to return after re-ranking
             
         Returns:
-            List of re-ranked results
+            List of re-ranked results (doc_uuid, original_name, chunk, combined_score, image_id, chunk_idx, total_chunks)
         """
-        if top_k is None:
-            top_k = self.top_k
-            
-        if not initial_results:
-            return []
+        if top_k is None: top_k = self.top_k
+        if not initial_results: return []
         
         logger.info(f"Re-ranking {len(initial_results)} initial results for query: {query}")
         
-        # Extract the text chunks from the initial results
-        chunks = [result[1] for result in initial_results]
+        chunks_to_rerank = [result[2] for result in initial_results] 
         
-        # Create specialized embedding queries for re-ranking
-        # This approach creates embeddings that better capture relevance to the specific query
-        
-        # 1. Generate a query-focused embedding that represents what we're looking for asynchronously
         query_context = f"Question: {query}\nWhat information would fully answer this question?"
-        query_embedding_result = await self.generate_embeddings([query_context], is_query=True) # Await async call
-        if query_embedding_result.size == 0:
-            logger.error("Failed to generate query embedding for reranking.")
-            return initial_results # Return original results if embedding fails
+        query_embedding_result = await self.generate_embeddings([query_context], is_query=True) 
+        if query_embedding_result.size == 0: return initial_results 
         query_embedding = query_embedding_result[0]
 
+        content_texts = [f"This document contains the following information: {chunk}" for chunk in chunks_to_rerank]
+        content_embeddings = await self.generate_embeddings(content_texts, is_query=False) 
+        if content_embeddings.size == 0 or content_embeddings.shape[0] != len(content_texts): return initial_results
 
-        # 2. Generate content-focused embeddings for each chunk asynchronously
-        content_texts = [f"This document contains the following information: {chunk}" for chunk in chunks]
-        content_embeddings = await self.generate_embeddings(content_texts, is_query=False) # Await async call
-        if content_embeddings.size == 0 or content_embeddings.shape[0] != len(content_texts):
-             logger.error("Failed to generate content embeddings for reranking or mismatch in count.")
-             return initial_results # Return original results if embedding fails
-
-
-        # 3. Calculate relevance scores using these specialized embeddings
-        # Ensure embeddings are compatible for dot product
-        if query_embedding.shape[0] != content_embeddings.shape[1]:
-             logger.error(f"Embedding dimension mismatch for reranking: Query({query_embedding.shape[0]}) vs Content({content_embeddings.shape[1]})")
-             return initial_results
+        if query_embedding.shape[0] != content_embeddings.shape[1]: return initial_results
 
         relevance_scores = np.dot(content_embeddings, query_embedding)
         
-        # 4. Create re-ranked results by combining original and new scores
-        reranked_results = []
-        for i, (doc, chunk, orig_sim, image_id, chunk_idx, total_chunks) in enumerate(initial_results):
+        reranked_results_with_data = []
+        for i, initial_res_tuple in enumerate(initial_results):
             if i < len(relevance_scores):
-                # Use weighted combination (favor the re-ranking score)
-                combined_score = 0.3 * orig_sim + 0.7 * float(relevance_scores[i])
-                reranked_results.append((doc, chunk, combined_score, image_id, chunk_idx, total_chunks))
+                original_score = initial_res_tuple[3] 
+                combined_score = 0.3 * original_score + 0.7 * float(relevance_scores[i])
+                reranked_results_with_data.append(initial_res_tuple[:3] + (combined_score,) + initial_res_tuple[4:])
         
-        # 5. Sort by combined score
-        reranked_results.sort(key=lambda x: x[2], reverse=True)
+        reranked_results_with_data.sort(key=lambda x: x[3], reverse=True)
         
-        # 6. Filter by minimum score threshold
-        min_score = self.config.RERANKING_MIN_SCORE if self.config else 0.45
-        filtered_results = [r for r in reranked_results if r[2] >= min_score]
+        min_score = self.config.RERANKING_MIN_SCORE if self.config and hasattr(self.config, 'RERANKING_MIN_SCORE') else 0.45
+        filter_mode = self.config.RERANKING_FILTER_MODE if self.config and hasattr(self.config, 'RERANKING_FILTER_MODE') else 'strict'
         
-        # Use filtered results if we have enough, otherwise use all re-ranked results
-        filter_mode = self.config.RERANKING_FILTER_MODE if self.config else 'strict'
-
-        # Apply filtering based on mode
         if filter_mode == 'dynamic':
-            # Analyze score distribution and set threshold dynamically
-            scores = [score for _, _, score, _, _, _ in reranked_results]
+            scores = [r[3] for r in reranked_results_with_data]
             if scores:
-                mean = sum(scores) / len(scores)
-                # Set threshold to mean * factor (can be tuned)
-                dynamic_threshold = mean * 0.8  # 80% of mean
+                mean_score = sum(scores) / len(scores)
+                dynamic_threshold = mean_score * 0.8 
                 min_score = max(min_score, dynamic_threshold)
-                logger.info(f"Dynamic threshold set to {min_score:.3f} (80% of mean {mean:.3f})")
-                filtered_results = [r for r in reranked_results if r[2] >= min_score]
-            else:
-                filtered_results = []
+            filtered_results = [r for r in reranked_results_with_data if r[3] >= min_score]
         elif filter_mode == 'topk':
-            # Traditional behavior - get top k regardless of score
-            filtered_results = reranked_results[:top_k] if top_k else reranked_results
-        else:
-            # 'strict' mode - use absolute threshold (already calculated above)
-            filtered_results = [r for r in reranked_results if r[2] >= min_score]
+            filtered_results = reranked_results_with_data[:top_k] if top_k else reranked_results_with_data
+        else: # strict
+            filtered_results = [r for r in reranked_results_with_data if r[3] >= min_score]
         
-        # Add fallback mechanism if filtered results are empty
-        if not filtered_results:
-            logger.warning(f"Filtering with mode '{filter_mode}' removed all results. Falling back to top-{top_k} results.")
-            filtered_results = reranked_results[:top_k] if top_k else []
+        if not filtered_results and reranked_results_with_data: 
+            logger.warning(f"Filtering with mode '{filter_mode}' (threshold {min_score:.3f}) removed all results. Falling back.")
+            filtered_results = reranked_results_with_data[:top_k] if top_k else []
         
-        # Only limit to top_k if we have more than needed and filter_mode isn't 'strict'
-        if top_k and len(filtered_results) > top_k:
-            final_results = filtered_results[:top_k]
-            logger.info(f"Enforcing maximum of {top_k} results (had {len(filtered_results)} after filtering)")
-        else:
-            final_results = filtered_results
+        final_results_to_return = filtered_results[:top_k] if top_k else filtered_results
 
-        logger.info(f"Re-ranking with '{filter_mode}' mode: {len(reranked_results)} -> {len(final_results)} results")
-        
-        # Log before/after for comparison
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"Re-ranking changed results from {len(initial_results)} to {len(final_results[:top_k])}")
-            
-            # Log the top 3 results before and after for comparison
-            logger.info("Top 3 BEFORE re-ranking:")
-            for i, (doc, chunk, sim, img_id, idx, total) in enumerate(initial_results[:3]):
-                logger.info(f"  #{i+1}: {doc} (score: {sim:.3f})")
-                
-            logger.info("Top 3 AFTER re-ranking:")
-            for i, (doc, chunk, sim, img_id, idx, total) in enumerate(final_results[:3]):
-                logger.info(f"  #{i+1}: {doc} (score: {sim:.3f})")
-        
-        # Return top_k results
-        return final_results[:top_k]
+        logger.info(f"Re-ranking with '{filter_mode}' mode: {len(initial_results)} -> {len(final_results_to_return)} results")
+        return final_results_to_return
