@@ -169,8 +169,20 @@ def register_commands(bot):
                 logger.info(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
                 pronoun_context_message = {
                     "role": "system",
-                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'."
-                }
+                    "content": f"""User Information: The users nickname is: {nickname}. 
+                    The user provided this pronouns string: "{pronouns}".
+
+                    Your job:
+                    1. split that string on “/” into segments.
+                        - subject = segment[0]
+                        - object  = segment[1] if it exists, else subject
+                        - possessive = segment[2] if it exists, else object
+                    2. whenever you talk *about* the player in third-person, use those pronouns.
+                    3. when you talk *to* the player, always say “you.”
+                    4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.
+                    if parsing fails, fall back to they/them/theirs.
+                    """
+                    }
             else:
                  logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
 
