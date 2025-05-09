@@ -496,21 +496,6 @@ def register_commands(bot):
             logger.error(f"Error removing Google Doc: {e}", exc_info=True)
             await interaction.followup.send(f"*my enhanced brain experienced an error!* couldn't remove document: {str(e)}")
     
-    @bot.tree.command(name="list_files", description="List files that Publicia can upload")
-    @app_commands.describe(
-        file_type="Type of files to list",
-        search_term="Optional search term to filter files"
-    )
-    @app_commands.choices(file_type=[ # This command is now less relevant with UUIDs.
-        app_commands.Choice(name="Documents", value="documents") 
-    ])
-    async def list_files(interaction: discord.Interaction, file_type: str, search_term: str = None):
-        await interaction.response.defer()
-        # This command is largely superseded by /list_docs which shows UUIDs and original names.
-        # Physical filenames are now UUIDs, which are not user-friendly to list directly this way.
-        # Lorebooks are also integrated.
-        await interaction.followup.send("This command is deprecated. Please use `/list_docs` to see all managed documents with their UUIDs and original names.")
-
     @bot.tree.command(name="retrieve_file", description="Retrieve a document by its UUID")
     @app_commands.describe(
         doc_uuid="UUID of the document to retrieve"

@@ -167,7 +167,6 @@ Comprehensive tools to help troubleshoot issues:
 | `/list_googledocs` | List all tracked Google Docs |
 | `/remove_googledoc` | Remove a tracked Google Doc |
 | `/rename_document` | Rename a document |
-| `/list_files` | List files in the knowledge base (Documents, Images, Lorebooks) |
 | `/retrieve_file` | Retrieve a specific file (Document or Lorebook) |
 | `/archive_channel` | Archive messages from a Discord channel as a document (admin only) |
 | `/summarize_doc` | Generate a summary of a document |
