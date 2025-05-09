@@ -681,12 +681,25 @@ class DocumentManager:
         else: # Normal load (migration flag exists)
             logger.info("Loading documents using existing UUID-based system.")
             if metadata_path.exists():
-                try: 
-                    self.metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
-                    logger.info(f"Loaded {len(self.metadata)} metadata entries.")
-                except Exception as e:
-                    logger.error(f"Error loading metadata.json: {e}", exc_info=True)
+                try:
+                    # Try to read the file content first
+                    raw_metadata_content = metadata_path.read_text(encoding='utf-8')
+                    self.metadata = json.loads(raw_metadata_content)
+                    logger.info(f"Loaded {len(self.metadata)} metadata entries from {metadata_path}.")
+                except OSError as ose: # Catch specific OS errors during file read
+                    logger.error(f"OSError reading metadata.json from {metadata_path}: {ose}", exc_info=True)
+                    self.metadata = {} 
+                except json.JSONDecodeError as jde: # Catch errors during JSON parsing
+                    logger.error(f"JSONDecodeError parsing metadata.json from {metadata_path}: {jde}", exc_info=True)
+                    # Attempt to load a backup or initialize as empty
+                    # For now, just initialize as empty if parsing fails
+                    self.metadata = {}
+                except Exception as e: # Catch any other unexpected errors
+                    logger.error(f"Unexpected error loading metadata.json from {metadata_path}: {e}", exc_info=True)
                     self.metadata = {} # Ensure it's an empty dict on error
+            else:
+                logger.info(f"Metadata file {metadata_path} not found. Initializing empty metadata.")
+                self.metadata = {}
             
             for data_attr_name, pickle_filename in [('chunks','chunks.pkl'), ('contextualized_chunks','contextualized_chunks.pkl'), ('embeddings','embeddings.pkl')]:
                 fpath = self.base_dir / pickle_filename
