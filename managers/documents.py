@@ -110,6 +110,90 @@ class DocumentManager:
             return self.metadata[doc_uuid].get('original_name', doc_uuid) 
         return doc_uuid
 
+    def _sanitize_name(self, name: str) -> str:
+        """Sanitizes a string to be safe for use as a filename or dictionary key."""
+        if not isinstance(name, str):
+            name = str(name) # Ensure it's a string
+
+        # Replace potentially problematic characters with underscores
+        # Includes Windows reserved chars: <>:"/\|?*
+        # Also includes control characters (0-31)
+        sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1F]', '_', name)
+
+        # Replace leading/trailing dots and spaces
+        sanitized = sanitized.strip('. ')
+
+        # Collapse multiple consecutive underscores
+        sanitized = re.sub(r'_+', '_', sanitized)
+
+        # Ensure the name is not empty after sanitization
+        if not sanitized:
+            sanitized = "untitled"
+        # Optional: Limit length?
+        # max_len = 200
+        # sanitized = sanitized[:max_len]
+        return sanitized
+
+    def _get_sanitized_name_from_original(self, original_name: str) -> Optional[str]:
+        """
+        Find the sanitized name corresponding to an original name.
+        Handles cases where the input might have a .txt extension but the stored name doesn't.
+        """
+        if not original_name: # Handle empty input
+            return None
+
+        # 1. Check direct match (input name == stored original_name)
+        # Iterate through metadata first to handle potential sanitization collisions
+        logger.debug(f"Attempt 1: Checking direct match for '{original_name}'") # ADDED LOGGING
+        for s_name, meta in self.metadata.items():
+            stored_original = meta.get('original_name') # ADDED LOGGING
+            logger.debug(f"Comparing '{original_name}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+            if stored_original == original_name:
+                logger.debug(f"Found direct match for '{original_name}' -> sanitized '{s_name}'")
+                return s_name
+
+        # 2. Check if input has .txt and stored original_name doesn't
+        name_without_txt = None
+        if original_name.endswith('.txt'):
+            name_without_txt = original_name[:-4]
+            if name_without_txt: # Ensure not empty after stripping
+                logger.debug(f"Attempt 2: Checking match for '{name_without_txt}' (removed .txt)") # ADDED LOGGING
+                for s_name, meta in self.metadata.items():
+                    stored_original = meta.get('original_name') # ADDED LOGGING
+                    logger.debug(f"Comparing '{name_without_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+                    if stored_original == name_without_txt:
+                        logger.debug(f"Found match for '{original_name}' by removing .txt ('{name_without_txt}') -> sanitized '{s_name}'")
+                        return s_name
+
+        # 3. Check if input *doesn't* have .txt but stored original_name *does* (less common)
+        name_with_txt = f"{original_name}.txt"
+        logger.debug(f"Attempt 3: Checking match for '{name_with_txt}' (added .txt)") # ADDED LOGGING
+        for s_name, meta in self.metadata.items():
+             stored_original = meta.get('original_name') # ADDED LOGGING
+             logger.debug(f"Comparing '{name_with_txt}' with stored '{stored_original}' (sanitized key: {s_name})") # ADDED LOGGING
+             if stored_original == name_with_txt:
+                 logger.debug(f"Found match for '{original_name}' by adding .txt ('{name_with_txt}') -> sanitized '{s_name}'")
+                 return s_name
+
+        # 4. Fallback: Check if the sanitized version of the input exists as a key
+        # This helps if the original_name field in metadata is somehow incorrect/missing
+        # but the sanitized key itself matches.
+        logger.debug(f"Attempt 4: Checking fallback using sanitized key") # ADDED LOGGING
+        s_name_direct = self._sanitize_name(original_name)
+        if s_name_direct in self.metadata:
+            logger.warning(f"Found sanitized key '{s_name_direct}' matching input '{original_name}', but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
+            return s_name_direct
+        # Also check sanitized version without .txt if applicable
+        if name_without_txt:
+            s_name_direct_no_txt = self._sanitize_name(name_without_txt)
+            if s_name_direct_no_txt in self.metadata:
+                 logger.warning(f"Found sanitized key '{s_name_direct_no_txt}' matching input '{original_name}' (without .txt), but original_name field in metadata might be inconsistent. Returning sanitized key as fallback.")
+                 return s_name_direct_no_txt
+
+
+        logger.warning(f"Could not find any matching sanitized name for original name: '{original_name}'")
+        return None # Not found
+
     def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
