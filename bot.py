@@ -2050,8 +2050,9 @@ class DiscordBot(commands.Bot):
                         - object  = segment[1] if it exists, else subject
                         - possessive = segment[2] if it exists, else object
                     2. whenever you talk *about* the player in third-person, use those pronouns.
-                    3. when you talk *to* the player, always say “you.”
+                    3. when you talk directly *to* the player, always say “you.”
                     4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.
+                    5. do NOT reference the pronouns directly, work them in naturally
                     if parsing fails, fall back to they/them/theirs.
                     """
                 }

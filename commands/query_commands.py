@@ -178,8 +178,9 @@ def register_commands(bot):
                         - object  = segment[1] if it exists, else subject
                         - possessive = segment[2] if it exists, else object
                     2. whenever you talk *about* the player in third-person, use those pronouns.
-                    3. when you talk *to* the player, always say “you.”
+                    3. when you talk directly *to* the player, always say “you.”
                     4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.
+                    5. do NOT reference the pronouns directly, work them in naturally
                     if parsing fails, fall back to they/them/theirs.
                     """
                     }
@@ -253,7 +254,7 @@ def register_commands(bot):
                     # Adjust the introductory text slightly if needed
                     keyword_context_str = f"Additional Context from Keyword Database ({definitions_count} entries found, duplicates possible):\n" + "\n".join(keyword_context_parts)
                     # Truncate if necessary
-                    max_keyword_context_len = 4000 # Adjust as needed
+                    max_keyword_context_len = 8192 # Adjust as needed
                     if len(keyword_context_str) > max_keyword_context_len:
                          keyword_context_str = keyword_context_str[:max_keyword_context_len] + "\n... [Keyword Context Truncated]"
                          logger.warning(f"Keyword context truncated to {max_keyword_context_len} characters.")
