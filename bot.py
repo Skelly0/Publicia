@@ -565,7 +565,7 @@ class DiscordBot(commands.Bot):
                         #      logger.error(f"Refresh: Document manager failed to add/update document for '{original_name}'")
                         # --- End old logic ---
                     else:
-                        logger.info(f"{log_prefix} Google Doc {doc_id} ('{original_name}') has not changed, skipping")
+                        logger.info(f"{log_prefix} Google Doc {google_doc_id} ('{name_for_doc_mgr}') has not changed, skipping")
 
                 except Exception as e:
                     logger.error(f"Error refreshing doc (Entry ID for log: {doc_id_for_logging}): {e}") # Correct indentation for the except block
