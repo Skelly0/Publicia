@@ -104,6 +104,11 @@ def tag_lore_in_docx(docx_filepath: str) -> Optional[str]:
 class DocumentManager:
     """Manages document storage, embeddings, and retrieval using UUIDs as primary keys."""
 
+    # Maximum byte size for chunks sent to Google Embedding API
+    # Google's limit is 36000 bytes for the request payload.
+    # Set slightly lower to account for JSON overhead and other metadata.
+    MAX_EMBEDDING_CHUNK_BYTES = 35000 
+
     def _get_original_name(self, doc_uuid: str) -> str:
         """Retrieve the original document name from metadata given the document's UUID."""
         if doc_uuid in self.metadata:
@@ -353,7 +358,7 @@ class DocumentManager:
             system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
             user_prompt = f"""<document> \n{document_content} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{chunk_content} \n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7 - https://discord.gg/dpsrp", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             fallback_models = ["cohere/command-r-08-2024", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
@@ -401,16 +406,73 @@ class DocumentManager:
         return np.array([e for e in final_embeddings if e is not None])
 
     def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
-        chunk_size = chunk_size or (self.config.CHUNK_SIZE if self.config else 750)
-        overlap = overlap or (self.config.CHUNK_OVERLAP if self.config else 125)
-        if not text or not text.strip(): return []
+        """
+        Chunks text by word count, then further splits chunks if they exceed byte limits.
+        """
+        word_chunk_size = chunk_size or (self.config.CHUNK_SIZE if self.config else 750)
+        word_overlap = overlap or (self.config.CHUNK_OVERLAP if self.config else 125)
+        max_bytes = (self.config.MAX_EMBEDDING_CHUNK_BYTES 
+                     if self.config and hasattr(self.config, 'MAX_EMBEDDING_CHUNK_BYTES') 
+                     else self.MAX_EMBEDDING_CHUNK_BYTES)
+
+        if not text or not text.strip():
+            return []
+
         words = text.split()
-        if not words or len(words) <= chunk_size: return [' '.join(words)] if words else []
-        chunks_list = []
-        for i in range(0, len(words), chunk_size - overlap):
-            chunks_list.append(' '.join(words[i:min(i + chunk_size, len(words))]))
-        return chunks_list
-    
+        if not words:
+            return []
+
+        # Initial chunking by word count
+        initial_word_chunks = []
+        if len(words) <= word_chunk_size:
+            initial_word_chunks.append(' '.join(words))
+        else:
+            for i in range(0, len(words), word_chunk_size - word_overlap):
+                initial_word_chunks.append(' '.join(words[i:min(i + word_chunk_size, len(words))]))
+
+        if not initial_word_chunks:
+            return []
+
+        # Further split chunks if they exceed byte limit
+        final_chunks = []
+        for word_chunk in initial_word_chunks:
+            if not word_chunk.strip():
+                continue
+            
+            chunk_bytes = len(word_chunk.encode('utf-8'))
+
+            if chunk_bytes <= max_bytes:
+                final_chunks.append(word_chunk)
+            else:
+                # Byte-based splitting for oversized chunks
+                # This is a simpler split, could be made more sophisticated (e.g., sentence boundaries)
+                # For now, split by words until under byte limit.
+                sub_words = word_chunk.split()
+                current_sub_chunk_words = []
+                current_sub_chunk_bytes = 0
+                
+                for i, sub_word in enumerate(sub_words):
+                    sub_word_bytes = len(sub_word.encode('utf-8'))
+                    # Add 1 byte for space, unless it's the first word in the sub_chunk
+                    space_bytes = 1 if current_sub_chunk_words else 0 
+
+                    if current_sub_chunk_bytes + sub_word_bytes + space_bytes > max_bytes:
+                        if current_sub_chunk_words: # Add the current sub-chunk if it's not empty
+                            final_chunks.append(' '.join(current_sub_chunk_words))
+                        # Start a new sub-chunk
+                        current_sub_chunk_words = [sub_word]
+                        current_sub_chunk_bytes = sub_word_bytes
+                    else:
+                        current_sub_chunk_words.append(sub_word)
+                        current_sub_chunk_bytes += sub_word_bytes + space_bytes
+                
+                # Add any remaining part of the sub-chunk
+                if current_sub_chunk_words:
+                    final_chunks.append(' '.join(current_sub_chunk_words))
+        
+        # Filter out any empty strings that might have been produced
+        return [chunk for chunk in final_chunks if chunk and chunk.strip()]
+
     def cleanup_empty_documents(self):
         empty_docs_uuids = [uuid_key for uuid_key, embs in self.embeddings.items() if not isinstance(embs, np.ndarray) or embs.size == 0]
         for doc_uuid in empty_docs_uuids:
