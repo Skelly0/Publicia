@@ -263,94 +263,224 @@ class DocumentManager:
             else: logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}').")
         except Exception as e: logger.error(f"Failed to update internal document list file: {e}", exc_info=True)
 
-    async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None) -> Optional[np.ndarray]:
+    async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None, max_retries: int = 3) -> Optional[np.ndarray]:
         if not text or not text.strip(): return None
         if not self.config.GOOGLE_API_KEY: return None
         api_url = f"https://generativelanguage.googleapis.com/v1beta/{self.embedding_model}:embedContent?key={self.config.GOOGLE_API_KEY}"
         payload = {"content": {"parts": [{"text": text}]}, "task_type": task_type}
         if title and task_type == "retrieval_document": payload["title"] = title
         headers = {"Content-Type": "application/json"}
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(api_url, headers=headers, json=payload, timeout=60) as response:
-                    if response.status == 200:
-                        result = await response.json()
-                        if "embedding" in result and "values" in result["embedding"]:
-                            vec = np.array(result["embedding"]["values"])
-                            return vec[:self.embedding_dimensions] if self.embedding_dimensions and self.embedding_dimensions < len(vec) else vec
-                    logger.error(f"Google Embedding API error (Status {response.status}): {await response.text()}")
-        except Exception as e: logger.error(f"Error calling Google Embedding API: {e}")
+        
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(api_url, headers=headers, json=payload, timeout=60) as response:
+                        if response.status == 200:
+                            result = await response.json()
+                            if "embedding" in result and "values" in result["embedding"]:
+                                vec = np.array(result["embedding"]["values"])
+                                return vec[:self.embedding_dimensions] if self.embedding_dimensions and self.embedding_dimensions < len(vec) else vec
+                        
+                        # Log error but continue retrying for non-200 status
+                        error_text = await response.text()
+                        logger.warning(f"Google Embedding API error (Status {response.status}, attempt {attempt + 1}/{max_retries}): {error_text}")
+                        
+                        # Don't retry on certain permanent errors
+                        if response.status in [400, 401, 403]:
+                            logger.error(f"Permanent error {response.status}, not retrying")
+                            break
+                            
+            except Exception as e:
+                logger.warning(f"Error calling Google Embedding API (attempt {attempt + 1}/{max_retries}): {e}")
+                
+            # Wait before retrying (exponential backoff)
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                await asyncio.sleep(wait_time)
+        
+        logger.error(f"Failed to get embedding after {max_retries} attempts for text: {text[:100]}...")
         return None
 
     def _create_bm25_index(self, chunks: List[str]) -> Optional[BM25Okapi]:
-        tokenized_chunks = [chunk.lower().split() for chunk in chunks if chunk] 
-        return BM25Okapi(tokenized_chunks) if tokenized_chunks else None
+        if not chunks:
+            logger.warning("Cannot create BM25 index: no chunks provided")
+            return None
+            
+        # Filter out empty chunks and tokenize
+        tokenized_chunks = []
+        for i, chunk in enumerate(chunks):
+            if chunk and chunk.strip():
+                tokens = chunk.lower().split()
+                if tokens:  # Only add if we have actual tokens
+                    tokenized_chunks.append(tokens)
+                else:
+                    logger.warning(f"Chunk {i} has no tokens after processing: '{chunk[:50]}...'")
+            else:
+                logger.warning(f"Empty chunk at index {i}")
+        
+        if not tokenized_chunks:
+            logger.error(f"No valid tokenized chunks found out of {len(chunks)} input chunks")
+            return None
+            
+        try:
+            bm25_index = BM25Okapi(tokenized_chunks)
+            logger.debug(f"Created BM25 index with {len(tokenized_chunks)} chunks")
+            return bm25_index
+        except Exception as e:
+            logger.error(f"Failed to create BM25 index: {e}")
+            return None
         
     def _search_bm25(self, query: str, top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
         query_tokens = query.lower().split()
+        if not query_tokens:
+            logger.warning("BM25 search: No valid query tokens")
+            return []
+            
         results = []
         for doc_uuid, doc_chunks in self.chunks.items():
-            if not doc_chunks: continue
-            if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None:
-                chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, doc_chunks)
-                if chunks_for_bm25:
-                    self.bm25_indexes[doc_uuid] = self._create_bm25_index(chunks_for_bm25)
-                if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None: 
-                    logger.warning(f"Could not create BM25 index for {doc_uuid}")
-                    continue
+            if not doc_chunks:
+                logger.debug(f"Skipping document {doc_uuid}: no chunks")
+                continue
+                
+            # Determine which chunks to use for BM25 indexing
+            chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, [])
+            if not chunks_for_bm25:
+                chunks_for_bm25 = doc_chunks
+                logger.debug(f"Using original chunks for BM25 indexing for {doc_uuid}")
+            else:
+                logger.debug(f"Using contextualized chunks for BM25 indexing for {doc_uuid}")
             
-            bm25_scores = self.bm25_indexes[doc_uuid].get_scores(query_tokens)
-            original_name = self._get_original_name(doc_uuid)
-            for chunk_idx, score in enumerate(bm25_scores):
-                if chunk_idx < len(doc_chunks):
+            # Ensure BM25 index exists and is valid
+            if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None:
+                logger.debug(f"Creating BM25 index for {doc_uuid} with {len(chunks_for_bm25)} chunks")
+                self.bm25_indexes[doc_uuid] = self._create_bm25_index(chunks_for_bm25)
+                
+            if self.bm25_indexes[doc_uuid] is None:
+                logger.warning(f"Could not create BM25 index for {doc_uuid}, skipping")
+                continue
+            
+            try:
+                bm25_scores = self.bm25_indexes[doc_uuid].get_scores(query_tokens)
+                original_name = self._get_original_name(doc_uuid)
+                
+                # Validate that we have the expected number of scores
+                expected_scores = len(chunks_for_bm25)
+                if len(bm25_scores) != expected_scores:
+                    logger.warning(f"BM25 score count mismatch for {doc_uuid}: got {len(bm25_scores)}, expected {expected_scores}")
+                    # Use the minimum to avoid index errors
+                    max_idx = min(len(bm25_scores), len(doc_chunks), len(chunks_for_bm25))
+                else:
+                    max_idx = min(len(bm25_scores), len(doc_chunks))
+                
+                for chunk_idx in range(max_idx):
+                    score = bm25_scores[chunk_idx]
                     chunk_text = self.get_contextualized_chunk(doc_uuid, chunk_idx)
+                    
+                    # Skip chunks that couldn't be retrieved
+                    if chunk_text == "Chunk not found":
+                        logger.warning(f"Skipping chunk {chunk_idx} for {doc_uuid}: chunk not found")
+                        continue
+                        
                     image_id = self.metadata.get(doc_uuid, {}).get('image_id')
                     results.append((doc_uuid, original_name, chunk_text, float(score), image_id, chunk_idx + 1, len(doc_chunks)))
+                    
+            except Exception as e:
+                logger.error(f"Error getting BM25 scores for {doc_uuid}: {e}")
+                continue
+                
         results.sort(key=lambda x: x[3], reverse=True)
+        logger.debug(f"BM25 search returned {len(results)} results")
         return results[:top_k]
     
     def get_contextualized_chunk(self, doc_uuid: str, chunk_idx: int) -> str:
-        if doc_uuid in self.contextualized_chunks and chunk_idx < len(self.contextualized_chunks[doc_uuid]):
-            return self.contextualized_chunks[doc_uuid][chunk_idx]
-        if doc_uuid in self.chunks and chunk_idx < len(self.chunks[doc_uuid]):
-            return self.chunks[doc_uuid][chunk_idx]
-        logger.error(f"Chunk not found for UUID '{doc_uuid}' at index {chunk_idx}")
+        # First try contextualized chunks
+        if doc_uuid in self.contextualized_chunks:
+            contextualized = self.contextualized_chunks[doc_uuid]
+            if contextualized and chunk_idx < len(contextualized):
+                return contextualized[chunk_idx]
+            elif contextualized:
+                logger.warning(f"Contextualized chunk index {chunk_idx} out of range for {doc_uuid} (has {len(contextualized)} chunks)")
+        
+        # Fallback to original chunks
+        if doc_uuid in self.chunks:
+            original = self.chunks[doc_uuid]
+            if original and chunk_idx < len(original):
+                logger.debug(f"Using original chunk for {doc_uuid}[{chunk_idx}] (contextualized not available)")
+                return original[chunk_idx]
+            elif original:
+                logger.warning(f"Original chunk index {chunk_idx} out of range for {doc_uuid} (has {len(original)} chunks)")
+        
+        # Log detailed error information
+        contextualized_count = len(self.contextualized_chunks.get(doc_uuid, []))
+        original_count = len(self.chunks.get(doc_uuid, []))
+        logger.error(f"Chunk not found for UUID '{doc_uuid}' at index {chunk_idx}. "
+                    f"Available: {original_count} original chunks, {contextualized_count} contextualized chunks")
         return "Chunk not found"
 
     def _combine_search_results(
-        self, 
-        embedding_results: List[Tuple[str, str, str, float, Optional[str], int, int]], 
-        bm25_results: List[Tuple[str, str, str, float, Optional[str], int, int]], 
+        self,
+        embedding_results: List[Tuple[str, str, str, float, Optional[str], int, int]],
+        bm25_results: List[Tuple[str, str, str, float, Optional[str], int, int]],
         top_k: int = None
     ) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
         combined_scores_data = {}
         embedding_weight = 0.85
-        for res_tuple in embedding_results: 
+        
+        # Filter out results with "Chunk not found" from embedding results
+        valid_embedding_results = [r for r in embedding_results if r[2] != "Chunk not found"]
+        if len(valid_embedding_results) < len(embedding_results):
+            logger.warning(f"Filtered out {len(embedding_results) - len(valid_embedding_results)} embedding results with 'Chunk not found'")
+        
+        for res_tuple in valid_embedding_results:
             doc_uuid, _, _, score, _, chunk_idx, _ = res_tuple
             key = (doc_uuid, chunk_idx)
             norm_score = max(0, min(1, score))
-            if key not in combined_scores_data: combined_scores_data[key] = {'score': 0, 'data': res_tuple}
+            if key not in combined_scores_data:
+                combined_scores_data[key] = {'score': 0, 'data': res_tuple}
             combined_scores_data[key]['score'] += norm_score * embedding_weight
-            combined_scores_data[key]['data'] = res_tuple 
+            combined_scores_data[key]['data'] = res_tuple
 
         bm25_weight = 0.15
         if bm25_results:
-            all_bm25_scores = [r[3] for r in bm25_results if r[3] is not None]
-            max_bm25, min_bm25 = (max(all_bm25_scores) if all_bm25_scores else 1.0), (min(all_bm25_scores) if all_bm25_scores else 0.0)
-            range_bm25 = max_bm25 - min_bm25
-            for res_tuple in bm25_results:
-                doc_uuid, _, _, score, _, chunk_idx, _ = res_tuple
-                key = (doc_uuid, chunk_idx)
-                norm_score = (score - min_bm25) / range_bm25 if range_bm25 > 0 else 0.5
-                if key not in combined_scores_data: combined_scores_data[key] = {'score': 0, 'data': res_tuple}
-                combined_scores_data[key]['score'] += norm_score * bm25_weight
-                if combined_scores_data[key]['data'][2] == "Chunk not found": 
-                    combined_scores_data[key]['data'] = res_tuple
+            # Filter out results with "Chunk not found" from BM25 results
+            valid_bm25_results = [r for r in bm25_results if r[2] != "Chunk not found"]
+            if len(valid_bm25_results) < len(bm25_results):
+                logger.warning(f"Filtered out {len(bm25_results) - len(valid_bm25_results)} BM25 results with 'Chunk not found'")
+            
+            if valid_bm25_results:
+                all_bm25_scores = [r[3] for r in valid_bm25_results if r[3] is not None]
+                max_bm25, min_bm25 = (max(all_bm25_scores) if all_bm25_scores else 1.0), (min(all_bm25_scores) if all_bm25_scores else 0.0)
+                range_bm25 = max_bm25 - min_bm25
+                
+                for res_tuple in valid_bm25_results:
+                    doc_uuid, _, _, score, _, chunk_idx, _ = res_tuple
+                    key = (doc_uuid, chunk_idx)
+                    norm_score = (score - min_bm25) / range_bm25 if range_bm25 > 0 else 0.5
+                    if key not in combined_scores_data:
+                        combined_scores_data[key] = {'score': 0, 'data': res_tuple}
+                    combined_scores_data[key]['score'] += norm_score * bm25_weight
+                    # Prefer BM25 data if embedding data was "Chunk not found"
+                    if combined_scores_data[key]['data'][2] == "Chunk not found":
+                        combined_scores_data[key]['data'] = res_tuple
         
-        final_results = [(d['data'][0], d['data'][1], self.get_contextualized_chunk(d['data'][0], d['data'][5]-1), d['score'], d['data'][4], d['data'][5], d['data'][6]) for d in combined_scores_data.values()]
+        # Build final results, ensuring we get fresh chunk text and filter out any remaining "Chunk not found"
+        final_results = []
+        for d in combined_scores_data.values():
+            doc_uuid, original_name, _, score, image_id, chunk_idx, total_chunks = d['data']
+            # Get fresh chunk text to ensure consistency
+            chunk_text = self.get_contextualized_chunk(doc_uuid, chunk_idx - 1)  # chunk_idx is 1-based
+            
+            # Skip if chunk still not found
+            if chunk_text == "Chunk not found":
+                logger.warning(f"Skipping result for {doc_uuid}[{chunk_idx}]: chunk not found during final assembly")
+                continue
+                
+            final_results.append((doc_uuid, original_name, chunk_text, score, image_id, chunk_idx, total_chunks))
+        
         final_results.sort(key=lambda x: x[3], reverse=True)
+        logger.debug(f"Combined search results: {len(final_results)} valid results from {len(embedding_results)} embedding + {len(bm25_results)} BM25 results")
         return final_results[:top_k]
 
     async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
@@ -402,34 +532,51 @@ class DocumentManager:
                 title = titles[i] if titles and i < len(titles) and not is_query else None
                 tasks.append(self._get_google_embedding_async(text, task_type, title))
                 valid_indices.append(i)
+        
+        if not tasks:
+            logger.warning("No valid texts provided for embedding generation")
+            return np.array([])
+            
         results = await asyncio.gather(*tasks)
-        final_embeddings = [None] * len(texts)
-        placeholder = None
+        successful_embeddings = []
+        failed_indices = []
+        
         for i, res_emb in enumerate(results):
             original_idx = valid_indices[i]
             if res_emb is not None:
-                final_embeddings[original_idx] = res_emb
-                if placeholder is None: placeholder = np.zeros_like(res_emb)
-        for i in range(len(texts)):
-            if final_embeddings[i] is None:
-                if placeholder is not None: final_embeddings[i] = placeholder
-                else: return np.array([]) 
-        return np.array([e for e in final_embeddings if e is not None])
+                successful_embeddings.append(res_emb)
+            else:
+                failed_indices.append(original_idx)
+                logger.error(f"Failed to generate embedding for text at index {original_idx}: {texts[original_idx][:100]}...")
+        
+        if failed_indices:
+            logger.warning(f"Failed to generate embeddings for {len(failed_indices)} out of {len(texts)} texts. Failed indices: {failed_indices}")
+            
+        if not successful_embeddings:
+            logger.error("All embedding generation attempts failed")
+            return np.array([])
+            
+        # Only return successful embeddings - no zero-vector placeholders
+        # This means the caller needs to handle the case where fewer embeddings are returned than texts provided
+        logger.info(f"Successfully generated {len(successful_embeddings)} embeddings out of {len(texts)} texts")
+        return np.array(successful_embeddings)
 
     def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
         """
         Chunks text by word count, then further splits chunks if they exceed byte limits.
+        Validates that no content is lost during the chunking process.
         """
         word_chunk_size = chunk_size or (self.config.CHUNK_SIZE if self.config else 750)
         word_overlap = overlap or (self.config.CHUNK_OVERLAP if self.config else 125)
-        max_bytes = (self.config.MAX_EMBEDDING_CHUNK_BYTES 
-                     if self.config and hasattr(self.config, 'MAX_EMBEDDING_CHUNK_BYTES') 
+        max_bytes = (self.config.MAX_EMBEDDING_CHUNK_BYTES
+                     if self.config and hasattr(self.config, 'MAX_EMBEDDING_CHUNK_BYTES')
                      else self.MAX_EMBEDDING_CHUNK_BYTES)
 
         if not text or not text.strip():
             return []
 
-        words = text.split()
+        original_text = text.strip()
+        words = original_text.split()
         if not words:
             return []
 
@@ -439,7 +586,9 @@ class DocumentManager:
             initial_word_chunks.append(' '.join(words))
         else:
             for i in range(0, len(words), word_chunk_size - word_overlap):
-                initial_word_chunks.append(' '.join(words[i:min(i + word_chunk_size, len(words))]))
+                chunk_words = words[i:min(i + word_chunk_size, len(words))]
+                if chunk_words:  # Ensure we don't add empty chunks
+                    initial_word_chunks.append(' '.join(chunk_words))
 
         if not initial_word_chunks:
             return []
@@ -456,16 +605,14 @@ class DocumentManager:
                 final_chunks.append(word_chunk)
             else:
                 # Byte-based splitting for oversized chunks
-                # This is a simpler split, could be made more sophisticated (e.g., sentence boundaries)
-                # For now, split by words until under byte limit.
                 sub_words = word_chunk.split()
                 current_sub_chunk_words = []
                 current_sub_chunk_bytes = 0
                 
-                for i, sub_word in enumerate(sub_words):
+                for sub_word in sub_words:
                     sub_word_bytes = len(sub_word.encode('utf-8'))
                     # Add 1 byte for space, unless it's the first word in the sub_chunk
-                    space_bytes = 1 if current_sub_chunk_words else 0 
+                    space_bytes = 1 if current_sub_chunk_words else 0
 
                     if current_sub_chunk_bytes + sub_word_bytes + space_bytes > max_bytes:
                         if current_sub_chunk_words: # Add the current sub-chunk if it's not empty
@@ -482,7 +629,25 @@ class DocumentManager:
                     final_chunks.append(' '.join(current_sub_chunk_words))
         
         # Filter out any empty strings that might have been produced
-        return [chunk for chunk in final_chunks if chunk and chunk.strip()]
+        final_chunks = [chunk for chunk in final_chunks if chunk and chunk.strip()]
+        
+        # Validate that no content was lost during chunking
+        reconstructed_text = ' '.join(final_chunks)
+        original_words_set = set(original_text.split())
+        reconstructed_words_set = set(reconstructed_text.split())
+        
+        if original_words_set != reconstructed_words_set:
+            missing_words = original_words_set - reconstructed_words_set
+            extra_words = reconstructed_words_set - original_words_set
+            
+            if missing_words:
+                logger.error(f"Content validation failed: {len(missing_words)} words lost during chunking: {list(missing_words)[:10]}...")
+            if extra_words:
+                logger.warning(f"Content validation warning: {len(extra_words)} extra words found during chunking: {list(extra_words)[:10]}...")
+        else:
+            logger.debug(f"Content validation passed: All {len(original_words_set)} unique words preserved in {len(final_chunks)} chunks")
+        
+        return final_chunks
 
     def cleanup_empty_documents(self):
         empty_docs_uuids = [uuid_key for uuid_key, embs in self.embeddings.items() if not isinstance(embs, np.ndarray) or embs.size == 0]
@@ -529,11 +694,28 @@ class DocumentManager:
                 if chunks_for_processing:
                     titles = [original_name] * len(chunks_for_processing)
                     embeddings_arr = await self.generate_embeddings(chunks_for_processing, is_query=False, titles=titles)
-                else: 
+                    
+                    # Check if we got fewer embeddings than chunks
+                    if embeddings_arr.size > 0 and len(embeddings_arr) < len(chunks_for_processing):
+                        logger.warning(f"Got {len(embeddings_arr)} embeddings for {len(chunks_for_processing)} chunks in '{original_name}'. Some chunks will be unsearchable.")
+                        # Store only the chunks that have corresponding embeddings
+                        chunks_with_embeddings = chunks_for_processing[:len(embeddings_arr)]
+                        chunks_original_with_embeddings = chunks[:len(embeddings_arr)]
+                        
+                        self.chunks[doc_uuid] = chunks_original_with_embeddings
+                        self.contextualized_chunks[doc_uuid] = chunks_with_embeddings if should_ctx else []
+                        logger.info(f"Stored {len(chunks_original_with_embeddings)} chunks with embeddings out of {len(chunks)} total chunks for '{original_name}'")
+                    elif embeddings_arr.size == 0:
+                        logger.error(f"No embeddings generated for any chunks in '{original_name}'. Document will not be searchable.")
+                        self.chunks[doc_uuid] = []
+                        self.contextualized_chunks[doc_uuid] = []
+                    else:
+                        # All chunks have embeddings
+                        self.chunks[doc_uuid] = chunks
+                else:
                     embeddings_arr = np.array([])
+                    self.chunks[doc_uuid] = chunks
 
-
-                self.chunks[doc_uuid] = chunks
                 self.embeddings[doc_uuid] = embeddings_arr
                 
                 meta_entry = self.metadata.get(doc_uuid, {})
@@ -684,6 +866,22 @@ class DocumentManager:
 
                 titles = [original_name] * len(chunks_for_embedding)
                 new_embeddings = await self.generate_embeddings(chunks_for_embedding, is_query=False, titles=titles)
+                
+                # Handle case where fewer embeddings are returned than chunks
+                if new_embeddings.size > 0 and len(new_embeddings) < len(chunks_for_embedding):
+                    logger.warning(f"Regeneration: Got {len(new_embeddings)} embeddings for {len(chunks_for_embedding)} chunks in '{original_name}'. Truncating chunks to match.")
+                    # Update chunks to match the number of successful embeddings
+                    doc_specific_chunks_truncated = doc_specific_chunks[:len(new_embeddings)]
+                    chunks_for_embedding_truncated = chunks_for_embedding[:len(new_embeddings)]
+                    
+                    self.chunks[doc_uuid] = doc_specific_chunks_truncated
+                    self.contextualized_chunks[doc_uuid] = chunks_for_embedding_truncated if should_be_contextualized else []
+                    logger.info(f"Regeneration: Updated '{original_name}' to {len(doc_specific_chunks_truncated)} chunks with embeddings")
+                elif new_embeddings.size == 0:
+                    logger.error(f"Regeneration: No embeddings generated for '{original_name}'. Document will not be searchable.")
+                    self.chunks[doc_uuid] = []
+                    self.contextualized_chunks[doc_uuid] = []
+                
                 self.embeddings[doc_uuid] = new_embeddings
                 
                 bm25_idx = self._create_bm25_index(chunks_for_embedding)

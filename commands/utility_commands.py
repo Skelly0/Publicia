@@ -210,7 +210,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
+                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
@@ -300,7 +300,7 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
-                    f"**Gemini 2.5 Flash**: __RECOMMENDED__ - Best for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
+                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b:free')}) with the free model, otherwise uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}).",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
@@ -403,7 +403,7 @@ def register_commands(bot):
             response += "- If you want me to speak more concisely and drop the roleplay, use the command `/toggle_prompt_mode`.\n"
             response += "- Ask my creator skellia if you require help or explanations for anything.\n"
             response += "- Ask admins to add additional info (character backstories and so on) that you have written to expand my knowledge.\n"
-            response += "- Choose models based on your needs (e.g., Gemini 2.5 Flash for facts, Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
+            response += "- Choose models based on your needs (e.g., Qwen QwQ for a mix of accuracy and creative flair, Claude Haiku for longform RP).\n\n"
 
             response += "*My genetically enhanced brain is always ready to help... just ask!*"
 
