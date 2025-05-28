@@ -374,14 +374,25 @@ class DocumentManager:
                                 break 
                     except Exception as e: logger.error(f"Ctx gen error model {model}: {e}")
                     await asyncio.sleep(0.5)
-            return f"Chunk from document: {document_content[:50]}..."
-        except Exception as e: return f"Error in context gen: {e}"
+            return chunk_content # Fallback: return original chunk if all models fail
+        except Exception as e:
+            logger.error(f"Error in context gen: {e}", exc_info=True)
+            return chunk_content # Fallback: return original chunk on exception
 
 
     async def contextualize_chunks(self, doc_name: str, document_content: str, chunks: List[str]) -> List[str]:
-        contextualized = [await self.generate_chunk_context(document_content, chunk) + " " + chunk for chunk in chunks]
-        logger.info(f"Contextualized {len(chunks)} chunks for {doc_name}.")
-        return contextualized
+        contextualized_results = []
+        successful_ctx_count = 0
+        for chunk in chunks:
+            generated_context = await self.generate_chunk_context(document_content, chunk)
+            if generated_context == chunk: # Context generation failed, use original chunk
+                contextualized_results.append(chunk)
+            else: # Context generation successful
+                contextualized_results.append(generated_context + " " + chunk)
+                successful_ctx_count += 1
+        
+        logger.info(f"Contextualized {successful_ctx_count} of {len(chunks)} chunks for {doc_name}.")
+        return contextualized_results
 
     async def generate_embeddings(self, texts: List[str], is_query: bool = False, titles: List[str] = None) -> np.ndarray:
         tasks, valid_indices = [], []
