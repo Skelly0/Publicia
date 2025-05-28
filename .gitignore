@@ -69,3 +69,5 @@ Thumbs.db
 
 # Project specific
 old_system_prompts/
+test_grounding_integration.py
+test_grounding.py
