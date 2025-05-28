@@ -69,8 +69,10 @@ class DiscordBot(commands.Bot):
         # Pass the config object to KeywordManager
         self.keyword_manager = KeywordManager(config=self.config)
         
-        # Initialize grounding manager
-        self.grounding_manager = GroundingManager()
+        # Initialize grounding manager with Google Cloud config for API access
+        self.grounding_manager = GroundingManager(config=self.config)
+        # Set document manager as fallback for local similarity computation
+        self.grounding_manager.document_manager = self.document_manager
 
         # Add search caching
         self.search_cache = {}  # Store previous search results by user

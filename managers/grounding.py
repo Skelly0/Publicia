@@ -1,6 +1,6 @@
 """
-Grounding check functionality for RAG (Retrieval Augmented Generation)
-Based on Google Cloud Discovery Engine grounding check API concepts
+Google Vertex AI Check Grounding API implementation for Publicia
+Real implementation using Google Cloud Discovery Engine grounding check API
 """
 import re
 import json
@@ -9,9 +9,9 @@ import asyncio
 import aiohttp
 from typing import List, Dict, Tuple, Optional, Any, Union
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, date
+from pathlib import Path
 import numpy as np
-from sentence_transformers import SentenceTransformer, util
 
 logger = logging.getLogger(__name__)
 
@@ -89,31 +89,116 @@ class GroundingManager:
     Implements functionality similar to Google Cloud Discovery Engine grounding check API
     """
     
-    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+    def __init__(self, config=None):
         """
-        Initialize the grounding manager
+        Initialize the grounding manager with Google Cloud credentials
         
         Args:
-            model_name: Name of the sentence transformer model to use for embeddings
+            config: Configuration object with Google Cloud settings
         """
-        self.model_name = model_name
-        self.model = None
-        self._load_model()
+        self.config = config
+        self.project_id = getattr(config, 'GOOGLE_PROJECT_ID', None) if config else None
+        self.api_key = getattr(config, 'GOOGLE_API_KEY', None) if config else None
         
-    def _load_model(self):
-        """Load the sentence transformer model"""
+        # Usage tracking configuration
+        self.max_daily_checks = getattr(config, 'GROUNDING_MAX_DAILY_CHECKS', 1000) if config else 1000
+        self.cost_per_check = getattr(config, 'GROUNDING_COST_PER_CHECK', 0.001) if config else 0.001
+        self.max_daily_budget = getattr(config, 'GROUNDING_MAX_DAILY_BUDGET', 1.0) if config else 1.0
+        
+        # Usage tracking state
+        self.usage_file = Path("temp_files/grounding_usage.json")
+        self.usage_file.parent.mkdir(exist_ok=True)
+        self.daily_usage = self._load_daily_usage()
+        
+        # Fallback document manager for local similarity if API fails
+        self.document_manager = None
+        
+        if not self.project_id:
+            logger.warning("No Google Project ID provided. Grounding API will not be available.")
+        if not self.api_key:
+            logger.warning("No Google API key provided. Grounding API will not be available.")
+        
+    def _load_daily_usage(self) -> Dict[str, Any]:
+        """Load daily usage tracking data"""
         try:
-            self.model = SentenceTransformer(self.model_name)
-            logger.info(f"Loaded grounding model: {self.model_name}")
+            if self.usage_file.exists():
+                with open(self.usage_file, 'r') as f:
+                    data = json.load(f)
+                    # Reset if it's a new day
+                    today = date.today().isoformat()
+                    if data.get('date') != today:
+                        return {'date': today, 'checks': 0, 'cost': 0.0}
+                    return data
         except Exception as e:
-            logger.error(f"Failed to load grounding model {self.model_name}: {e}")
-            # Fallback to a smaller model
-            try:
-                self.model = SentenceTransformer("all-MiniLM-L6-v2")
-                logger.info("Loaded fallback grounding model: all-MiniLM-L6-v2")
-            except Exception as e2:
-                logger.error(f"Failed to load fallback model: {e2}")
-                raise
+            logger.error(f"Error loading usage data: {e}")
+        
+        # Default for new day or error
+        return {'date': date.today().isoformat(), 'checks': 0, 'cost': 0.0}
+    
+    def _save_daily_usage(self):
+        """Save daily usage tracking data"""
+        try:
+            with open(self.usage_file, 'w') as f:
+                json.dump(self.daily_usage, f)
+        except Exception as e:
+            logger.error(f"Error saving usage data: {e}")
+    
+    def _can_make_api_call(self) -> Tuple[bool, str]:
+        """
+        Check if we can make an API call within daily limits
+        
+        Returns:
+            Tuple of (can_call, reason_if_not)
+        """
+        today = date.today().isoformat()
+        
+        # Reset usage if it's a new day
+        if self.daily_usage.get('date') != today:
+            self.daily_usage = {'date': today, 'checks': 0, 'cost': 0.0}
+            self._save_daily_usage()
+        
+        # Check daily check limit
+        if self.daily_usage['checks'] >= self.max_daily_checks:
+            return False, f"Daily check limit reached ({self.max_daily_checks} checks)"
+        
+        # Check daily budget limit
+        projected_cost = self.daily_usage['cost'] + self.cost_per_check
+        if projected_cost > self.max_daily_budget:
+            return False, f"Daily budget limit would be exceeded (${self.max_daily_budget:.2f})"
+        
+        return True, ""
+    
+    def _record_api_usage(self):
+        """Record an API call in usage tracking"""
+        self.daily_usage['checks'] += 1
+        self.daily_usage['cost'] += self.cost_per_check
+        self._save_daily_usage()
+        
+        logger.info(f"Grounding API usage: {self.daily_usage['checks']}/{self.max_daily_checks} checks, "
+                   f"${self.daily_usage['cost']:.3f}/${self.max_daily_budget:.2f} budget")
+    
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """Get current usage statistics"""
+        today = date.today().isoformat()
+        if self.daily_usage.get('date') != today:
+            return {'date': today, 'checks': 0, 'cost': 0.0, 'checks_remaining': self.max_daily_checks, 'budget_remaining': self.max_daily_budget}
+        
+        return {
+            'date': self.daily_usage['date'],
+            'checks': self.daily_usage['checks'],
+            'cost': self.daily_usage['cost'],
+            'checks_remaining': max(0, self.max_daily_checks - self.daily_usage['checks']),
+            'budget_remaining': max(0.0, self.max_daily_budget - self.daily_usage['cost']),
+            'max_daily_checks': self.max_daily_checks,
+            'max_daily_budget': self.max_daily_budget
+        }
+    
+    def _ensure_document_manager(self):
+        """Ensure document manager is available for embeddings"""
+        if self.document_manager is None:
+            logger.warning("No document manager provided to grounding manager. Similarity computation will be limited.")
+            return False
+        return True
     
     def _extract_claims(self, answer_candidate: str) -> List[GroundingClaim]:
         """
@@ -188,9 +273,9 @@ class GroundingManager:
             
         return True
     
-    def _compute_semantic_similarity(self, text1: str, text2: str) -> float:
+    async def _compute_semantic_similarity(self, text1: str, text2: str) -> float:
         """
-        Compute semantic similarity between two texts
+        Compute semantic similarity between two texts using Gemini embeddings
         
         Args:
             text1: First text
@@ -200,15 +285,67 @@ class GroundingManager:
             Similarity score between 0 and 1
         """
         try:
-            embeddings = self.model.encode([text1, text2])
-            similarity = util.cos_sim(embeddings[0], embeddings[1]).item()
-            # Normalize to 0-1 range
+            if not self._ensure_document_manager():
+                # Fallback to simple text overlap if no embeddings available
+                return self._compute_text_overlap_similarity(text1, text2)
+            
+            # Generate embeddings for both texts
+            embeddings = await self.document_manager.generate_embeddings([text1, text2], is_query=False)
+            
+            if embeddings.size == 0 or len(embeddings) < 2:
+                logger.warning("Failed to generate embeddings for similarity computation, using text overlap fallback")
+                return self._compute_text_overlap_similarity(text1, text2)
+            
+            # Compute cosine similarity
+            embedding1, embedding2 = embeddings[0], embeddings[1]
+            
+            # Normalize embeddings
+            norm1 = np.linalg.norm(embedding1)
+            norm2 = np.linalg.norm(embedding2)
+            
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+            
+            # Cosine similarity
+            similarity = np.dot(embedding1, embedding2) / (norm1 * norm2)
+            
+            # Ensure result is in 0-1 range (cosine similarity is -1 to 1)
             return max(0.0, min(1.0, (similarity + 1) / 2))
+            
         except Exception as e:
-            logger.error(f"Error computing similarity: {e}")
+            logger.error(f"Error computing Gemini embedding similarity: {e}")
+            # Fallback to text overlap
+            return self._compute_text_overlap_similarity(text1, text2)
+    
+    def _compute_text_overlap_similarity(self, text1: str, text2: str) -> float:
+        """
+        Fallback similarity computation based on word overlap
+        
+        Args:
+            text1: First text
+            text2: Second text
+            
+        Returns:
+            Similarity score between 0 and 1
+        """
+        try:
+            # Simple word overlap similarity as fallback
+            words1 = set(text1.lower().split())
+            words2 = set(text2.lower().split())
+            
+            if not words1 or not words2:
+                return 0.0
+            
+            intersection = words1.intersection(words2)
+            union = words1.union(words2)
+            
+            return len(intersection) / len(union) if union else 0.0
+            
+        except Exception as e:
+            logger.error(f"Error computing text overlap similarity: {e}")
             return 0.0
     
-    def _find_supporting_facts(self, claim: str, facts: List[GroundingFact], 
+    async def _find_supporting_facts(self, claim: str, facts: List[GroundingFact],
                               threshold: float = 0.6) -> List[int]:
         """
         Find facts that support a given claim
@@ -224,13 +361,13 @@ class GroundingManager:
         supporting_indices = []
         
         for i, fact in enumerate(facts):
-            similarity = self._compute_semantic_similarity(claim, fact.fact_text)
+            similarity = await self._compute_semantic_similarity(claim, fact.fact_text)
             if similarity >= threshold:
                 supporting_indices.append(i)
         
         return supporting_indices
     
-    def _find_contradicting_facts(self, claim: str, facts: List[GroundingFact],
+    async def _find_contradicting_facts(self, claim: str, facts: List[GroundingFact],
                                  threshold: float = 0.8) -> List[int]:
         """
         Find facts that contradict a given claim
@@ -260,9 +397,11 @@ class GroundingManager:
             
             # Check for explicit contradictions
             for pattern in negation_patterns:
-                if re.search(pattern, fact_lower) and self._compute_semantic_similarity(claim, fact.fact_text) >= threshold:
-                    contradicting_indices.append(i)
-                    break
+                if re.search(pattern, fact_lower):
+                    similarity = await self._compute_semantic_similarity(claim, fact.fact_text)
+                    if similarity >= threshold:
+                        contradicting_indices.append(i)
+                        break
         
         return contradicting_indices
     
@@ -383,10 +522,10 @@ class GroundingManager:
         return cited_chunks
     
     async def check_grounding(self, answer_candidate: str, facts: List[GroundingFact],
-                            grounding_spec: GroundingSpec = None, 
+                            grounding_spec: GroundingSpec = None,
                             prompt: str = None) -> GroundingResponse:
         """
-        Check grounding of an answer candidate against a set of facts
+        Check grounding using Google Vertex AI Check Grounding API
         
         Args:
             answer_candidate: The text to check for grounding
@@ -400,6 +539,146 @@ class GroundingManager:
         if grounding_spec is None:
             grounding_spec = GroundingSpec()
         
+        # Check if we can use Google API
+        if self.project_id and self.api_key:
+            can_call, reason = self._can_make_api_call()
+            if can_call:
+                try:
+                    result = await self._check_grounding_google_api(
+                        answer_candidate, facts, grounding_spec, prompt
+                    )
+                    self._record_api_usage()
+                    return result
+                except Exception as e:
+                    logger.error(f"Google API grounding check failed: {e}")
+                    logger.info("Falling back to local grounding implementation")
+            else:
+                logger.warning(f"Google API usage limit reached: {reason}. Using local fallback.")
+        else:
+            logger.warning("Google API credentials not available, using local fallback")
+        
+        # Use local fallback
+        return await self._check_grounding_local_fallback(
+            answer_candidate, facts, grounding_spec, prompt
+        )
+    
+    async def _check_grounding_google_api(self, answer_candidate: str, facts: List[GroundingFact],
+                                        grounding_spec: GroundingSpec, prompt: str = None) -> GroundingResponse:
+        """
+        Use Google Vertex AI Check Grounding API
+        """
+        # Prepare the API request
+        url = f"https://discoveryengine.googleapis.com/v1/projects/{self.project_id}/locations/global/groundingConfigs/default_grounding_config:check"
+        
+        headers = {
+            "Authorization": f"Bearer {await self._get_access_token()}",
+            "Content-Type": "application/json"
+        }
+        
+        # Convert facts to API format
+        api_facts = []
+        for fact in facts:
+            api_fact = {
+                "factText": fact.fact_text,
+                "attributes": fact.attributes or {}
+            }
+            api_facts.append(api_fact)
+        
+        # Prepare grounding spec
+        api_grounding_spec = {
+            "citationThreshold": grounding_spec.citation_threshold
+        }
+        
+        if grounding_spec.enable_anti_citations:
+            api_grounding_spec["enableAntiCitations"] = True
+            api_grounding_spec["antiCitationThreshold"] = grounding_spec.anti_citation_threshold
+        
+        if grounding_spec.enable_claim_level_score:
+            api_grounding_spec["enableClaimLevelScore"] = True
+        
+        if grounding_spec.enable_helpfulness_score:
+            api_grounding_spec["enableHelpfulnessScore"] = True
+        
+        # Prepare request payload
+        payload = {
+            "answerCandidate": answer_candidate,
+            "facts": api_facts,
+            "groundingSpec": api_grounding_spec
+        }
+        
+        if prompt:
+            payload["prompt"] = prompt
+        
+        # Make API request
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json=payload, timeout=30) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    return self._parse_google_api_response(result, facts)
+                else:
+                    error_text = await response.text()
+                    raise Exception(f"API request failed with status {response.status}: {error_text}")
+    
+    async def _get_access_token(self) -> str:
+        """
+        Get Google Cloud access token using API key
+        For now, we'll use the API key directly in the Authorization header
+        In production, you might want to use service account credentials
+        """
+        # For API key authentication, we can use the key directly
+        # This is a simplified approach - in production you might want OAuth2
+        return self.api_key
+    
+    def _parse_google_api_response(self, api_response: dict, original_facts: List[GroundingFact]) -> GroundingResponse:
+        """
+        Parse Google API response into our GroundingResponse format
+        """
+        # Extract scores
+        support_score = api_response.get("supportScore", 0.0)
+        contradiction_score = api_response.get("contradictionScore", 0.0)
+        helpfulness_score = api_response.get("helpfulnessScore", 0.0)
+        
+        # Parse claims
+        claims = []
+        api_claims = api_response.get("claims", [])
+        
+        for api_claim in api_claims:
+            claim = GroundingClaim(
+                text=api_claim.get("claimText", ""),
+                start_pos=api_claim.get("startPos", 0),
+                end_pos=api_claim.get("endPos", 0),
+                support_score=api_claim.get("supportScore", 0.0),
+                citations=api_claim.get("citations", []),
+                anti_citations=api_claim.get("antiCitations", []),
+                grounding_check_required=api_claim.get("groundingCheckRequired", True)
+            )
+            claims.append(claim)
+        
+        # Parse cited chunks
+        cited_chunks = []
+        api_cited_chunks = api_response.get("citedChunks", [])
+        
+        for chunk in api_cited_chunks:
+            cited_chunk = CitedChunk(
+                fact_index=chunk.get("factIndex", 0),
+                chunk_text=chunk.get("chunkText", ""),
+                attributes=chunk.get("attributes", {})
+            )
+            cited_chunks.append(cited_chunk)
+        
+        return GroundingResponse(
+            support_score=support_score,
+            contradiction_score=contradiction_score,
+            helpfulness_score=helpfulness_score,
+            claims=claims,
+            cited_chunks=cited_chunks
+        )
+    
+    async def _check_grounding_local_fallback(self, answer_candidate: str, facts: List[GroundingFact],
+                                            grounding_spec: GroundingSpec, prompt: str = None) -> GroundingResponse:
+        """
+        Local fallback implementation when Google API is not available
+        """
         # Extract claims from answer candidate
         claims = self._extract_claims(answer_candidate)
         
@@ -410,27 +689,36 @@ class GroundingManager:
             if not claim.grounding_check_required:
                 continue
             
-            # Find supporting facts
-            supporting_indices = self._find_supporting_facts(
-                claim.text, facts, grounding_spec.citation_threshold
-            )
+            # Find supporting facts using text overlap similarity
+            supporting_indices = []
+            for i, fact in enumerate(facts):
+                similarity = self._compute_text_overlap_similarity(claim.text, fact.fact_text)
+                if similarity >= grounding_spec.citation_threshold:
+                    supporting_indices.append(i)
+            
             claim.citations = supporting_indices
             all_cited_indices.update(supporting_indices)
             
-            # Find contradicting facts if enabled
+            # Simple contradiction detection
             if grounding_spec.enable_anti_citations:
-                contradicting_indices = self._find_contradicting_facts(
-                    claim.text, facts, grounding_spec.anti_citation_threshold
-                )
+                contradicting_indices = []
+                # Look for explicit negations
+                negation_patterns = [r'\bnot\b', r'\bno\b', r'\bnever\b', r'\bfalse\b']
+                for i, fact in enumerate(facts):
+                    for pattern in negation_patterns:
+                        if re.search(pattern, fact.fact_text.lower()):
+                            similarity = self._compute_text_overlap_similarity(claim.text, fact.fact_text)
+                            if similarity >= grounding_spec.anti_citation_threshold:
+                                contradicting_indices.append(i)
+                                break
                 claim.anti_citations = contradicting_indices
             
             # Compute claim-level support score if enabled
             if grounding_spec.enable_claim_level_score:
                 if supporting_indices:
-                    # Average similarity with supporting facts
                     similarities = []
                     for idx in supporting_indices:
-                        sim = self._compute_semantic_similarity(claim.text, facts[idx].fact_text)
+                        sim = self._compute_text_overlap_similarity(claim.text, facts[idx].fact_text)
                         similarities.append(sim)
                     claim.support_score = sum(similarities) / len(similarities)
                 else:

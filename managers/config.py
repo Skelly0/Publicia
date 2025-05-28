@@ -15,6 +15,12 @@ class Config:
         self.DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
         self.OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
         self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+        self.GOOGLE_PROJECT_ID = os.getenv('GOOGLE_PROJECT_ID')
+        
+        # Google Check Grounding API limits
+        self.GROUNDING_MAX_DAILY_CHECKS = int(os.getenv('GROUNDING_MAX_DAILY_CHECKS', '1000'))
+        self.GROUNDING_COST_PER_CHECK = float(os.getenv('GROUNDING_COST_PER_CHECK', '0.001'))
+        self.GROUNDING_MAX_DAILY_BUDGET = float(os.getenv('GROUNDING_MAX_DAILY_BUDGET', '1.0'))
         
         # Configure models with defaults
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.5-flash-preview')

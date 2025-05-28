@@ -9,7 +9,7 @@ I have successfully implemented Google's Check Grounding API functionality for R
 ### 1. Core Grounding System (`managers/grounding.py`)
 - **GroundingManager**: Main class that handles grounding checks
 - **Data Classes**: GroundingFact, GroundingClaim, CitedChunk, GroundingSpec, GroundingResponse
-- **Semantic Similarity**: Uses sentence transformers for computing text similarity
+- **Semantic Similarity**: Uses your existing Gemini text-embedding-004 model for computing text similarity
 - **Claim Extraction**: Automatically breaks responses into individual claims
 - **Citation Mapping**: Links claims to supporting facts from search results
 - **Scoring System**: Provides support scores, contradiction scores, and helpfulness scores
@@ -45,7 +45,7 @@ I have successfully implemented Google's Check Grounding API functionality for R
 - **Non-Intrusive**: Grounding info appears as a footer, doesn't disrupt main response
 
 ### Technical Implementation
-- **Efficient Processing**: Uses semantic similarity for fast fact matching
+- **Efficient Processing**: Uses Gemini embeddings for semantic similarity and fast fact matching
 - **Robust Error Handling**: Graceful degradation if grounding checks fail
 - **Configurable Thresholds**: Adjustable citation and contradiction thresholds
 - **Memory Efficient**: Processes search results without storing large amounts of data

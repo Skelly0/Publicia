@@ -380,3 +380,73 @@ prompt: "How many awards did the movie win?"
                 await interaction.followup.send(f"❌ An error occurred: {str(e)}")
             except:
                 pass
+    
+    @bot.tree.command(name="grounding_usage", description="Check Google Check Grounding API usage statistics")
+    async def grounding_usage(interaction: discord.Interaction):
+        """Show current API usage statistics and limits"""
+        try:
+            await interaction.response.defer()
+            
+            # Get usage stats from the bot's grounding manager
+            if hasattr(bot, 'grounding_manager'):
+                stats = bot.grounding_manager.get_usage_stats()
+                
+                embed = discord.Embed(
+                    title="🔍 Google Check Grounding API Usage",
+                    color=0x4285f4,
+                    timestamp=discord.utils.utcnow()
+                )
+                
+                # Usage overview
+                embed.add_field(
+                    name="📊 Today's Usage",
+                    value=f"**Checks:** {stats['checks']}/{stats['max_daily_checks']}\n"
+                          f"**Cost:** ${stats['cost']:.3f}/${stats['max_daily_budget']:.2f}\n"
+                          f"**Date:** {stats['date']}",
+                    inline=False
+                )
+                
+                # Remaining quota
+                embed.add_field(
+                    name="📈 Remaining Quota",
+                    value=f"**Checks:** {stats['checks_remaining']}\n"
+                          f"**Budget:** ${stats['budget_remaining']:.3f}",
+                    inline=True
+                )
+                
+                # Status indicator
+                if stats['checks_remaining'] > 100:
+                    status = "🟢 Healthy"
+                elif stats['checks_remaining'] > 50:
+                    status = "🟡 Moderate"
+                else:
+                    status = "🔴 Limited"
+                
+                embed.add_field(
+                    name="🚦 Status",
+                    value=status,
+                    inline=True
+                )
+                
+                # Configuration
+                embed.add_field(
+                    name="⚙️ Configuration",
+                    value=f"**Max Daily Checks:** {stats['max_daily_checks']}\n"
+                          f"**Max Daily Budget:** ${stats['max_daily_budget']:.2f}\n"
+                          f"**Cost per Check:** $0.001",
+                    inline=False
+                )
+                
+                # Add footer
+                embed.set_footer(text="Usage resets daily at midnight UTC")
+                
+                await interaction.followup.send(embed=embed)
+            else:
+                await interaction.followup.send("❌ Grounding manager not available")
+                
+        except Exception as e:
+            logger.error(f"Error in grounding_usage command: {e}")
+            try:
+                await interaction.followup.send(f"❌ An error occurred: {str(e)}")
+            except:
+                pass
