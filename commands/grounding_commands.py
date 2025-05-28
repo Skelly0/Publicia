@@ -17,7 +17,9 @@ def register_commands(bot):
     """Register all grounding check commands with the bot."""
     
     # Initialize grounding manager
-    grounding_manager = GroundingManager()
+    from managers.config import Config
+    config = Config()
+    grounding_manager = GroundingManager(config=config)
     
     @bot.tree.command(name="check_grounding", description="Check how well an answer is grounded in provided facts")
     @app_commands.describe(

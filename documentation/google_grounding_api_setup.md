@@ -34,19 +34,17 @@ gcloud services enable aiplatform.googleapis.com
 
 ### 3. Set Up Authentication
 
-#### Option A: API Key (Simpler)
-1. Go to **APIs & Services** → **Credentials**
-2. Click **Create Credentials** → **API Key**
-3. Copy the API key
-4. Optionally restrict the key to specific APIs for security
+**Important**: The Google Discovery Engine API requires OAuth2 authentication and does not support API keys directly.
 
-#### Option B: Service Account (Recommended for Production)
+#### Service Account Setup (Required)
 1. Go to **IAM & Admin** → **Service Accounts**
 2. Create service account with these roles:
    - `Discovery Engine Admin`
    - `Vertex AI User`
 3. Generate JSON key file
-4. Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable
+4. Set `GOOGLE_APPLICATION_CREDENTIALS` environment variable to the path of your JSON key file
+
+**Note**: API keys alone are not sufficient for the Discovery Engine API. You must use service account credentials.
 
 ### 4. Configure Publicia
 
@@ -55,15 +53,18 @@ Add these environment variables to your `.env` file:
 ```env
 # Required for Google Check Grounding API
 GOOGLE_PROJECT_ID=your-google-cloud-project-id
-GOOGLE_API_KEY=your-google-api-key
+
+# Required: Service account credentials file path
+GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
 
 # Usage limits (optional - defaults shown)
 GROUNDING_MAX_DAILY_CHECKS=1000
 GROUNDING_COST_PER_CHECK=0.001
 GROUNDING_MAX_DAILY_BUDGET=1.0
 
-# Optional: Service account credentials file path
-# GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+# Note: GOOGLE_API_KEY is not used for Discovery Engine API
+# but may be required for other Google services in the project
+GOOGLE_API_KEY=your-google-api-key
 ```
 
 ### 5. Verify Setup
