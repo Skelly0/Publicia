@@ -541,8 +541,10 @@ def register_commands(bot):
                     original_chunk = chunk
                     context_part = ""
 
-                    # Check if we have contextualized chunks for this document
-                    if hasattr(bot.document_manager, 'contextualized_chunks') and doc in bot.document_manager.contextualized_chunks:
+                    # Check if we have contextualized chunks for this document and if they're enabled
+                    use_contextualised = bot.config.USE_CONTEXTUALISED_CHUNKS if hasattr(bot, 'config') and hasattr(bot.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+                    
+                    if use_contextualised and hasattr(bot.document_manager, 'contextualized_chunks') and doc in bot.document_manager.contextualized_chunks:
                         # Check if we have enough contextualized chunks
                         if chunk_index - 1 < len(bot.document_manager.contextualized_chunks[doc]):
                             contextualized_chunk = bot.document_manager.contextualized_chunks[doc][chunk_index - 1]

@@ -71,3 +71,8 @@ Thumbs.db
 old_system_prompts/
 test_grounding_integration.py
 test_grounding.py
+test_contextualised_chunks_toggle.py
+
+# Debug and test folders
+debug_scripts/
+test_scripts/

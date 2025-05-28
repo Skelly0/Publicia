@@ -344,12 +344,18 @@ class DocumentManager:
                 continue
                 
             # Determine which chunks to use for BM25 indexing
-            chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, [])
-            if not chunks_for_bm25:
-                chunks_for_bm25 = doc_chunks
-                logger.debug(f"Using original chunks for BM25 indexing for {doc_uuid}")
+            use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+            
+            if use_contextualised:
+                chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, [])
+                if not chunks_for_bm25:
+                    chunks_for_bm25 = doc_chunks
+                    logger.debug(f"Using original chunks for BM25 indexing for {doc_uuid}")
+                else:
+                    logger.debug(f"Using contextualized chunks for BM25 indexing for {doc_uuid}")
             else:
-                logger.debug(f"Using contextualized chunks for BM25 indexing for {doc_uuid}")
+                chunks_for_bm25 = doc_chunks
+                logger.debug(f"Using original chunks for BM25 indexing for {doc_uuid} (contextualised chunks disabled)")
             
             # Ensure BM25 index exists and is valid
             if doc_uuid not in self.bm25_indexes or self.bm25_indexes[doc_uuid] is None:
@@ -394,23 +400,36 @@ class DocumentManager:
         return results[:top_k]
     
     def get_contextualized_chunk(self, doc_uuid: str, chunk_idx: int) -> str:
-        # First try contextualized chunks
-        if doc_uuid in self.contextualized_chunks:
-            contextualized = self.contextualized_chunks[doc_uuid]
-            if contextualized and chunk_idx < len(contextualized):
-                return contextualized[chunk_idx]
-            elif contextualized:
-                logger.warning(f"Contextualized chunk index {chunk_idx} out of range for {doc_uuid} (has {len(contextualized)} chunks)")
+        # Check if using contextualised chunks is enabled
+        use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
         
-        # Fallback to original chunks
-        if doc_uuid in self.chunks:
-            original = self.chunks[doc_uuid]
-            if original and chunk_idx < len(original):
-                logger.debug(f"Using original chunk for {doc_uuid}[{chunk_idx}] (contextualized not available)")
-                return original[chunk_idx]
-            elif original:
-                logger.warning(f"Original chunk index {chunk_idx} out of range for {doc_uuid} (has {len(original)} chunks)")
-        
+        # If contextualised chunks are disabled, go straight to original chunks
+        if not use_contextualised:
+            if doc_uuid in self.chunks:
+                original = self.chunks[doc_uuid]
+                if original and chunk_idx < len(original):
+                    logger.debug(f"Using original chunk for {doc_uuid}[{chunk_idx}] (contextualised chunks disabled)")
+                    return original[chunk_idx]
+                elif original:
+                    logger.warning(f"Original chunk index {chunk_idx} out of range for {doc_uuid} (has {len(original)} chunks)")
+        else:
+            # First try contextualized chunks
+            if doc_uuid in self.contextualized_chunks:
+                contextualized = self.contextualized_chunks[doc_uuid]
+                if contextualized and chunk_idx < len(contextualized):
+                    return contextualized[chunk_idx]
+                elif contextualized:
+                    logger.warning(f"Contextualized chunk index {chunk_idx} out of range for {doc_uuid} (has {len(contextualized)} chunks)")
+
+            # Fallback to original chunks
+            if doc_uuid in self.chunks:
+                original = self.chunks[doc_uuid]
+                if original and chunk_idx < len(original):
+                    logger.debug(f"Using original chunk for {doc_uuid}[{chunk_idx}] (contextualized not available)")
+                    return original[chunk_idx]
+                elif original:
+                    logger.warning(f"Original chunk index {chunk_idx} out of range for {doc_uuid} (has {len(original)} chunks)")
+
         # Log detailed error information
         contextualized_count = len(self.contextualized_chunks.get(doc_uuid, []))
         original_count = len(self.chunks.get(doc_uuid, []))
@@ -683,27 +702,38 @@ class DocumentManager:
             needs_processing = content_changed or doc_uuid not in self.embeddings or not is_update
 
             if needs_processing:
-                should_ctx = word_count <= max_words_ctx
+                # Check if contextualization is enabled and document is within word limit
+                contextualization_enabled = self.config.CONTEXTUALIZATION_ENABLED if self.config and hasattr(self.config, 'CONTEXTUALIZATION_ENABLED') else True
+                use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+                should_ctx = contextualization_enabled and word_count <= max_words_ctx
                 chunks_for_processing = await self.contextualize_chunks(original_name, content, chunks) if should_ctx else chunks
-                if not chunks_for_processing and chunks: 
+                if not chunks_for_processing and chunks:
                     logger.warning(f"Contextualization returned empty for '{original_name}', using original chunks.")
-                    chunks_for_processing = chunks 
+                    chunks_for_processing = chunks
                 
                 self.contextualized_chunks[doc_uuid] = chunks_for_processing if should_ctx and chunks_for_processing else []
                 
-                if chunks_for_processing:
-                    titles = [original_name] * len(chunks_for_processing)
-                    embeddings_arr = await self.generate_embeddings(chunks_for_processing, is_query=False, titles=titles)
+                # Determine which chunks to use for embedding generation
+                if use_contextualised and should_ctx and chunks_for_processing:
+                    chunks_for_embedding = chunks_for_processing
+                    logger.debug(f"Using contextualized chunks for embeddings for '{original_name}'")
+                else:
+                    chunks_for_embedding = chunks
+                    logger.debug(f"Using original chunks for embeddings for '{original_name}' (contextualised chunks disabled or not generated)")
+                
+                if chunks_for_embedding:
+                    titles = [original_name] * len(chunks_for_embedding)
+                    embeddings_arr = await self.generate_embeddings(chunks_for_embedding, is_query=False, titles=titles)
                     
                     # Check if we got fewer embeddings than chunks
-                    if embeddings_arr.size > 0 and len(embeddings_arr) < len(chunks_for_processing):
-                        logger.warning(f"Got {len(embeddings_arr)} embeddings for {len(chunks_for_processing)} chunks in '{original_name}'. Some chunks will be unsearchable.")
+                    if embeddings_arr.size > 0 and len(embeddings_arr) < len(chunks_for_embedding):
+                        logger.warning(f"Got {len(embeddings_arr)} embeddings for {len(chunks_for_embedding)} chunks in '{original_name}'. Some chunks will be unsearchable.")
                         # Store only the chunks that have corresponding embeddings
-                        chunks_with_embeddings = chunks_for_processing[:len(embeddings_arr)]
                         chunks_original_with_embeddings = chunks[:len(embeddings_arr)]
+                        chunks_contextualized_with_embeddings = chunks_for_processing[:len(embeddings_arr)] if should_ctx and chunks_for_processing else []
                         
                         self.chunks[doc_uuid] = chunks_original_with_embeddings
-                        self.contextualized_chunks[doc_uuid] = chunks_with_embeddings if should_ctx else []
+                        self.contextualized_chunks[doc_uuid] = chunks_contextualized_with_embeddings
                         logger.info(f"Stored {len(chunks_original_with_embeddings)} chunks with embeddings out of {len(chunks)} total chunks for '{original_name}'")
                     elif embeddings_arr.size == 0:
                         logger.error(f"No embeddings generated for any chunks in '{original_name}'. Document will not be searchable.")
@@ -712,6 +742,9 @@ class DocumentManager:
                     else:
                         # All chunks have embeddings
                         self.chunks[doc_uuid] = chunks
+                        self.embeddings[doc_uuid] = embeddings_arr
+                        self.contextualized_chunks[doc_uuid] = chunks_for_processing if should_ctx and chunks_for_processing else []
+                        logger.info(f"Stored {len(chunks)} chunks with embeddings for '{original_name}'")
                 else:
                     embeddings_arr = np.array([])
                     self.chunks[doc_uuid] = chunks
@@ -838,13 +871,20 @@ class DocumentManager:
                     self.embeddings[doc_uuid] = np.array([])
                     continue
                 
-                chunks_for_embedding = self.contextualized_chunks.get(doc_uuid, [])
-                if not chunks_for_embedding: 
-                    chunks_for_embedding = doc_specific_chunks
-
                 max_words_ctx = self.config.MAX_WORDS_FOR_CONTEXT if self.config and hasattr(self.config, 'MAX_WORDS_FOR_CONTEXT') else 20000
                 word_count = self.metadata.get(doc_uuid, {}).get('word_count', float('inf'))
-                should_be_contextualized = word_count <= max_words_ctx
+                contextualization_enabled = self.config.CONTEXTUALIZATION_ENABLED if self.config and hasattr(self.config, 'CONTEXTUALIZATION_ENABLED') else True
+                use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+                should_be_contextualized = contextualization_enabled and word_count <= max_words_ctx
+
+                # Determine which chunks to use for embedding generation
+                if use_contextualised:
+                    chunks_for_embedding = self.contextualized_chunks.get(doc_uuid, [])
+                    if not chunks_for_embedding:
+                        chunks_for_embedding = doc_specific_chunks
+                else:
+                    chunks_for_embedding = doc_specific_chunks
+                    logger.debug(f"Using original chunks for embeddings regeneration for '{original_name}' (contextualised chunks disabled)")
                 
                 if should_be_contextualized and (not self.contextualized_chunks.get(doc_uuid) or not self.metadata.get(doc_uuid, {}).get('contextualized')):
                     logger.info(f"Attempting to generate/regenerate contextualized chunks for '{original_name}' (UUID: {doc_uuid}).")
@@ -853,11 +893,15 @@ class DocumentManager:
                         doc_content_for_context = doc_file_path.read_text(encoding='utf-8-sig')
                         generated_context_chunks = await self.contextualize_chunks(original_name, doc_content_for_context, doc_specific_chunks)
                         self.contextualized_chunks[doc_uuid] = generated_context_chunks
-                        chunks_for_embedding = generated_context_chunks
+                        # Only use contextualized chunks for embeddings if USE_CONTEXTUALISED_CHUNKS is enabled
+                        if use_contextualised:
+                            chunks_for_embedding = generated_context_chunks
+                        else:
+                            chunks_for_embedding = doc_specific_chunks
                         if doc_uuid in self.metadata: self.metadata[doc_uuid]['contextualized'] = True
                     else:
                         logger.error(f"Cannot find {doc_file_path} for contextualization of '{original_name}'. Using original chunks.")
-                        chunks_for_embedding = doc_specific_chunks 
+                        chunks_for_embedding = doc_specific_chunks
 
                 if not chunks_for_embedding: 
                     logger.error(f"No chunks for embedding '{original_name}' (UUID: {doc_uuid}). Skipping.")
@@ -1068,9 +1112,15 @@ class DocumentManager:
                         setattr(self, data_attr_name, {}) # Ensure empty dict on error
             
             logger.info("Rebuilding BM25 indexes from loaded data...")
+            use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+            
             for doc_uuid, doc_chunks_list in self.chunks.items():
-                chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, doc_chunks_list)
-                if chunks_for_bm25: 
+                if use_contextualised:
+                    chunks_for_bm25 = self.contextualized_chunks.get(doc_uuid, doc_chunks_list)
+                else:
+                    chunks_for_bm25 = doc_chunks_list
+                    
+                if chunks_for_bm25:
                     idx = self._create_bm25_index(chunks_for_bm25)
                     if idx: self.bm25_indexes[doc_uuid] = idx
             logger.info(f"Rebuilt {len(self.bm25_indexes)} BM25 indexes.")

@@ -135,6 +135,11 @@ class Config:
         # Keyword database system enable/disable setting
         self.KEYWORD_DATABASE_ENABLED = bool(os.getenv('KEYWORD_DATABASE_ENABLED', 'True').lower() in ('true', '1', 'yes'))
         
+        # Contextualization settings
+        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+        self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
+        self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
+        
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
             logger.warning(f"Invalid temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")

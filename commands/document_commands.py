@@ -1133,9 +1133,17 @@ def register_commands(bot):
                 await interaction.followup.send(f"*neural error!* Document with identifier '{identifier}' not found.")
                 return
 
+            # Check if contextualised chunks are globally disabled
+            use_contextualised = bot.config.USE_CONTEXTUALISED_CHUNKS if hasattr(bot, 'config') and hasattr(bot.config, 'USE_CONTEXTUALISED_CHUNKS') else True
+            
             # Determine which chunk list to use
-            chunk_source_dict = doc_mgr.contextualized_chunks if contextualized else doc_mgr.chunks
-            chunk_type_str = "Contextualized" if contextualized else "Original"
+            if contextualized and not use_contextualised:
+                await interaction.followup.send("⚠️ **Warning:** Contextualised chunks are currently disabled in the configuration. Showing original chunks instead.")
+                chunk_source_dict = doc_mgr.chunks
+                chunk_type_str = "Original (contextualised disabled)"
+            else:
+                chunk_source_dict = doc_mgr.contextualized_chunks if contextualized else doc_mgr.chunks
+                chunk_type_str = "Contextualized" if contextualized else "Original"
             
             doc_chunks_list = chunk_source_dict.get(doc_uuid_to_view)
             total_doc_chunks = len(doc_chunks_list) if doc_chunks_list is not None else 0
