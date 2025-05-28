@@ -9,6 +9,7 @@ from . import conversation_commands
 from . import admin_commands
 from . import utility_commands
 from . import query_commands
+from . import grounding_commands
 
 __all__ = [
     'document_commands',
@@ -16,5 +17,6 @@ __all__ = [
     'conversation_commands',
     'admin_commands',
     'utility_commands',
-    'query_commands'
+    'query_commands',
+    'grounding_commands'
 ]

@@ -4,11 +4,13 @@ from .conversation import ConversationManager
 from .preferences import UserPreferencesManager
 from .documents import DocumentManager
 from .images import ImageManager
+from .grounding import GroundingManager
 
 __all__ = [
     'Config',
     'ConversationManager',
     'UserPreferencesManager',
     'DocumentManager',
-    'ImageManager'
+    'ImageManager',
+    'GroundingManager'
 ]

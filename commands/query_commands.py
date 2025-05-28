@@ -395,10 +395,45 @@ def register_commands(bot):
                 if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
                     response = completion['choices'][0]['message']['content']
                     
+                    # Perform grounding check on the response
+                    grounding_result = await bot.check_response_grounding(
+                        response=response,
+                        search_results=search_results,
+                        user_question=question,
+                        enable_detailed_scoring=False  # Keep simple for slash commands
+                    )
+                    
+                    # Add grounding information to response if available
+                    final_response = response
+                    if grounding_result and grounding_result.get('support_score') is not None:
+                        support_score = grounding_result['support_score']
+                        grounded_claims = grounding_result['grounded_claims']
+                        total_claims = grounding_result['total_claims']
+                        
+                        # Add grounding footer based on score
+                        if support_score >= 0.8:
+                            grounding_indicator = "🟢"
+                            grounding_text = "Well-grounded"
+                        elif support_score >= 0.6:
+                            grounding_indicator = "🟡"
+                            grounding_text = "Moderately grounded"
+                        else:
+                            grounding_indicator = "🔴"
+                            grounding_text = "Poorly grounded"
+                        
+                        grounding_footer = f"\n\n---\n{grounding_indicator} **Grounding Check**: {grounding_text} ({grounded_claims}/{total_claims} claims supported, {support_score:.1%} confidence)"
+                        
+                        # Add helpfulness score if available
+                        if grounding_result.get('helpfulness_score', 0) > 0:
+                            helpfulness = grounding_result['helpfulness_score']
+                            grounding_footer += f" | Helpfulness: {helpfulness:.1%}"
+                        
+                        final_response += grounding_footer
+                    
                     # Pass the status message as the existing_message parameter
                     await bot.send_split_message(
                         interaction.channel,
-                        response,
+                        final_response,
                         model_used=actual_model,
                         user_id=str(interaction.user.id),
                         existing_message=status_message

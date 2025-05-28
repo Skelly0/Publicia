@@ -32,7 +32,7 @@ def register_commands(bot):
                 "Lore Queries": ["query", "query_full_context"],
                 "Document Management": ["list_docs", "search_docs", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "toggle_grounding", "pronouns", "help", "whats_new"],
                 "Context/Memory Management": ["history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives"]
             }
 
@@ -932,3 +932,48 @@ def register_commands(bot):
         else:
             logger.error(f"Unhandled error in /parse_channel: {error}")
             await interaction.response.send_message("*neural circuit overload!* An unexpected error occurred.", ephemeral=True)
+
+    @bot.tree.command(name="toggle_grounding", description="Toggle display of grounding check information in responses")
+    async def toggle_grounding(interaction: discord.Interaction):
+        """Toggle whether grounding check information is displayed in responses."""
+        await interaction.response.defer()
+        try:
+            user_id = str(interaction.user.id)
+            
+            # Get current state
+            current_state = bot.user_preferences_manager.get_preference(
+                user_id,
+                'show_grounding_info',
+                default=False
+            )
+            
+            # Toggle the state
+            new_state = not current_state
+            success = bot.user_preferences_manager.set_preference(
+                user_id,
+                'show_grounding_info',
+                new_state
+            )
+            
+            if success:
+                if new_state:
+                    await interaction.followup.send(
+                        "*grounding analysis activated!* Responses will now show grounding check information "
+                        "(how well my answers are supported by the documents I found). This helps you understand "
+                        "how reliable my responses are based on available evidence."
+                    )
+                else:
+                    await interaction.followup.send(
+                        "*grounding analysis deactivated!* Responses will no longer show grounding check information."
+                    )
+                
+                logger.info(f"User {interaction.user.name} ({user_id}) toggled grounding display to {new_state}")
+            else:
+                await interaction.followup.send(
+                    "*synaptic error detected!* Failed to update grounding display preference. Please try again later."
+                )
+                logger.error(f"Failed to set grounding preference for user {interaction.user.name} ({user_id})")
+                
+        except Exception as e:
+            logger.error(f"Error in /toggle_grounding command for user {interaction.user.name} ({interaction.user.id}): {e}", exc_info=True)
+            await interaction.followup.send("*neural circuit overload!* An error occurred while updating grounding preferences.")

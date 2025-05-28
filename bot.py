@@ -30,6 +30,7 @@ from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
 from utils.logging import sanitize_for_logging
 from managers.keywords import KeywordManager # Added import
+from managers.grounding import GroundingManager, GroundingFact, GroundingSpec # Added grounding imports
 # Import the docx processing function and availability flag
 from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
 
@@ -39,7 +40,8 @@ from commands import (
     conversation_commands,
     admin_commands,
     utility_commands,
-    query_commands
+    query_commands,
+    grounding_commands
 )
 
 logger = logging.getLogger(__name__)
@@ -65,7 +67,10 @@ class DiscordBot(commands.Bot):
         self.conversation_manager = conversation_manager
         self.user_preferences_manager = user_preferences_manager
         # Pass the config object to KeywordManager
-        self.keyword_manager = KeywordManager(config=self.config) 
+        self.keyword_manager = KeywordManager(config=self.config)
+        
+        # Initialize grounding manager
+        self.grounding_manager = GroundingManager()
 
         # Add search caching
         self.search_cache = {}  # Store previous search results by user
@@ -786,7 +791,8 @@ class DiscordBot(commands.Bot):
             conversation_commands,
             admin_commands,
             utility_commands,
-            query_commands
+            query_commands,
+            grounding_commands
         )
 
         # Register all commands
@@ -796,6 +802,7 @@ class DiscordBot(commands.Bot):
         admin_commands.register_commands(self)
         utility_commands.register_commands(self)
         query_commands.register_commands(self)
+        grounding_commands.register_commands(self)
 
         logger.info("All commands registered successfully")
 
@@ -2283,6 +2290,45 @@ class DiscordBot(commands.Bot):
                     await thinking_msg.edit(content="*neural circuit overload!* I received an unexpected response structure.")
                     return
 
+                # Perform grounding check on the response
+                grounding_result = await self.check_response_grounding(
+                    response=response,
+                    search_results=search_results,
+                    user_question=original_question,
+                    enable_detailed_scoring=False  # Keep simple for regular messages
+                )
+                
+                # Add grounding information to response if available and user has opted in
+                final_response = response
+                if grounding_result and grounding_result.get('support_score') is not None:
+                    # Check if user has grounding display enabled (you can add this preference)
+                    show_grounding = self.user_preferences_manager.get_preference(
+                        str(message.author.id),
+                        'show_grounding_info',
+                        default=False  # Default to off for now
+                    )
+                    
+                    if show_grounding:
+                        support_score = grounding_result['support_score']
+                        grounded_claims = grounding_result['grounded_claims']
+                        total_claims = grounding_result['total_claims']
+                        
+                        # Add grounding footer based on score
+                        if support_score >= 0.8:
+                            grounding_indicator = "🟢"
+                        elif support_score >= 0.6:
+                            grounding_indicator = "🟡"
+                        else:
+                            grounding_indicator = "🔴"
+                        
+                        grounding_footer = f"\n\n*{grounding_indicator} {grounded_claims}/{total_claims} claims grounded ({support_score:.1%})*"
+                        final_response += grounding_footer
+                    
+                    # Log grounding results for monitoring
+                    logger.info(f"Grounding check for {message.author.name}: "
+                               f"Support={grounding_result['support_score']:.2f}, "
+                               f"Claims={grounding_result['grounded_claims']}/{grounding_result['total_claims']}")
+
                 # Update conversation history with context notes
                 user_history_content = original_question
                 history_notes = []
@@ -2301,7 +2347,7 @@ class DiscordBot(commands.Bot):
                 # Send the response, replacing thinking message
                 await self.send_split_message(
                     message.channel,
-                    response,
+                    final_response,
                     reference=message,
                     mention_author=False,
                     model_used=actual_model,
@@ -2327,3 +2373,111 @@ class DiscordBot(commands.Bot):
                     )
             except Exception as send_error:
                 logger.error(f"Failed to send error message to user: {send_error}")
+
+    async def check_response_grounding(self, response: str, search_results: List,
+                                     user_question: str = None,
+                                     enable_detailed_scoring: bool = False) -> Optional[Dict]:
+        """
+        Check grounding of an AI response against search results
+        
+        Args:
+            response: The AI-generated response to check
+            search_results: List of search results used as facts
+            user_question: Original user question for helpfulness scoring
+            enable_detailed_scoring: Whether to enable detailed claim-level scoring
+            
+        Returns:
+            Dictionary with grounding results or None if check fails
+        """
+        try:
+            if not search_results or not response.strip():
+                return None
+                
+            # Convert search results to grounding facts
+            grounding_facts = []
+            for result in search_results:
+                # Handle different search result formats
+                if isinstance(result, tuple) and len(result) >= 3:
+                    # Format: (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
+                    doc_uuid, original_name, chunk, score = result[0], result[1], result[2], result[3]
+                    
+                    # Skip image results for grounding (they're descriptions, not facts)
+                    if len(result) > 4 and result[4]:  # image_id exists
+                        continue
+                        
+                    attributes = {
+                        "document_name": original_name,
+                        "search_score": str(round(score, 3)),
+                        "doc_uuid": doc_uuid
+                    }
+                    
+                    if len(result) > 5:  # chunk_index and total_chunks available
+                        attributes["chunk_info"] = f"{result[5]}/{result[6]}"
+                    
+                    grounding_facts.append(GroundingFact(
+                        fact_text=chunk,
+                        attributes=attributes
+                    ))
+                elif isinstance(result, dict):
+                    # Handle dictionary format
+                    chunk = result.get('content', '')
+                    if chunk:
+                        attributes = {
+                            "document_name": result.get('document_name', 'Unknown'),
+                            "search_score": str(round(result.get('score', 0.0), 3))
+                        }
+                        grounding_facts.append(GroundingFact(
+                            fact_text=chunk,
+                            attributes=attributes
+                        ))
+            
+            if not grounding_facts:
+                logger.warning("No valid grounding facts extracted from search results")
+                return None
+            
+            # Configure grounding spec
+            grounding_spec = GroundingSpec(
+                citation_threshold=0.6,
+                enable_claim_level_score=enable_detailed_scoring,
+                enable_anti_citations=False,  # Keep simple for now
+                enable_helpfulness_score=bool(user_question)
+            )
+            
+            # Perform grounding check
+            grounding_response = await self.grounding_manager.check_grounding(
+                answer_candidate=response,
+                facts=grounding_facts,
+                grounding_spec=grounding_spec,
+                prompt=user_question
+            )
+            
+            # Convert to dictionary for easier handling
+            result_dict = {
+                "support_score": grounding_response.support_score,
+                "contradiction_score": grounding_response.contradiction_score,
+                "helpfulness_score": grounding_response.helpfulness_score,
+                "total_claims": len(grounding_response.claims),
+                "grounded_claims": len([c for c in grounding_response.claims if c.citations and c.grounding_check_required]),
+                "total_facts_used": len(grounding_facts),
+                "cited_facts": len(grounding_response.cited_chunks)
+            }
+            
+            if enable_detailed_scoring:
+                result_dict["claims"] = [
+                    {
+                        "text": claim.text,
+                        "support_score": claim.support_score,
+                        "citations": claim.citations,
+                        "grounding_required": claim.grounding_check_required
+                    }
+                    for claim in grounding_response.claims
+                ]
+            
+            logger.info(f"Grounding check completed: Support={result_dict['support_score']:.2f}, "
+                       f"Grounded claims={result_dict['grounded_claims']}/{result_dict['total_claims']}")
+            
+            return result_dict
+            
+        except Exception as e:
+            logger.error(f"Error during grounding check: {e}")
+            return None

@@ -22,6 +22,7 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Supports user-selectable AI models for different interaction styles
 - Features dynamic temperature control for better response quality
 - Manages files within the knowledge base (list, retrieve)
+- **NEW**: Grounding check with RAG - verify how well AI responses are supported by facts
 
 ## Setup & Installation
 
@@ -174,6 +175,14 @@ Comprehensive tools to help troubleshoot issues:
 | `/summarize_doc` | Generate a summary of a document by its UUID or original name. Param: `identifier`. |
 | `/view_chunk` | View the content of a specific document chunk by UUID or original name. Params: `identifier`, `chunk_index`, `contextualized`. |
 | `/process_docx_lore` | Process a .docx file to tag specific colored text with XML tags (admin only). Params: `docx_file`, `output_filename`. |
+
+#### Grounding Check Commands
+| Command | Description |
+|---------|-------------|
+| `/check_grounding` | Check how well an answer is grounded in provided facts with full customization |
+| `/check_grounding_simple` | Simple grounding check using document search to find relevant facts |
+| `/test_grounding` | Test grounding system with built-in examples |
+| `/grounding_example` | Show detailed examples and usage instructions for grounding checks |
 
 #### Image Management
 | Command | Description |
