@@ -568,10 +568,9 @@ class GroundingManager:
         Use Google Vertex AI Check Grounding API
         """
         # Prepare the API request
-        url = f"https://discoveryengine.googleapis.com/v1/projects/{self.project_id}/locations/global/groundingConfigs/default_grounding_config:check"
+        url = f"https://discoveryengine.googleapis.com/v1/projects/{self.project_id}/locations/global/groundingConfigs/default_grounding_config:check?key={self.api_key}"
         
         headers = {
-            "Authorization": f"Bearer {await self._get_access_token()}",
             "Content-Type": "application/json"
         }
         
