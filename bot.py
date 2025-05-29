@@ -937,6 +937,9 @@ class DiscordBot(commands.Bot):
             elif "deepseek/deepseek-r1" in model:
                 # DeepSeek R1 fallbacks
                 fallbacks = [
+                    "deepseek/deepseek-r1-0528:free",
+                    "deepseek/deepseek-r1-0528:floor",
+                    "deepseek/deepseek-r1-0528",
                     "deepseek/deepseek-r1:free",
                     "deepseek/deepseek-r1:floor",
                     "deepseek/deepseek-r1",

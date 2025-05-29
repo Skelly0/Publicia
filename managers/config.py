@@ -45,6 +45,9 @@ class Config:
             "deepseek/deepseek-r1-distill-llama-70b": 14,
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
+            "deepseek/deepseek-r1-0528": 10,
+            "deepseek/deepseek-r1-0528:free": 15,
+            "deepseek/deepseek-r1-0528:floor": 10,
             # Gemini models 
             "google/gemini-2.5-flash-preview": 18,
             "google/gemini-2.5-flash-preview:thinking": 16,
