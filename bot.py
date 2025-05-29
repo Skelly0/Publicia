@@ -973,8 +973,9 @@ class DiscordBot(commands.Bot):
             # Qwen models
             elif model_family == "qwen":
                 fallbacks = [
-                    "qwen/qwq-32b:free",
+                    #"qwen/qwq-32b:free",
                     "qwen/qwq-32b",
+                    "qwen/qwq-32b:nitro",
                     "qwen/qwq-32b:floor",
                     "qwen/qwen-turbo",
                     "qwen/qwen2.5-32b-instruct"
@@ -1074,7 +1075,7 @@ class DiscordBot(commands.Bot):
 
             # Add general fallbacks (cleaned up)
             general_fallbacks = [
-                "qwen/qwq-32b:free",
+                #"qwen/qwq-32b:free",
                 "qwen/qwq-32b:floor",
                 "google/gemini-2.5-flash-preview:thinking",
                 "google/gemini-2.5-flash-preview",

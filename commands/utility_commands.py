@@ -125,7 +125,7 @@ def register_commands(bot):
     @app_commands.choices(model=[
         app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
         #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro-preview-03-25"), # Added new model
-        app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
+        app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b"),
         app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b"),
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1-0528:free"),
