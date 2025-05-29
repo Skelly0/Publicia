@@ -2030,7 +2030,7 @@ class DiscordBot(commands.Bot):
                 google_doc_context_str.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
 
             # Get nickname or username
-            nickname = message.author.nick if (message.guild and message.author.nick) else message.author.name
+            nickname = message.author.nick if (message.guild and hasattr(message.author, 'nick') and message.author.nick) else message.author.name
 
             # Determine which system prompt to use based on user preference
             use_informational_prompt = self.user_preferences_manager.get_informational_prompt_mode(str(message.author.id))
