@@ -348,3 +348,32 @@ def register_commands(bot):
         except Exception as e:
             logger.error(f"Error clearing conversation history: {e}")
             await interaction.followup.send("Oops, something went wrong while trying to clear my memory!")
+
+    # Prefix command versions
+    @bot.command(name="lobotomise", help="Wipe your conversation history with the bot")
+    async def prefix_lobotomise(ctx):
+        """Prefix command version of /lobotomise"""
+        try:
+            file_path = bot.conversation_manager.get_file_path(ctx.author.name)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                await ctx.send("*AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*... memory wiped! I've forgotten our conversations... Who are you again?")
+            else:
+                await ctx.send("Hmm, I don't seem to have any memories of our conversations to wipe!")
+        except Exception as e:
+            logger.error(f"Error clearing conversation history: {e}")
+            await ctx.send("oops, something went wrong while trying to clear my memory!")
+
+    @bot.command(name="memory_clear", help="Wipe your conversation history with the bot (no torture involved)")
+    async def prefix_memory_clear(ctx):
+        """Prefix command version of /memory_clear"""
+        try:
+            file_path = bot.conversation_manager.get_file_path(ctx.author.name)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                await ctx.send("My memory has been cleared. I've forgotten our conversation.")
+            else:
+                await ctx.send("Hmm, I don't seem to have any memories of our conversations to wipe!")
+        except Exception as e:
+            logger.error(f"Error clearing conversation history: {e}")
+            await ctx.send("Oops, something went wrong while trying to clear my memory!")
