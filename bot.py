@@ -1759,8 +1759,9 @@ class DiscordBot(commands.Bot):
         for pattern in first_person_actions:
             if re.search(pattern, question_lower):
                 return True
-                
-        return False
+
+        #Set to true for all things to skip this code.        
+        return True
 
     def _enhance_query_with_username(self, question: str, username: str) -> str:
         """
@@ -2049,9 +2050,9 @@ class DiscordBot(commands.Bot):
                 question = "Hello" # Default to a simple greeting if message is just a ping
                 logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
 
-            # Check for memory clearing commands in the original message content
+            # Check for memory clearing commands in the original message content (only for bot accounts)
             original_content = message.content.lower()
-            if "publicia! lobotomise" in original_content or "publicia! memory_clear" in original_content:
+            if message.author.bot and ("publicia! lobotomise" in original_content or "publicia! memory_clear" in original_content):
                 try:
                     file_path = self.conversation_manager.get_file_path(message.author.name)
                     if os.path.exists(file_path):
