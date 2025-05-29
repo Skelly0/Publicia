@@ -2268,6 +2268,20 @@ class DiscordBot(commands.Bot):
                 conversation_messages
             )
 
+            # Check if the original message still exists before generating response
+            try:
+                await message.channel.fetch_message(message.id)
+            except discord.NotFound:
+                logger.info(f"Original message {message.id} was deleted, stopping response generation and deleting thinking message")
+                try:
+                    await thinking_msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass  # Message already deleted or no permission
+                return
+            except Exception as e:
+                logger.warning(f"Error checking if original message exists: {e}")
+                # Continue processing if we can't verify (might be a temporary issue)
+
             # Get AI response
             completion, actual_model = await self._try_ai_completion(
                 preferred_model,
@@ -2276,6 +2290,20 @@ class DiscordBot(commands.Bot):
                 image_attachments=all_api_image_attachments, # Combined direct + referenced
                 temperature=temperature
             )
+
+            # Check again if the original message still exists after AI completion
+            try:
+                await message.channel.fetch_message(message.id)
+            except discord.NotFound:
+                logger.info(f"Original message {message.id} was deleted during AI completion, stopping response and deleting thinking message")
+                try:
+                    await thinking_msg.delete()
+                except (discord.NotFound, discord.Forbidden):
+                    pass  # Message already deleted or no permission
+                return
+            except Exception as e:
+                logger.warning(f"Error checking if original message exists after AI completion: {e}")
+                # Continue processing if we can't verify (might be a temporary issue)
 
             # Process and send response
             if completion and completion.get('choices') and len(completion['choices']) > 0:
