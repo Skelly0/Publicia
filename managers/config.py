@@ -117,6 +117,9 @@ class Config:
 
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
+        # BM25 search weighting configuration
+        self.BM25_WEIGHT = float(os.getenv('BM25_WEIGHT', '0.05'))  # Default to 0.05 (5% BM25, 95% embedding)
+
         # Keyword checking configuration
         self.KEYWORD_CHECK_CHUNK_LIMIT = int(os.getenv('KEYWORD_CHECK_CHUNK_LIMIT', '5')) # Number of chunks to check for keywords
 

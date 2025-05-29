@@ -476,7 +476,8 @@ class DocumentManager:
     ) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
         combined_scores_data = {}
-        embedding_weight = 0.95
+        bm25_weight = self.config.BM25_WEIGHT if self.config else 0.05
+        embedding_weight = 1.0 - bm25_weight
         
         # Filter out results with "Chunk not found" from embedding results
         valid_embedding_results = [r for r in embedding_results if r[2] != "Chunk not found"]
@@ -492,7 +493,6 @@ class DocumentManager:
             combined_scores_data[key]['score'] += norm_score * embedding_weight
             combined_scores_data[key]['data'] = res_tuple
 
-        bm25_weight = 0.05
         if bm25_results:
             # Filter out results with "Chunk not found" from BM25 results
             valid_bm25_results = [r for r in bm25_results if r[2] != "Chunk not found"]
