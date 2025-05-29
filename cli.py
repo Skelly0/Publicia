@@ -270,7 +270,7 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
     # --- Format Context ---
     raw_doc_contexts = []
     image_ids_from_search = [] # Track images found in search results
-    googledoc_mapping = doc_manager.get_googledoc_id_mapping() # Get mapping for citations
+    googledoc_mapping = doc_manager.get_original_name_to_googledoc_id_mapping() # Get mapping for citations
 
     for doc, chunk, score, image_id, chunk_index, total_chunks in search_results:
         if image_id:

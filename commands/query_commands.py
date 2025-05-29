@@ -111,7 +111,7 @@ def register_commands(bot):
             await status_message.edit(content="*synthesizing information...*")
             
             # Load Google Doc ID mapping for citation links
-            googledoc_mapping = bot.document_manager.get_googledoc_id_mapping()
+            googledoc_mapping = bot.document_manager.get_original_name_to_googledoc_id_mapping()
 
             # Extract image IDs from search results
             image_ids = []

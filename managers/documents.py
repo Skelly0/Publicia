@@ -776,7 +776,7 @@ class DocumentManager:
             logger.error(f"Error add/update doc '{original_name}': {e}", exc_info=True)
             return None
 
-    def get_googledoc_id_mapping(self) -> Dict[str, str]: 
+    def get_googledoc_id_mapping(self) -> Dict[str, str]:
         tracked_file = self.base_dir / "tracked_google_docs.json"
         if not tracked_file.exists(): return {}
         mapping = {}
@@ -786,6 +786,33 @@ class DocumentManager:
                 if 'google_doc_id' in doc_entry and 'internal_doc_uuid' in doc_entry:
                     mapping[doc_entry['google_doc_id']] = doc_entry['internal_doc_uuid']
         except Exception as e: logger.error(f"Error reading tracked_google_docs.json: {e}")
+        return mapping
+
+    def get_original_name_to_googledoc_id_mapping(self) -> Dict[str, str]:
+        """
+        Returns a mapping from original_name to google_doc_id for creating citation URLs.
+        This is the correct mapping to use when you have an original_name from search results
+        and need the Google Doc URL ID string.
+        """
+        tracked_file = self.base_dir / "tracked_google_docs.json"
+        if not tracked_file.exists():
+            return {}
+        
+        mapping = {}
+        try:
+            with open(tracked_file, 'r', encoding='utf-8') as f:
+                tracked_docs = json.load(f)
+            
+            for doc_entry in tracked_docs:
+                google_doc_id = doc_entry.get('google_doc_id')
+                original_name_at_import = doc_entry.get('original_name_at_import')
+                
+                if google_doc_id and original_name_at_import:
+                    mapping[original_name_at_import] = google_doc_id
+                    
+        except Exception as e:
+            logger.error(f"Error reading tracked_google_docs.json for original_name mapping: {e}")
+        
         return mapping
 
     def get_all_document_contents(self) -> Dict[str, str]: 

@@ -1981,7 +1981,7 @@ class DiscordBot(commands.Bot):
             # --- End Keyword Extraction ---
 
             # Load Google Doc ID mapping for citation links
-            googledoc_mapping = self.document_manager.get_googledoc_id_mapping()
+            googledoc_mapping = self.document_manager.get_original_name_to_googledoc_id_mapping()
 
             # Extract image IDs from search results
             image_ids = []
