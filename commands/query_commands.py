@@ -100,7 +100,7 @@ def register_commands(bot):
             await status_message.edit(content="*analyzing query and searching imperial databases...*")
             search_results = await bot.process_hybrid_query( # Await async call
                 question,
-                interaction.user.name,
+                nickname,  # Use nickname instead of interaction.user.name for better search context
                 max_results=bot.config.get_top_k_for_model(preferred_model),
                 use_context=False  # this disables all the context logic for slash commands
             )

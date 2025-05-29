@@ -1610,13 +1610,180 @@ class DiscordBot(commands.Bot):
         logger.info(f"Generated context-aware embedding using {len(relevant_history)} history messages.")
         return final_embedding
 
+    def _should_enhance_query_with_username(self, question: str) -> bool:
+        """
+        Determine if a query would benefit from including the username for better context.
+        Returns True for queries that are likely asking about the user themselves or roleplay scenarios.
+        Uses similar detection logic as the dynamic temperature system.
+        """
+        question_lower = question.lower().strip()
+        import re
+        
+        # === ROLEPLAY INDICATORS (from temperature system) ===
+        
+        # Action descriptions with asterisks (strong roleplay indicator)
+        if re.search(r"\*[^*]+\*", question):
+            return True
+        
+        # Dialogue markers with speech marks (strong roleplay indicator)
+        if re.search(r"[\"'].+?[\"']", question):
+            return True
+        
+        # Roleplay phrases (from temperature system) - using more specific patterns
+        roleplay_patterns = [
+            # Basic roleplay indicators
+            r'\broleplay\b', r'\bin character\b', r'\bact as\b', r'\bconversation\b', r'\bscene\b', r'\bscenario\b',
+            
+            # Speech indicators (more specific to avoid false positives)
+            r'\bsays\b', r'\bspeak to\b', r'\bspeaks to\b', r'\bspeaking to\b', r'\btalk to\b', r'\btalks to\b',
+            r'\breply\b', r'\breplies\b', r'\brespond\b', r'\bresponds\b', r'\banswered\b', r'\btells\s+\w+\b', r'\btold\s+\w+\b',
+            
+            # Action verbs (more specific patterns)
+            r'\bperform\b', r'\bperforms\b', r'\bacted\b', r'\bacting\b', r'\bmoves\b', r'\bmoved\b',
+            r'\bwalks\b', r'\bsits\b', r'\bstands\b', r'\bturns\b', r'\blooks\s+\w+\b', r'\bsmiles\b', r'\bfrowns\b', r'\bnods\b',
+            
+            # Narrative elements
+            r'\bnarrate\b', r'\bdescribe scene\b', r'\bsetting\b', r'\benvironment\b', r'\bcontinues\b',
+            r'\bstarts\b', r'\bbegins\b', r'\benters\b', r'\bexits\b', r'\bappears\b', r'\bsuddenly\b',
+            
+            # Character emotions/states
+            r'\bfeeling\b', r'\bfelt\b', r'\bemotion\b', r'\bexpression\b', r'\bmood\b', r'\battitude\b',
+            r'\bsurprised\b', r'\bexcited\b', r'\bnervous\b', r'\bcalm\b', r'\bangry\b'
+        ]
+        
+        for pattern in roleplay_patterns:
+            if re.search(pattern, question_lower):
+                return True
+        
+        # === SELF-REFERENCE PATTERNS ===
+        
+        self_reference_patterns = [
+            # Direct self-reference
+            r'\bdo you know me\b',
+            r'\bwho am i\b',
+            r'\bwhat do you know about me\b',
+            r'\btell me about myself\b',
+            r'\bmy character\b',
+            r'\bmy background\b',
+            r'\bmy story\b',
+            r'\bmy history\b',
+            r'\babout me\b',
+            
+            # Questions starting with "my"
+            r'^my\s+',
+            r'\bwhat\'s my\b',
+            r'\bwhere\'s my\b',
+            r'\bhow\'s my\b',
+            r'\bwhen\'s my\b',
+            
+            # Questions about personal attributes
+            r'\bam i\b',
+            r'\bdo i\b',
+            r'\bhave i\b',
+            r'\bcan i\b',
+            r'\bwill i\b',
+            r'\bdid i\b',
+            
+            # Questions that might reference the user indirectly
+            r'\bremember me\b',
+            r'\bknow anything about me\b',
+        ]
+        
+        for pattern in self_reference_patterns:
+            if re.search(pattern, question_lower):
+                return True
+        
+        # === FIRST-PERSON ROLEPLAY ACTIONS ===
+        
+        first_person_actions = [
+            r'\bi want to\b',
+            r'\bi would like to\b',
+            r'\bi\'d like to\b',
+            r'\bi try to\b',
+            r'\bi attempt to\b',
+            r'\bi decide to\b',
+            r'\bi choose to\b',
+            r'\bi go to\b',
+            r'\bi walk to\b',
+            r'\bi run to\b',
+            r'\bi move to\b',
+            r'\bi head to\b',
+            r'\bi approach\b',
+            r'\bi enter\b',
+            r'\bi leave\b',
+            r'\bi exit\b',
+            r'\bi look for\b',
+            r'\bi search for\b',
+            r'\bi examine\b',
+            r'\bi investigate\b',
+            r'\bi talk to\b',
+            r'\bi speak to\b',
+            r'\bi ask\b',
+            r'\bi tell\b',
+            r'\bi say\b',
+            r'\bi whisper\b',
+            r'\bi shout\b',
+            r'\bi cast\b',
+            r'\bi use\b',
+            r'\bi equip\b',
+            r'\bi take\b',
+            r'\bi grab\b',
+            r'\bi pick up\b',
+            r'\bi drop\b',
+            r'\bi give\b',
+            r'\bi offer\b',
+            r'\bi attack\b',
+            r'\bi defend\b',
+            r'\bi hide\b',
+            r'\bi sneak\b',
+            r'\bi climb\b',
+            r'\bi jump\b',
+            r'\bi swim\b',
+            r'\bi fly\b',
+            r'\bi rest\b',
+            r'\bi sleep\b',
+            r'\bi wait\b',
+            r'\bi follow\b',
+            r'\bi lead\b',
+            
+            # Action-oriented roleplay
+            r'^i\s+',  # Sentences starting with "I"
+            r'\blet me\b',
+            r'\blet\'s\b',
+            r'\bshould i\b',
+            r'\bwould i\b',
+            r'\bcould i\b',
+            r'\bmay i\b',
+        ]
+        
+        for pattern in first_person_actions:
+            if re.search(pattern, question_lower):
+                return True
+                
+        return False
+
+    def _enhance_query_with_username(self, question: str, username: str) -> str:
+        """
+        Enhance a query by including the username to improve search relevance.
+        """
+        if not username or not self._should_enhance_query_with_username(question):
+            return question
+            
+        # Prepend the username to the query for better embedding weight
+        enhanced_query = f"{username} {question}"
+        logger.info(f"Enhanced query with username: '{question}' -> '{enhanced_query}'")
+        return enhanced_query
+
     async def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True): # Make async
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
+        # Enhance the query with username if it would be helpful
+        enhanced_question = self._enhance_query_with_username(question, username)
+        
         # Skip context logic completely if use_context is False
         if not use_context:
             # Just do regular search with reranking asynchronously
             search_results = await self.document_manager.search( # Await async call
-                question,
+                enhanced_question,
                 top_k=max_results,
                 apply_reranking=self.config.RERANKING_ENABLED
             )
@@ -1636,7 +1803,8 @@ class DiscordBot(commands.Bot):
         conversation_history = self.conversation_manager.get_conversation_messages(username, limit=10)
 
         # Generate context-aware embedding (or standard embedding if no history)
-        embedding = await self.generate_context_aware_embedding(question, conversation_history)
+        # Use the enhanced question for better context matching
+        embedding = await self.generate_context_aware_embedding(enhanced_question, conversation_history)
 
         if embedding is None:
              logger.error("Failed to generate any embedding, falling back to basic keyword search (if implemented) or empty results.")
@@ -1657,7 +1825,7 @@ class DiscordBot(commands.Bot):
             # Apply re-ranking asynchronously
             if initial_results:
                 logger.info(f"Applying re-ranking to {len(initial_results)} results")
-                results = await self.document_manager.rerank_results(question, initial_results, top_k=max_results) # Await async call
+                results = await self.document_manager.rerank_results(enhanced_question, initial_results, top_k=max_results) # Await async call
             else:
                 results = [] # No initial results to rerank
         else:
@@ -1951,7 +2119,7 @@ class DiscordBot(commands.Bot):
             # This now handles context checking and enhancement internally
             search_results = await self.process_hybrid_query( # Await async call
                 question, # Pass the potentially non-enhanced question here
-                message.author.name,
+                nickname,  # Use nickname instead of message.author.name for better search context
                 max_results=self.config.get_top_k_for_model(preferred_model),
                 use_context=True # Enable context features for on_message
             )
