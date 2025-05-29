@@ -1,15 +1,21 @@
-fix: improve BM25 search for complex analytical queries
+fix: resolve complex analytical query search failures
 
-- Add _extract_core_topics() method to filter analytical words from BM25 queries
-- Complex queries like "Write a detailed analysis of Mong philosophy..." now focus on core topics ("mong philosophy theology") instead of matching irrelevant content with analytical words
-- Fixes issue where complex queries returned 0/5 relevant results, now returns 2-4/5 relevant results
-- Simple queries continue to work perfectly (5/5 results)
-- Enable reranking with slightly lowered threshold (0.4) for better complex query performance
+Problem: Complex queries like "Write a detailed analysis of Mong philosophy..." returned no relevant content, causing bot to respond "There is no mention of Mong philosophy in the records."
 
-Before: "Write a detailed analysis of Mong philosophy..." → irrelevant military/political content
-After: Same query → relevant religious/philosophical content including actual Mong material
+Root causes identified:
+1. BM25 matching analytical words ("detailed", "analysis", "intersection") with irrelevant military/political content
+2. Reranking being overly restrictive for complex queries, filtering out good results
+
+Solutions implemented:
+- Add _extract_core_topics() method to filter analytical words from BM25 queries, focusing on core topics ("mong philosophy theology")
+- Adjust hybrid search weights to 95% embedding / 5% BM25 for better balance
+- Disable reranking for complex analytical queries (keep enabled for simple queries via config)
+
+Results:
+- Before: "There is no mention of Mong philosophy..." (complete failure)
+- After: Comprehensive 2-part response covering Möng philosophy, theology, and their intersection
 
 Files changed:
-- managers/documents.py: Add core topic extraction for BM25
-- .env: Enable reranking with optimized settings
-- debug_scripts/: Add comprehensive test scripts for validation
+- managers/documents.py: Core topic extraction + weight adjustment
+- .env: Disable reranking (RERANKING_ENABLED=false)
+- debug_scripts/: Comprehensive diagnostic tools for validation
