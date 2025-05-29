@@ -2049,6 +2049,41 @@ class DiscordBot(commands.Bot):
                 question = "Hello" # Default to a simple greeting if message is just a ping
                 logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
 
+            # Check for memory clearing commands in the original message content
+            original_content = message.content.lower()
+            if "publicia! lobotomise" in original_content or "publicia! memory_clear" in original_content:
+                try:
+                    file_path = self.conversation_manager.get_file_path(message.author.name)
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        if "publicia! lobotomise" in original_content:
+                            await message.channel.send(
+                                "*AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA*... memory wiped! I've forgotten our conversations... Who are you again?",
+                                reference=message,
+                                mention_author=False
+                            )
+                        else:  # memory_clear
+                            await message.channel.send(
+                                "My memory has been cleared. I've forgotten our conversation.",
+                                reference=message,
+                                mention_author=False
+                            )
+                    else:
+                        await message.channel.send(
+                            "Hmm, I don't seem to have any memories of our conversations to wipe!",
+                            reference=message,
+                            mention_author=False
+                        )
+                    return  # Exit early after processing memory command
+                except Exception as e:
+                    logger.error(f"Error clearing conversation history via mention: {e}")
+                    await message.channel.send(
+                        "Oops, something went wrong while trying to clear my memory!",
+                        reference=message,
+                        mention_author=False
+                    )
+                    return  # Exit early even on error
+
             # Add context-aware query enhancement (if enabled, based on hybrid search logic)
             original_question = question
             # Context checking and enhancement happens within process_hybrid_query now
