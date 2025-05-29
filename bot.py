@@ -1760,7 +1760,7 @@ class DiscordBot(commands.Bot):
             if re.search(pattern, question_lower):
                 return True
 
-        #Set to true for all things to skip this code.        
+        #Set to true for all things to skip this code  
         return True
 
     def _enhance_query_with_username(self, question: str, username: str) -> str:
