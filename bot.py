@@ -12,6 +12,7 @@ import base64
 import asyncio
 import logging
 import random
+import time
 import aiohttp
 import discord
 import html # Added for HTML entity decoding
@@ -1200,27 +1201,155 @@ class DiscordBot(commands.Bot):
                 
                 logger.debug(f"Request payload: {json.dumps(sanitized_messages, indent=2)}")
 
-                async def api_call():
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(
-                            "https://openrouter.ai/api/v1/chat/completions",
-                            headers=headers,
-                            json=payload,
-                            timeout=self.timeout_duration
-                        ) as response:
-                            if response.status != 200:
-                                error_text = await response.text()
-                                logger.error(f"API error (Status {response.status}): {error_text}")
-                                # Log additional context like headers to help diagnose issues
-                                logger.error(f"Request context: URL={response.url}, Headers={response.headers}")
-                                return None
-                                
-                            return await response.json()
+                async def test_connectivity():
+                    """Quick connectivity test to OpenRouter"""
+                    try:
+                        async with aiohttp.ClientSession() as test_session:
+                            async with test_session.get(
+                                "https://openrouter.ai/api/v1/models",
+                                timeout=aiohttp.ClientTimeout(total=10)
+                            ) as resp:
+                                if resp.status == 200:
+                                    logger.debug("Basic connectivity to OpenRouter confirmed")
+                                    return True
+                                else:
+                                    logger.warning(f"OpenRouter responded with status {resp.status}")
+                                    return False
+                    except Exception as e:
+                        logger.error(f"Connectivity test failed: {str(e)}")
+                        return False
 
-                completion = await asyncio.wait_for(
-                    api_call(),
-                    timeout=self.timeout_duration
-                )
+                async def api_call():
+                    # Configure session with connection pooling and timeouts
+                    connector = aiohttp.TCPConnector(
+                        limit=10,  # Total connection pool size
+                        limit_per_host=5,  # Connections per host
+                        ttl_dns_cache=300,  # DNS cache TTL
+                        use_dns_cache=True,
+                    )
+                    
+                    timeout = aiohttp.ClientTimeout(
+                        total=self.timeout_duration,
+                        connect=30,  # Connection timeout
+                        sock_read=60,  # Socket read timeout
+                    )
+                    
+                    async with aiohttp.ClientSession(
+                        connector=connector,
+                        timeout=timeout
+                    ) as session:
+                        try:
+                            logger.debug(f"Starting API call to {current_model}")
+                            
+                            # Test basic connectivity first
+                            start_time = time.time()
+                            async with session.post(
+                                "https://openrouter.ai/api/v1/chat/completions",
+                                headers=headers,
+                                json=payload,
+                                timeout=self.timeout_duration
+                            ) as response:
+                                connect_time = time.time() - start_time
+                                logger.debug(f"Connection established in {connect_time:.2f}s for {current_model}")
+                                logger.debug(f"Received response status: {response.status} for {current_model}")
+                                logger.debug(f"Response headers: {dict(response.headers)}")
+                                
+                                if response.status != 200:
+                                    error_text = await response.text()
+                                    logger.error(f"API error (Status {response.status}): {error_text}")
+                                    # Log additional context like headers to help diagnose issues
+                                    logger.error(f"Request context: URL={response.url}, Headers={response.headers}")
+                                    return None
+                                
+                                # Log content length if available
+                                content_length = response.headers.get('content-length')
+                                if content_length:
+                                    logger.debug(f"Expected content length: {content_length} bytes")
+                                
+                                logger.debug(f"Starting to read response body for {current_model}")
+                                result = await response.json()
+                                logger.debug(f"Successfully read response body for {current_model}")
+                                return result
+                                
+                        except aiohttp.ClientPayloadError as e:
+                            error_msg = str(e).lower()
+                            logger.error(f"Payload error for {current_model}: {str(e)}")
+                            
+                            if "transfer length header" in error_msg:
+                                logger.error(f"Server sent incomplete response - likely server-side issue")
+                            elif "connection reset" in error_msg:
+                                logger.error(f"Connection reset by peer - could be server overload or network issue")
+                            else:
+                                logger.error(f"Generic payload error - server dropped connection mid-response")
+                            raise
+                            
+                        except aiohttp.ClientConnectionError as e:
+                            error_msg = str(e).lower()
+                            logger.error(f"Connection error for {current_model}: {str(e)}")
+                            
+                            if "name resolution" in error_msg or "dns" in error_msg:
+                                logger.error(f"DNS resolution failed - check internet connectivity")
+                            elif "connection refused" in error_msg:
+                                logger.error(f"Server refused connection - server may be down")
+                            elif "timeout" in error_msg:
+                                logger.error(f"Connection timeout - slow network or server overload")
+                            else:
+                                logger.error(f"Generic connection error - network connectivity issues")
+                            raise
+                            
+                        except asyncio.TimeoutError as e:
+                            logger.error(f"Timeout error for {current_model}: {str(e)}")
+                            logger.error(f"Request exceeded {self.timeout_duration} seconds - slow network or large response")
+                            raise
+
+                # Retry logic for connection issues
+                max_retries = 3
+                retry_delay = 2  # seconds
+                
+                for attempt in range(max_retries):
+                    try:
+                        completion = await asyncio.wait_for(
+                            api_call(),
+                            timeout=self.timeout_duration
+                        )
+                        break  # Success, exit retry loop
+                        
+                    except (aiohttp.ClientPayloadError, aiohttp.ClientConnectionError) as e:
+                        # Special handling for free tier models
+                        if ":free" in current_model:
+                            logger.warning(f"Free tier model {current_model} connection failed: {str(e)}")
+                            logger.info(f"Free tier models may be overloaded. Skipping retries and trying next model.")
+                            raise  # Skip retries for free tier, move to next model
+                        
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Connection error on attempt {attempt + 1}/{max_retries} for {current_model}: {str(e)}")
+                            
+                            # Test basic connectivity before retrying
+                            logger.info("Testing basic connectivity to OpenRouter...")
+                            connectivity_ok = await test_connectivity()
+                            
+                            if not connectivity_ok:
+                                logger.error("Basic connectivity test failed. Network issue detected.")
+                                logger.info("Skipping retries due to network connectivity problems.")
+                                raise
+                            
+                            logger.info(f"Connectivity OK. Retrying in {retry_delay} seconds...")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        else:
+                            logger.error(f"All {max_retries} attempts failed for {current_model}")
+                            raise
+                    except asyncio.TimeoutError as e:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Timeout on attempt {attempt + 1}/{max_retries} for {current_model}")
+                            logger.info(f"Retrying in {retry_delay} seconds...")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            logger.error(f"All {max_retries} attempts timed out for {current_model}")
+                            raise
                 
                 if completion and completion.get('choices') and len(completion['choices']) > 0:
                     if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
