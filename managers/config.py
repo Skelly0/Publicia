@@ -140,6 +140,33 @@ class Config:
 
         # Keyword database system enable/disable setting
         self.KEYWORD_DATABASE_ENABLED = bool(os.getenv('KEYWORD_DATABASE_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+
+    def get_reranking_settings_for_query(self, query: str):
+        """Get adaptive reranking settings based on query complexity."""
+        complex_indicators = [
+            'analysis', 'analyze', 'detailed', 'comprehensive', 'intersection',
+            'relationship', 'compare', 'contrast', 'philosophy', 'theology',
+            'write about', 'explain in detail', 'discuss', 'elaborate',
+            'write a', 'provide a', 'give me a', 'tell me about',
+            'describe', 'overview', 'summary', 'breakdown', 'examination',
+            'exploration', 'investigation', 'study', 'research', 'deep dive'
+        ]
+        
+        is_complex = any(indicator in query.lower() for indicator in complex_indicators)
+        
+        if is_complex:
+            logger.info("Detected complex query, using lenient reranking settings")
+            return {
+                'min_score': 0.15,      # Even lower threshold for better recall
+                'filter_mode': 'topk',  # No score filtering (was 'strict')
+                'candidates': 40        # Even more candidates for better selection
+            }
+        else:
+            return {
+                'min_score': self.RERANKING_MIN_SCORE,
+                'filter_mode': self.RERANKING_FILTER_MODE,
+                'candidates': self.RERANKING_CANDIDATES
+            }
         
         # Contextualization settings
         self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
