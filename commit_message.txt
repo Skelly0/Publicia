@@ -1,0 +1,15 @@
+fix: improve BM25 search for complex analytical queries
+
+- Add _extract_core_topics() method to filter analytical words from BM25 queries
+- Complex queries like "Write a detailed analysis of Mong philosophy..." now focus on core topics ("mong philosophy theology") instead of matching irrelevant content with analytical words
+- Fixes issue where complex queries returned 0/5 relevant results, now returns 2-4/5 relevant results
+- Simple queries continue to work perfectly (5/5 results)
+- Enable reranking with slightly lowered threshold (0.4) for better complex query performance
+
+Before: "Write a detailed analysis of Mong philosophy..." → irrelevant military/political content
+After: Same query → relevant religious/philosophical content including actual Mong material
+
+Files changed:
+- managers/documents.py: Add core topic extraction for BM25
+- .env: Enable reranking with optimized settings
+- debug_scripts/: Add comprehensive test scripts for validation

@@ -330,9 +330,40 @@ class DocumentManager:
             logger.error(f"Failed to create BM25 index: {e}")
             return None
         
+    def _extract_core_topics(self, query: str) -> str:
+        """
+        Extract core topic words from a complex query, removing analytical language.
+        This helps BM25 focus on the actual subject matter rather than instructional words.
+        """
+        import re
+        
+        # Remove common analytical/instructional words that don't help with content matching
+        analytical_words = {
+            'write', 'detailed', 'analysis', 'analyze', 'comprehensive', 'explain',
+            'describe', 'discuss', 'elaborate', 'provide', 'give', 'tell', 'about',
+            'intersection', 'relationship', 'connection', 'between', 'with', 'their',
+            'as', 'well', 'its', 'the', 'a', 'an', 'and', 'or', 'of', 'in', 'on',
+            'at', 'to', 'for', 'by', 'from', 'up', 'out', 'if', 'then', 'than',
+            'how', 'what', 'when', 'where', 'why', 'who', 'which', 'that', 'this'
+        }
+        
+        # Split query into words and filter
+        words = re.findall(r'\b\w+\b', query.lower())
+        core_words = [word for word in words if word not in analytical_words and len(word) > 2]
+        
+        # Return the core topic words, fallback to original if no core words found
+        core_query = ' '.join(core_words)
+        return core_query if core_words else query
+
     def _search_bm25(self, query: str, top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
-        query_tokens = query.lower().split()
+        
+        # Extract core topics for better BM25 matching
+        core_query = self._extract_core_topics(query)
+        if core_query != query:
+            logger.debug(f"BM25 using core topics: '{query}' -> '{core_query}'")
+        
+        query_tokens = core_query.lower().split()
         if not query_tokens:
             logger.warning("BM25 search: No valid query tokens")
             return []
