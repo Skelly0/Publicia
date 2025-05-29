@@ -128,7 +128,7 @@ def register_commands(bot):
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b:free"),
         app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b"),
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
-        app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1:free"),
+        app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1-0528:free"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
         app_commands.Choice(name="Claude 3.5 Sonnet", value="anthropic/claude-3.5-sonnet:beta"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
