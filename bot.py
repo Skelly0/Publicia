@@ -2035,6 +2035,9 @@ class DiscordBot(commands.Bot):
 
             logger.info(f"Processing message from {message.author.name} (ID: {message.author.id}): {shorten(message.content, width=100, placeholder='...')}")
 
+            # Get nickname or username early to ensure it's available for all subsequent operations
+            nickname = message.author.nick if (message.guild and hasattr(message.author, 'nick') and message.author.nick) else message.author.name
+
             # Extract the question from the message (remove mentions)
             question = message.content
             for mention in message.mentions:
@@ -2196,9 +2199,6 @@ class DiscordBot(commands.Bot):
                 # Truncate content if it's too long (e.g., first 10000 chars)
                 truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
                 google_doc_context_str.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
-
-            # Get nickname or username
-            nickname = message.author.nick if (message.guild and hasattr(message.author, 'nick') and message.author.nick) else message.author.name
 
             # Determine which system prompt to use based on user preference
             use_informational_prompt = self.user_preferences_manager.get_informational_prompt_mode(str(message.author.id))
