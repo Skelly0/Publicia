@@ -118,7 +118,7 @@ class Config:
         self.RERANKING_FILTER_MODE = os.getenv('RERANKING_FILTER_MODE', 'strict')  # 'strict', 'dynamic', or 'topk'
 
         # BM25 search weighting configuration
-        self.BM25_WEIGHT = float(os.getenv('BM25_WEIGHT', '0.05'))  # Default to 0.05 (5% BM25, 95% embedding)
+        self.BM25_WEIGHT = float(os.getenv('BM25_WEIGHT', '0.25'))  # Default to 0.25 (25% BM25, 75% embedding) - improved for factual queries
 
         # Keyword checking configuration
         self.KEYWORD_CHECK_CHUNK_LIMIT = int(os.getenv('KEYWORD_CHECK_CHUNK_LIMIT', '5')) # Number of chunks to check for keywords
@@ -147,7 +147,7 @@ class Config:
             'analysis', 'analyze', 'detailed', 'comprehensive', 'intersection',
             'relationship', 'compare', 'contrast', 'philosophy', 'theology',
             'write about', 'explain in detail', 'discuss', 'elaborate',
-            'write a', 'provide a', 'give me a', 'tell me about',
+            'write a', 'provide a', 'give me a', 'tell me',
             'describe', 'overview', 'summary', 'breakdown', 'examination',
             'exploration', 'investigation', 'study', 'research', 'deep dive'
         ]
