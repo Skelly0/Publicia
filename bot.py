@@ -2295,6 +2295,26 @@ class DiscordBot(commands.Bot):
 
             # Log the results
             logger.info(f"Found {len(search_results)} relevant document sections via hybrid search")
+            
+            # If we added a temporary referenced message, remove it from the conversation history
+            if temp_ref_message_added:
+                # Get the current conversation
+                file_path = self.conversation_manager.get_file_path(message.author.name)
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, 'r', encoding='utf-8') as file:
+                            messages = json.load(file)
+                        
+                        # Remove the last message (which should be our temporary one)
+                        if messages and "[Referenced Message]" in messages[-1].get("content", ""):
+                            messages.pop()
+                            
+                            # Write back to file
+                            with open(file_path, 'w', encoding='utf-8') as file:
+                                json.dump(messages, file, indent=2)
+                            logger.info("Removed temporary referenced message from conversation history")
+                    except Exception as e:
+                        logger.error(f"Error removing temporary referenced message: {e}")
 
             # --- Keyword Extraction from Search Results ---
             found_keywords_in_chunks = set()
