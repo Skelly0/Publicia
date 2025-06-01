@@ -2147,6 +2147,7 @@ class DiscordBot(commands.Bot):
 
             # Check if the message is a reply and get the referenced message
             referenced_message = None
+            temp_ref_message_added = False  # Initialize flag for tracking if we added a temporary reference message
             if message.reference and message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
                 # Ensure the resolved reference is actually a message object
                 referenced_message = message.reference.resolved
@@ -2506,6 +2507,18 @@ class DiscordBot(commands.Bot):
                     "role": "system",
                     "content": f"The user is replying to {role_context}: \"{ref_content}\"{attachment_info}"
                 })
+                
+                # Add the referenced message to the conversation history temporarily
+                # This will be removed after processing
+                if ref_author != self.user:  # Only add if it's not the bot's own message
+                    self.conversation_manager.write_conversation(
+                        message.author.name,
+                        "system",
+                        f"[Referenced Message] {reply_author_name}: {ref_content}{attachment_info}",
+                        channel_name
+                    )
+                    temp_ref_message_added = True
+                    logger.info(f"Added temporary referenced message from {reply_author_name} to conversation history")
 
             # Add raw document context from search results
             if raw_doc_contexts:
