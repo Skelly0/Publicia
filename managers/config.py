@@ -61,7 +61,7 @@ class Config:
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
-            "qwen/qwq-32b": 17,
+            "qwen/qwq-32b": 13,
             "qwen/qwen3-235b-a22b": 17,
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
