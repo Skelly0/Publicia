@@ -13,7 +13,7 @@ from utils.helpers import check_permissions, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
-TRACKED_CHANNELS_FILE = "tracked_channels.json"
+TRACKED_CHANNELS_FILE = "documents/tracked_channels.json"
 
 # Helper function to load tracked channels (moved to module level)
 def load_tracked_channels():
