@@ -36,22 +36,20 @@ class Config:
 
         self.MODEL_TOP_K = {
             # DeepSeek models
-            "deepseek/deepseek-chat-v3-0324:free": 10, # User specified value
+            "deepseek/deepseek-chat-v3-0324": 10, # User specified value
             "deepseek/deepseek-chat-v3-0324:floor": 10, # User specified value
             "deepseek/deepseek-chat-v3-0324": 10, # User specified value
             "deepseek/deepseek-chat": 10,
-            "deepseek/deepseek-r1:free": 20,
             "deepseek/deepseek-r1": 10,
             "deepseek/deepseek-r1-distill-llama-70b": 14,
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
             "deepseek/deepseek-r1-0528": 10,
-            "deepseek/deepseek-r1-0528:free": 15,
             "deepseek/deepseek-r1-0528:floor": 10,
             # Gemini models 
             "google/gemini-2.5-flash-preview": 18,
             "google/gemini-2.5-flash-preview:thinking": 16,
-            "google/gemini-2.0-pro-exp-02-05:free": 20,
+            "google/gemini-2.0-pro-exp-02-05": 20,
             "google/gemini-2.5-pro-preview-03-25": 10, # Added new model
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
@@ -63,7 +61,6 @@ class Config:
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
-            "qwen/qwq-32b:free": 20,
             "qwen/qwq-32b": 17,
             "qwen/qwen3-235b-a22b": 17,
             # Testing models
@@ -185,7 +182,7 @@ class Config:
    
     def get_provider_config(self, model: str):
         """Get provider config for a specific model."""
-        # Extract base model without suffixes like :free or :nitro
+        # Extract base model without suffixes like  or :nitro
         base_model = model.split(':')[0] if ':' in model else model
         
         # First try exact match, then try base model

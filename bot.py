@@ -87,8 +87,6 @@ class DiscordBot(commands.Bot):
             "google/gemini-2.5-flash-preview:thinking",
             "google/gemini-2.5-flash-preview",
             "google/gemini-2.0-flash-001",
-            "google/gemini-2.0-pro-exp-02-05:free",
-            "google/gemini-2.5-pro-exp-03-25:free", # Added new vision model
             "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet:beta",
             "anthropic/claude-3.7-sonnet",
@@ -928,20 +926,20 @@ class DiscordBot(commands.Bot):
             if "deepseek/deepseek-chat-v3" in model:
                 # DeepSeek Chat v3 fallbacks
                 fallbacks = [
-                    "deepseek/deepseek-chat-v3-0324:free",
+                    "deepseek/deepseek-chat-v3-0324",
                     "deepseek/deepseek-chat-v3-0324:floor",
                     "deepseek/deepseek-chat-v3-0324",
                     "deepseek/deepseek-chat",
-                    "deepseek/deepseek-r1:free",  # Last resort fallback to R1
+                    "deepseek/deepseek-r1",  # Last resort fallback to R1
                 ]
                 models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
             elif "deepseek/deepseek-r1" in model:
                 # DeepSeek R1 fallbacks
                 fallbacks = [
-                    "deepseek/deepseek-r1-0528:free",
+                    "deepseek/deepseek-r1-0528",
                     "deepseek/deepseek-r1-0528:floor",
                     "deepseek/deepseek-r1-0528",
-                    "deepseek/deepseek-r1:free",
+                    "deepseek/deepseek-r1",
                     "deepseek/deepseek-r1:floor",
                     "deepseek/deepseek-r1",
                     "deepseek/deepseek-r1:nitro",
@@ -953,7 +951,7 @@ class DiscordBot(commands.Bot):
                 # DeepSeek Chat (non-v3) fallbacks
                 fallbacks = [
                     "deepseek/deepseek-chat",
-                    "deepseek/deepseek-r1:free",
+                    "deepseek/deepseek-r1",
                     "deepseek/deepseek-r1"
                 ]
                 models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
@@ -974,7 +972,7 @@ class DiscordBot(commands.Bot):
             # Qwen models
             elif model_family == "qwen":
                 fallbacks = [
-                    #"qwen/qwq-32b:free",
+                    #"qwen/qwq-32b",
                     "qwen/qwq-32b",
                     "qwen/qwq-32b:nitro",
                     "qwen/qwq-32b:floor",
@@ -987,9 +985,9 @@ class DiscordBot(commands.Bot):
                 fallbacks = [
                     "google/gemini-2.5-flash-preview:thinking",
                     "google/gemini-2.5-flash-preview",
-                    "google/gemini-2.5-pro-exp-03-25:free", # Add new model as a primary fallback
-                    "google/gemini-2.0-flash-thinking-exp:free",
-                    "google/gemini-2.0-pro-exp-02-05:free",
+                    "google/gemini-2.5-pro-exp-03-25", # Add new model as a primary fallback
+                    "google/gemini-2.0-flash-thinking-exp",
+                    "google/gemini-2.0-pro-exp-02-05",
                     "google/gemini-2.0-flash-001"
                 ]
                 models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
@@ -1012,7 +1010,7 @@ class DiscordBot(commands.Bot):
                 fallbacks = [
                     "eva-unit-01/eva-qwen-2.5-72b:floor",
                     "eva-unit-01/eva-qwen-2.5-72b",
-                    "qwen/qwq-32b:free",
+                    "qwen/qwq-32b",
                     "qwen/qwq-32b",
                 ]
                 models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
@@ -1020,7 +1018,7 @@ class DiscordBot(commands.Bot):
             elif model_family == "nousresearch":
                 fallbacks = [
                     "nousresearch/hermes-3-llama-3.1-70b",
-                    "meta-llama/llama-3.3-70b-instruct:free",
+                    "meta-llama/llama-3.3-70b-instruct",
                     "meta-llama/llama-3.3-70b-instruct"
                 ]
                 models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
@@ -1076,15 +1074,15 @@ class DiscordBot(commands.Bot):
 
             # Add general fallbacks (cleaned up)
             general_fallbacks = [
-                #"qwen/qwq-32b:free",
+                #"qwen/qwq-32b",
                 "qwen/qwq-32b:floor",
                 "google/gemini-2.5-flash-preview:thinking",
                 "google/gemini-2.5-flash-preview",
-                "google/gemini-2.0-flash-thinking-exp:free",
-                "deepseek/deepseek-r1:free",
+                "google/gemini-2.0-flash-thinking-exp",
+                "deepseek/deepseek-r1",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-chat",
-                "google/gemini-2.0-pro-exp-02-05:free",
+                "google/gemini-2.0-pro-exp-02-05",
                 "nousresearch/hermes-3-llama-3.1-405b",
                 "anthropic/claude-3.5-haiku:beta",
                 "anthropic/claude-3.5-haiku"
@@ -1316,7 +1314,7 @@ class DiscordBot(commands.Bot):
                         
                     except (aiohttp.ClientPayloadError, aiohttp.ClientConnectionError) as e:
                         # Special handling for free tier models
-                        if ":free" in current_model:
+                        if "" in current_model:
                             logger.warning(f"Free tier model {current_model} connection failed: {str(e)}")
                             logger.info(f"Free tier models may be overloaded. Skipping retries and trying next model.")
                             raise  # Skip retries for free tier, move to next model

@@ -88,8 +88,8 @@ async def _cli_try_ai_completion(
     # Vision capable models list (copied from bot.py for now)
     # TODO: Consider centralizing this list
     vision_capable_models = [
-        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05:free",
-        "google/gemini-2.5-pro-exp-03-25:free", "microsoft/phi-4-multimodal-instruct",
+        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
+        "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
         "anthropic/claude-3.7-sonnet:beta", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-3.5-sonnet:beta", "anthropic/claude-3.5-sonnet",
         "anthropic/claude-3.5-haiku:beta", "anthropic/claude-3.5-haiku",
@@ -232,8 +232,8 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
     # Define vision models list here for use in this function
     # TODO: Consider centralizing this list
     vision_capable_models = [
-        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05:free",
-        "google/gemini-2.5-pro-exp-03-25:free", "microsoft/phi-4-multimodal-instruct",
+        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
+        "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
         "anthropic/claude-3.7-sonnet:beta", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-3.5-sonnet:beta", "anthropic/claude-3.5-sonnet",
         "anthropic/claude-3.5-haiku:beta", "anthropic/claude-3.5-haiku",
