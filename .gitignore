@@ -40,6 +40,7 @@ artifacts/
 avatars/
 user_preferences/
 old_system_prompts/
+tracked_channels.json
 *.pkl
 # JSON files (banned_users.json and others excluded by default)
 *.json
