@@ -44,38 +44,47 @@ async def update_tracked_channels(bot_instance):
                 logger.warning(f"Could not find channel with ID {channel_id}. Skipping.")
                 continue
 
-            last_message_id = data.get("last_message_id")
+            doc_uuid = data["document_uuid"]
             
-            # Fetch messages after the last recorded one
-            new_messages = []
-            async for message in channel.history(limit=None, after=discord.Object(id=last_message_id) if last_message_id else None):
-                new_messages.append(message)
-
-            if not new_messages:
-                logger.info(f"No new messages in channel {channel.name} ({channel_id}).")
+            # Fetch all messages in the channel
+            logger.info(f"Redownloading entire history for channel {channel.name} ({channel_id})...")
+            all_messages = [message async for message in channel.history(limit=None)]
+            
+            if not all_messages:
+                logger.info(f"No messages found in channel {channel.name} ({channel_id}). Clearing archive.")
+                # Overwrite with empty content to reflect deletion of all messages
+                await bot_instance.document_manager.add_document(
+                    original_name=data.get("name", channel.name),
+                    content=f"# Archive of channel: {channel.name}\n# Last updated: {datetime.now(timezone.utc).isoformat()}\n\n(Channel is empty)",
+                    existing_uuid=doc_uuid,
+                    contextualize=False
+                )
                 continue
 
             # Sort messages by timestamp (oldest first)
-            new_messages.sort(key=lambda m: m.created_at)
+            all_messages.sort(key=lambda m: m.created_at)
             
-            # Format new messages
-            new_content = ""
-            for message in new_messages:
+            # Format all messages
+            full_content = f"# Archive of channel: {channel.name}\n# Last updated: {datetime.now(timezone.utc).isoformat()}\n"
+            for message in all_messages:
                 timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
                 author_name = message.author.display_name
-                new_content += f"\n[{timestamp}] {author_name}:\n    {message.content}\n"
+                full_content += f"\n[{timestamp}] {author_name}:\n    {message.content}\n"
 
-            # Append to the existing document
-            doc_uuid = data["document_uuid"]
-            success = await bot_instance.document_manager.append_to_document(doc_uuid, new_content)
+            # Overwrite the existing document with the full history
+            update_success = await bot_instance.document_manager.add_document(
+                original_name=data.get("name", channel.name),
+                content=full_content,
+                existing_uuid=doc_uuid,
+                contextualize=False
+            )
 
-            if success:
-                # Update the last message ID
-                data["last_message_id"] = new_messages[-1].id
+            if update_success:
+                # No need to update last_message_id anymore, but we save to keep other potential data consistent.
                 save_tracked_channels(tracked_channels)
-                logger.info(f"Successfully appended {len(new_messages)} new messages to archive for channel {channel.name} ({channel_id}).")
+                logger.info(f"Successfully updated and overwrote archive for channel {channel.name} ({channel_id}) with {len(all_messages)} messages.")
             else:
-                logger.error(f"Failed to append content to document for channel {channel.name} ({channel_id}).")
+                logger.error(f"Failed to overwrite document for channel {channel.name} ({channel_id}).")
 
         except Exception as e:
             logger.error(f"Error updating tracked channel {channel_id}: {e}", exc_info=True)
@@ -114,17 +123,17 @@ def register_commands(bot):
         initial_content = f"# Archive of channel: {channel.name}\n"
         initial_content += f"# Tracked starting from: {datetime.now(timezone.utc).isoformat()}\n"
         
-        doc_uuid = await bot.document_manager.add_document(original_name=doc_name, content=initial_content)
+        doc_uuid = await bot.document_manager.add_document(original_name=doc_name, content=initial_content, contextualize=False)
 
         if not doc_uuid:
             await interaction.followup.send("Failed to create initial archive document.")
             return
 
+        # The 'last_message_id' is no longer needed as we redownload the whole channel.
         tracked_channels[channel_id_str] = {
             "name": channel.name,
             "document_uuid": doc_uuid,
-            "update_interval_hours": update_interval_hours,
-            "last_message_id": channel.last_message_id if channel.last_message_id else None
+            "update_interval_hours": update_interval_hours
         }
         
         save_tracked_channels(tracked_channels)

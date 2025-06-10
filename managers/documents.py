@@ -709,7 +709,7 @@ class DocumentManager:
         if empty_docs_uuids: self._save_to_disk()
         return empty_docs_uuids
 
-    async def add_document(self, original_name: str, content: str, save_to_disk: bool = True, existing_uuid: Optional[str] = None, _internal_call: bool = False) -> Optional[str]:
+    async def add_document(self, original_name: str, content: str, save_to_disk: bool = True, existing_uuid: Optional[str] = None, _internal_call: bool = False, contextualize: bool = True) -> Optional[str]:
         try:
             doc_uuid = existing_uuid or str(uuid.uuid4())
             is_update = bool(existing_uuid and doc_uuid in self.metadata)
@@ -736,7 +736,7 @@ class DocumentManager:
                 # Check if contextualization is enabled and document is within word limit
                 contextualization_enabled = self.config.CONTEXTUALIZATION_ENABLED if self.config and hasattr(self.config, 'CONTEXTUALIZATION_ENABLED') else True
                 use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
-                should_ctx = contextualization_enabled and word_count <= max_words_ctx
+                should_ctx = contextualization_enabled and word_count <= max_words_ctx and contextualize
                 chunks_for_processing = await self.contextualize_chunks(original_name, content, chunks) if should_ctx else chunks
                 if not chunks_for_processing and chunks:
                     logger.warning(f"Contextualization returned empty for '{original_name}', using original chunks.")
