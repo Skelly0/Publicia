@@ -2365,14 +2365,23 @@ class DiscordBot(commands.Bot):
 
             # Format raw results with citation info
             import urllib.parse
+
             raw_doc_contexts = []
             # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
+                
+                # --- START OF MODIFICATION ---
+                # Define a variable for the special note, initially empty.
+                special_note = ""
+                # Check if the document name contains "Region" (case-insensitive).
+                if 'region' in original_name.lower():
+                    special_note = "Note: The following chunk is about natives of Ledus Banum 77/Tundra. The information does not necessarily pertain to the Empire and is certainly not about the Empires culture or traditions.\n"
+                # --- END OF MODIFICATION ---
+                
                 if image_id:
                     image_name = self.image_manager.metadata.get(image_id, {}).get('name', "Unknown Image")
                     raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
-                # Use original_name for display and doc_uuid for mapping if needed.
-                # The original code used 'doc' which likely corresponded to original_name.
+
                 elif original_name in googledoc_mapping:
                     # Assuming googledoc_mapping keys are original_names that map to Google Doc IDs
                     doc_id = googledoc_mapping[original_name]
@@ -2380,11 +2389,14 @@ class DiscordBot(commands.Bot):
                     search_text = ' '.join(words[:min(10, len(words))]) # Use first 10 words for search context
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
+                    # The {special_note} variable is added before the {chunk}.
+                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{special_note}{chunk}")
+                
                 else:
                     # Display original_name for non-Google Docs
-                    raw_doc_contexts.append(f"From document '{original_name}' (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
-
+                    # The {special_note} variable is added before the {chunk}.
+                    raw_doc_contexts.append(f"From document '{original_name}' (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{special_note}{chunk}")
+                    
             # Add fetched Google Doc content to context
             google_doc_context_str = []
             for doc_id, doc_url, content in google_doc_contents:

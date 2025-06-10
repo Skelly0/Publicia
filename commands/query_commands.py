@@ -134,26 +134,45 @@ def register_commands(bot):
             # Format raw results with citation info
             # import urllib.parse # Removed from here
             raw_doc_contexts = []
-            # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
+            # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id,
+            #                                  chunk_index, total_chunks)
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
+
+                # Pre-amble for “Region” docs
+                preamble = "NOTE: The following chunk is about **natives** and **not the Empire**.\n" \
+                        if "region" in original_name.lower() else ""
+
                 if image_id:
                     # This is an image description
-                    image_name = bot.image_manager.metadata[image_id]['name'] if image_id in bot.image_manager.metadata else "Unknown Image"
-                    raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
-                # Use original_name for display and doc_uuid for mapping if needed.
-                # The original code used 'doc' which likely corresponded to original_name.
-                elif original_name in googledoc_mapping: 
+                    image_name = (bot.image_manager.metadata[image_id]['name']
+                                if image_id in bot.image_manager.metadata else "Unknown Image")
+                    raw_doc_contexts.append(
+                        f"{preamble}"
+                        f"Image: {image_name} (ID: {image_id})\n"
+                        f"Description: {chunk}\n"
+                        f"Relevance: {score:.2f}"
+                    )
+
+                elif original_name in googledoc_mapping:
                     # Create citation link for Google Doc
-                    # Assuming googledoc_mapping keys are original_names that map to Google Doc IDs
                     doc_id = googledoc_mapping[original_name]
                     words = chunk.split()
                     search_text = ' '.join(words[:min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(
+                        f"{preamble}"
+                        f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) "
+                        f"[Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}"
+                    )
+
                 else:
                     # Display original_name for non-Google Docs
-                    raw_doc_contexts.append(f"From document '{original_name}' (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
+                    raw_doc_contexts.append(
+                        f"{preamble}"
+                        f"From document '{original_name}' (UUID: `{doc_uuid}`, "
+                        f"Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}"
+                    )
 
             # Add fetched Google Doc content to context
             google_doc_context = []
