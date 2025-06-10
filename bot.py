@@ -40,7 +40,8 @@ from commands import (
     conversation_commands,
     admin_commands,
     utility_commands,
-    query_commands
+    query_commands,
+    tracking_commands
 )
 
 logger = logging.getLogger(__name__)
@@ -777,6 +778,11 @@ class DiscordBot(commands.Bot):
         except Exception as e:
             logger.error(f"Failed to sync commands: {e}")
 
+        # Start the tracking task, but only if it's not already running.
+        if not tracking_commands.update_tracked_channels.is_running():
+            tracking_commands.update_tracked_channels.start(self)
+            logger.info("Started the channel tracking background task.")
+
     async def setup_commands(self):
         """Set up all slash and prefix commands from separate modules."""
         from commands import (
@@ -795,6 +801,7 @@ class DiscordBot(commands.Bot):
         admin_commands.register_commands(self)
         utility_commands.register_commands(self)
         query_commands.register_commands(self)
+        tracking_commands.register_commands(self)
 
         logger.info("All commands registered successfully")
 

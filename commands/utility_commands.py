@@ -38,7 +38,7 @@ def register_commands(bot):
 
             # Define admin-only command categories
             admin_categories = {
-                "Document Management": ["add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel", "reload_docs", "regenerate_embeddings", "refresh_docs"],
+                "Document Management": ["add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel", "track_channel", "untrack_channel", "reload_docs", "regenerate_embeddings", "refresh_docs"],
                 "Image Management": ["edit_image", "remove_image", "update_image_description"],
                 "Utility": ["ban_user", "unban_user", "parse_channel", "compare_models"],
                 "Context/Memory Management": ["archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]

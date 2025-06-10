@@ -1443,6 +1443,34 @@ class DocumentManager:
         logger.warning(f"No action for delete_document UUID '{doc_uuid}' (Original: '{original_name}'). Not found.")
         return False
 
+    async def append_to_document(self, doc_uuid: str, new_content: str) -> bool:
+        """Append content to an existing document and update its embeddings."""
+        if doc_uuid not in self.metadata:
+            logger.error(f"Cannot append to document: UUID '{doc_uuid}' not found.")
+            return False
+
+        file_path = self.base_dir / f"{doc_uuid}.txt"
+        if not file_path.exists():
+            logger.error(f"Document file not found for UUID '{doc_uuid}' at {file_path}.")
+            return False
+
+        try:
+            with open(file_path, 'a', encoding='utf-8') as f:
+                f.write(new_content)
+
+            # Read the full, updated content
+            full_content = file_path.read_text(encoding='utf-8')
+            
+            # Re-process the entire document
+            original_name = self.metadata[doc_uuid].get('original_name', doc_uuid)
+            await self.add_document(original_name, full_content, save_to_disk=True, existing_uuid=doc_uuid)
+            
+            logger.info(f"Successfully appended content to document '{original_name}' (UUID: {doc_uuid}) and updated embeddings.")
+            return True
+        except Exception as e:
+            logger.error(f"Error appending to document {doc_uuid}: {e}", exc_info=True)
+            return False
+
 
     async def rerank_results(self, query: str, initial_results: List[Tuple[str, str, str, float, Optional[str], int, int]], top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         """
