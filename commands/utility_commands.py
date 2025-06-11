@@ -664,7 +664,10 @@ def register_commands(bot):
             if not doc_manager.metadata:
                  logger.warning("Document metadata is empty during whats_new check.")
 
-            for doc_name, meta in doc_manager.metadata.items():
+            for doc_uuid, meta in doc_manager.metadata.items():
+                # Get original name from UUID
+                doc_name = doc_manager._get_original_name(doc_uuid)
+
                 # Skip internal list document
                 if hasattr(doc_manager, '_internal_list_doc_name') and doc_name == doc_manager._internal_list_doc_name:
                     continue
@@ -725,9 +728,10 @@ def register_commands(bot):
                         # Regular document
                         recent_items.append({
                             'type': 'doc',
-                            'name': doc_name,
+                            'name': doc_name, # This is now the original name
                             'timestamp': latest_dt,
-                            'action': action
+                            'action': action,
+                            'id': doc_uuid # Pass the UUID for the tracker
                         })
                     else:
                         # Image description document update/add
@@ -821,7 +825,8 @@ def register_commands(bot):
         for item in recent_items:
             # Format timestamp for display (e.g., "YYYY-MM-DD HH:MM UTC")
             ts_formatted = item['timestamp'].strftime('%Y-%m-%d %H:%M UTC')
-            item_key = (item['type'], item.get('id') if item['type'] == 'image' else item['name'])
+            # Use UUID for documents in the tracker key to ensure uniqueness
+            item_key = (item['type'], item.get('id'))
 
             if item_key not in output_tracker:
                 if item['type'] == 'doc':
