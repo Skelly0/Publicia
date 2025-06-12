@@ -14,7 +14,7 @@
 
 ## Overview
 
-Publicia is a sophisticated Discord bot designed to serve as an interactive lore repository for the fictional setting of Ledus Banum 77 and the Infinite Empire. The bot takes on the character of Publicia, an "Imperial abhuman mentat" with enhanced cognitive abilities, allowing users to query information through natural conversation.
+Publicia is a Discord bot designed to serve as an interactive lore repository for the fictional setting of Ledus Banum 77 and the Infinite Empire, the setting of DPS Season 7. The bot takes on the character of Publicia, an "Imperial abhuman mentat", allowing users to query information through natural conversation.
 
 ### Key Capabilities
 
@@ -30,12 +30,7 @@ Publicia is a sophisticated Discord bot designed to serve as an interactive lore
 
 ### Lore Context
 
-The bot is designed to role-play as Publicia, an abhuman mentat specializing in knowledge about Ledus Banum 77 (also known as Tundra) and the Infinite Empire. The character adheres to specific lore elements, including:
-
-- The Infinite Empire: A multiversal entity spanning multiple planes of existence
-- Planes: Different layers of reality, accessible via Resonant Drilling
-- Ledus Banum 77: A recently conquered planet with valuable Ordinium resources
-- Imperial Institutions: Various organizations like House Alpeh, the IMC, etc.
+The bot is designed to role-play as Publicia, an abhuman mentat specializing in knowledge about Ledus Banum 77 (also known as Tundra) and the Infinite Empire. This is for DPS Season 7. The character adheres to specific lore elements.
 
 ## Architecture
 

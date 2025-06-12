@@ -2,11 +2,12 @@
 
 *A hybrid RAG (Retrieval-Augmented Generation) Discord bot using vector embeddings, BM25 search, and multi-model LLM integration for intelligent document querying and conversational AI.*
 
-*An imperial abhuman mentat interface for Ledus Banum 77 and Imperial lore!*
+*Created for DPS Season 7 as a lore repository for players, Publicia’s commands and default system prompt are designed to fit into the setting.*
+***A general purpose version without the S7 specific prose and prompts is intended to be made once Season 7 finishes.***
 
 ## Overview
 
-Publicia is a sophisticated Discord bot that serves as an intelligent neural interface to your lore documents. It uses advanced embedding technology to understand and respond to questions about your setting, maintaining personalized conversation history with each user while roleplaying as an abhuman mentat from the Infinite Empire.
+Publicia is a sophisticated Discord bot that serves as an intelligent neural interface to your lore documents. It uses advanced embedding technology to understand and respond to questions about your setting, maintaining personalized conversation history with each user while roleplaying as an abhuman mentat from the Infinite Empire (the setting of DPS Season 7).
 
 ### Key Capabilities
 - Answers questions about Ledus Banum 77 and Imperial lore with in-character responses
@@ -31,7 +32,7 @@ Publicia is a sophisticated Discord bot that serves as an intelligent neural int
 - Python 3.8 or higher
 - Discord bot token (from Discord Developer Portal)
 - OpenRouter API key (for access to multiple AI models)
-- Google API key (for embeddings generation and Gemini image features)
+- Google API key (for embeddings generation)
 - Access to language models via OpenRouter
 
 ### Installation Steps
