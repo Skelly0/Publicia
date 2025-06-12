@@ -59,6 +59,7 @@ bot_detailed.log
 *.swo
 *~
 
+
 # OS specific
 .DS_Store
 .DS_Store?
@@ -77,3 +78,5 @@ test_contextualised_chunks_toggle.py
 # Debug and test folders
 debug_scripts/
 test_scripts/
+temp_files/
+credentials/

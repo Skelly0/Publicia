@@ -1,5 +1,7 @@
 # Publicia Discord Bot
 
+*A hybrid RAG (Retrieval-Augmented Generation) Discord bot using vector embeddings, BM25 search, and multi-model LLM integration for intelligent document querying and conversational AI.*
+
 *An imperial abhuman mentat interface for Ledus Banum 77 and Imperial lore!*
 
 ## Overview
@@ -53,13 +55,24 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
 
 # Optional (defaults shown)
-LLM_MODEL=google/gemini-2.0-flash-001 # Default model for text generation
+LLM_MODEL=google/gemini-2.5-flash-preview # Default model for text generation
+DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
+CLASSIFIER_MODEL=google/gemini-2.5-flash-preview # Model for classification tasks
 EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
-# GOOGLE_API_KEY is also used for Gemini image generation/editing features
-EMBEDDING_DIMENSIONS=1024
-TOP_K=10
-TOP_K_MULTIPLIER=0.5
-API_TIMEOUT=150
+EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
+
+# Chunk configuration
+CHUNK_SIZE=300 # Words per chunk
+CHUNK_OVERLAP=30 # Words overlap between chunks
+
+# Search configuration
+TOP_K=5 # Base number of search results
+MAX_TOP_K=20 # Maximum search results
+TOP_K_MULTIPLIER=1.0 # Multiplier for TOP_K
+BM25_WEIGHT=0.25 # Weight for BM25 vs embedding search (0.25 = 25% BM25, 75% embedding)
+
+# API settings
+API_TIMEOUT=180 # Seconds
 MAX_RETRIES=10
 
 # Temperature settings
@@ -68,15 +81,34 @@ TEMPERATURE_BASE=0.1
 TEMPERATURE_MAX=0.4
 
 # Reranking configuration
-RERANKING_ENABLED=true
-RERANKING_CANDIDATES=20
-RERANKING_MIN_SCORE=0.5
-RERANKING_FILTER_MODE=strict
+RERANKING_ENABLED=false # Enable/disable result reranking
+RERANKING_CANDIDATES=20 # Number of initial candidates for reranking
+RERANKING_MIN_SCORE=0.5 # Minimum relevance score threshold
+RERANKING_FILTER_MODE=strict # Options: strict, dynamic, topk
+
+# Contextualization settings
+CONTEXTUALIZATION_ENABLED=true # Enable AI-generated context for chunks
+MAX_WORDS_FOR_CONTEXT=20000 # Maximum words to consider for context generation
+USE_CONTEXTUALISED_CHUNKS=true # Use contextualized chunks in prompts
+
+# Feature toggles
+KEYWORD_DATABASE_ENABLED=true # Enable keyword database system
+KEYWORD_CHECK_CHUNK_LIMIT=5 # Number of chunks to check for keywords
+
+# Optional: Auto-process Google Docs with lore tagging
+AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
+
+# Optional: Channel ID for automatic Google Doc tracking
+# DOC_TRACKING_CHANNEL_ID=your_channel_id_here
+
+# Optional: Permission settings (comma-separated user/role IDs)
+# ALLOWED_USER_IDS=123456789,987654321
+# ALLOWED_ROLE_IDS=111111111,222222222
 ```
 
 4. Run the bot:
 ```bash
-python PubliciaV13.py
+python bot.py
 ```
 
 ## Features
@@ -90,14 +122,18 @@ Publicia can process, store, and analyze images related to your lore:
 
 ### Multiple AI Models
 Users can select their preferred AI model for responses:
-- **DeepSeek-R1**: Best for immersive roleplaying and creative responses
-- **Gemini 2.5 Flash**: Best for accuracy, citations, and image analysis
-- **Nous: Hermes 405B**: Balanced between creativity and factual precision
+- **Gemini 2.5 Flash**: Optimized for accuracy, image analysis, and thinking capabilities
 - **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
+- **Qwen 3 235B A22B**: Large parameter model with enhanced capabilities
+- **DeepSeek V3 0324**: Advanced conversational model with improved performance
+- **DeepSeek-R1**: Best for immersive roleplaying and reasoning
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5/3.7 Sonnet**: Admin-only premium capabilities
+- **Claude 3.5 Sonnet**: Premium capabilities (admin restricted)
+- **Nous: Hermes 405B**: Balanced between creativity and precision
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay
-- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
+- **Grok 3 Mini**: X.AI's efficient model for quick responses
+
+Additional admin-only models include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
 
 The bot includes automatic retry systems when models return blank or extremely short responses, and will fall back to alternative models when needed.
 
@@ -174,6 +210,8 @@ Comprehensive tools to help troubleshoot issues:
 | `/summarize_doc` | Generate a summary of a document by its UUID or original name. Param: `identifier`. |
 | `/view_chunk` | View the content of a specific document chunk by UUID or original name. Params: `identifier`, `chunk_index`, `contextualized`. |
 | `/process_docx_lore` | Process a .docx file to tag specific colored text with XML tags (admin only). Params: `docx_file`, `output_filename`. |
+| `/track_channel` | Start tracking a Discord channel and archive it periodically (admin only). Params: `channel`, `update_interval_hours`. |
+| `/untrack_channel` | Stop tracking a Discord channel (admin only). Param: `channel`. |
 
 #### Image Management
 | Command | Description |

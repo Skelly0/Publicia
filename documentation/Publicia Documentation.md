@@ -1,5 +1,7 @@
 # Publicia Bot Documentation
 
+*A hybrid RAG (Retrieval-Augmented Generation) Discord bot using vector embeddings, BM25 search, and multi-model LLM integration for intelligent document querying and conversational AI.*
+
 ## Table of Contents
 - [Overview](#overview)
 - [Architecture](#architecture)
@@ -153,16 +155,18 @@ Unique capability to work with Google Docs:
 
 Users can choose their preferred AI model:
 
-- DeepSeek-R1: Best for immersive roleplaying
-- Gemini 2.5 Flash: Optimized for accuracy and image analysis
-- Nous: Hermes 405B: Balanced between creativity and precision
-- Qwen QwQ 32B: Great for roleplaying with strong lore accuracy
-- Claude 3.5 Haiku: Fast responses with image capabilities
-- Claude 3.5 Sonnet: Premium capabilities (admin restricted)
-- Claude 3.7 Sonnet: Premium capabilities (admin restricted)
-- Wayfarer 70B: Optimized for narrative-driven roleplay
-- Anubis Pro 105B: Large parameter model with enhanced emotional intelligence
-- Testing Model: Experimental models for testing
+- **Gemini 2.5 Flash**: Optimized for accuracy, image analysis, and thinking capabilities
+- **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
+- **Qwen 3 235B A22B**: Large parameter model with enhanced capabilities
+- **DeepSeek V3 0324**: Advanced conversational model with improved performance
+- **DeepSeek-R1**: Best for immersive roleplaying and reasoning
+- **Claude 3.5 Haiku**: Fast responses with image capabilities
+- **Claude 3.5 Sonnet**: Premium capabilities (admin restricted)
+- **Nous: Hermes 405B**: Balanced between creativity and precision
+- **Wayfarer 70B**: Optimized for narrative-driven roleplay
+- **Grok 3 Mini**: X.AI's efficient model for quick responses
+
+Additional models available to administrators include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
 
 Each model has different strengths, fallback mechanisms ensure reliability.
 
@@ -249,33 +253,61 @@ pip install -r requirements.txt
 
 4. Create a `.env` file with configuration
 ```
+# Required
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
-LLM_MODEL=google/gemini-2.5-flash-preview  # Default model
-EMBEDDING_MODEL=models/text-embedding-004  # Google embedding model
-EMBEDDING_DIMENSIONS=1024  # Optional: truncate embeddings to save space
-TOP_K=10  # Number of search results to return
-TOP_K_MULTIPLIER=0.5  # Optional: adjust number of results based on model
-API_TIMEOUT=150  # Seconds
+
+# Optional (defaults shown)
+LLM_MODEL=google/gemini-2.5-flash-preview # Default model for text generation
+DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
+CLASSIFIER_MODEL=google/gemini-2.5-flash-preview # Model for classification tasks
+EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
+EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
+
+# Chunk configuration
+CHUNK_SIZE=300 # Words per chunk
+CHUNK_OVERLAP=30 # Words overlap between chunks
+
+# Search configuration
+TOP_K=5 # Base number of search results
+MAX_TOP_K=20 # Maximum search results
+TOP_K_MULTIPLIER=1.0 # Multiplier for TOP_K
+BM25_WEIGHT=0.25 # Weight for BM25 vs embedding search (0.25 = 25% BM25, 75% embedding)
+
+# API settings
+API_TIMEOUT=180 # Seconds
 MAX_RETRIES=10
 
 # Temperature settings for different query types
-TEMPERATURE_MIN=0.0  # For factual queries
-TEMPERATURE_BASE=0.1  # Default balanced temperature
-TEMPERATURE_MAX=0.4  # For creative/roleplay queries
+TEMPERATURE_MIN=0.0 # For factual queries
+TEMPERATURE_BASE=0.1 # Default balanced temperature
+TEMPERATURE_MAX=0.4 # For creative/roleplay queries
 
 # Reranking configuration
-RERANKING_ENABLED=true
-RERANKING_CANDIDATES=20  # Number of initial results to consider
-RERANKING_MIN_SCORE=0.5  # Threshold for relevance
-RERANKING_FILTER_MODE=strict  # Options: strict, dynamic, topk
+RERANKING_ENABLED=false # Enable/disable result reranking
+RERANKING_CANDIDATES=20 # Number of initial candidates for reranking
+RERANKING_MIN_SCORE=0.5 # Minimum relevance score threshold
+RERANKING_FILTER_MODE=strict # Options: strict, dynamic, topk
+
+# Contextualization settings
+CONTEXTUALIZATION_ENABLED=true # Enable AI-generated context for chunks
+MAX_WORDS_FOR_CONTEXT=20000 # Maximum words to consider for context generation
+USE_CONTEXTUALISED_CHUNKS=true # Use contextualized chunks in prompts
+
+# Feature toggles
+KEYWORD_DATABASE_ENABLED=true # Enable keyword database system
+KEYWORD_CHECK_CHUNK_LIMIT=5 # Number of chunks to check for keywords
 
 # Optional: Auto-process Google Docs with lore tagging
-# AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
+AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
 
 # Optional: Channel ID for automatic Google Doc tracking
 # DOC_TRACKING_CHANNEL_ID=your_channel_id_here
+
+# Optional: Permission settings (comma-separated user/role IDs)
+# ALLOWED_USER_IDS=123456789,987654321
+# ALLOWED_ROLE_IDS=111111111,222222222
 ```
 
 5. Create necessary directories
@@ -375,6 +407,13 @@ The bot will display a startup banner and initialize all components.
 
 - `/force_refresh_googledocs`: Force refresh and re-process ALL tracked Google Docs (bypasses change detection). **(Admin Only)**
 
+- `/track_channel`: Start tracking a Discord channel and archive it periodically. The bot will create an archive document and update it every 6 hours (configurable) with new messages. **(Admin Only)**
+  - **Parameters**:
+    - `channel`: The Discord text channel to track.
+    - `update_interval_hours`: How often to check for updates (default: 6 hours).
+
+- `/untrack_channel`: Stop tracking a Discord channel. The archive document will no longer be updated, but existing archives remain in the knowledge base. **(Admin Only)**
+  - **Parameters**: `channel`: The Discord text channel to stop tracking.
 
 #### Image Management
 
@@ -452,16 +491,18 @@ These commands use the prefix "Publicia!" instead of slash commands. They are ge
 
 Choose models based on your needs:
 
-- **DeepSeek-R1**: Use for immersive, creative responses and roleplaying
-- **Gemini 2.5 Flash**: Best for factual accuracy, citations, and image analysis
+- **Gemini 2.5 Flash**: Best for factual accuracy, citations, image analysis, and thinking capabilities
+- **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy and reasoning
+- **Qwen 3 235B A22B**: Large parameter model for complex tasks requiring extensive knowledge
+- **DeepSeek V3 0324**: Advanced conversational model with improved performance and efficiency
+- **DeepSeek-R1**: Use for immersive, creative responses and advanced reasoning
+- **Claude 3.5 Haiku**: Fast responses with image capabilities and good efficiency
+- **Claude 3.5 Sonnet**: Advanced capabilities with enhanced creativity (admin-only)
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
-- **Qwen QwQ 32B**: Great for roleplaying with strong lore accuracy
-- **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5 Sonnet**: Advanced capabilities, more creative than 3.7 Sonnet (admin-only)
-- **Claude 3.7 Sonnet**: Most advanced capabilities (admin-only)
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
-- **Anubis Pro 105B**: Enhanced emotional intelligence and prompt adherence
-- **Testing Model**: Experimental models for testing
+- **Grok 3 Mini**: X.AI's efficient model for quick, conversational responses
+
+**Admin-only models** include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal for specialized use cases.
 
 The bot will automatically fall back to available models if your preferred model fails, and includes an automatic retry system when models return blank or extremely short responses.
 
