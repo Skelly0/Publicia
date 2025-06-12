@@ -7,7 +7,7 @@
 
 ## Overview
 
-Publicia is a sophisticated Discord bot that serves as an intelligent neural interface to your lore documents. It uses advanced embedding technology to understand and respond to questions about your setting, maintaining personalized conversation history with each user while roleplaying as an abhuman mentat from the Infinite Empire (the setting of DPS Season 7).
+Publicia is a Discord bot that functions as an intelligent interface for DPS Season 7's lore documents. By using embeddings to retrieve relevant passages, it augments the context of LLM-generated messages to provide additional context about the setting and lore. At the same time, it maintains a personalised conversation history with each user, roleplaying as an abhuman mentat from the Infinite Empire, the setting of DPS Season 7.
 
 ### Key Capabilities
 - Answers questions about Ledus Banum 77 and Imperial lore with in-character responses
