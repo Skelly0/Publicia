@@ -51,61 +51,53 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
-async def check_permissions(interaction: discord.Interaction):
-    """Check if a user has permissions based on configured user IDs or role IDs."""
-    user_id = interaction.user.id
+async def check_permissions(ctx):
+    """
+    Check if a user has permissions for a command, compatible with both
+    regular commands (discord.ext.commands.Context) and slash commands
+    (discord.Interaction).
+    """
+    is_interaction = isinstance(ctx, discord.Interaction)
 
-    # 1. Check the special override user ID
-    if user_id == 203229662967627777:
+    # Determine user and guild from the context type
+    user = ctx.user if is_interaction else ctx.author
+    guild = ctx.guild
+
+    # 1. Check for the override user ID
+    if user.id == 203229662967627777:
         return True
 
-    # 2. Check if the user ID is in the allowed list from config
-    if user_id in config.ALLOWED_USER_IDS:
+    # 2. Check if the user is in the allowed list
+    if user.id in config.ALLOWED_USER_IDS:
         return True
 
-    # 3. Check roles only if in a guild and allowed roles are configured
-    if interaction.guild and config.ALLOWED_ROLE_IDS:
+    # 3. Check for allowed roles if in a guild
+    if guild and config.ALLOWED_ROLE_IDS:
+        # Ensure we have a member object to check roles
+        member = guild.get_member(user.id)
+        if member:
+            user_role_ids = {role.id for role in member.roles}
+            if user_role_ids.intersection(set(config.ALLOWED_ROLE_IDS)):
+                return True
+
+    # 4. If all checks fail, deny permission
+    error_message = "You do not have the required permissions to use this command."
+
+    # For slash commands, send an ephemeral message and raise a specific exception
+    if is_interaction:
         try:
-            # Ensure we have the member object, fetching if necessary
-            member = interaction.user
-            if not isinstance(member, discord.Member): # If interaction.user is just a User object
-                 member = interaction.guild.get_member(user_id)
-                 if member is None:
-                     member = await interaction.guild.fetch_member(user_id)
-
-            if member: # Proceed only if member object is available
-                user_role_ids = {role.id for role in member.roles}
-                allowed_role_ids_set = set(config.ALLOWED_ROLE_IDS)
-
-                # Check for intersection between user's roles and allowed roles
-                if user_role_ids.intersection(allowed_role_ids_set):
-                    return True
-
-        except discord.NotFound:
-            print(f"Could not find member {user_id} in guild {interaction.guild.id} for permission check.")
-            return False # User not found in guild
-        except discord.Forbidden:
-            print(f"Bot lacks permissions to fetch member {user_id} or roles in guild {interaction.guild.id}.")
-            return False # Bot permission issue
-        except Exception as e:
-            print(f"Error checking roles for user {user_id} in guild {interaction.guild.id}: {e}")
-            return False # General error during role check
-
-    # 4. If none of the above checks passed, deny permission
-    # Send an ephemeral message first, then raise CheckFailure to stop execution
-    error_message = "You do not have the required permissions (specific user ID or allowed role) to use this command."
-    try:
-        # Check if the interaction response has already been sent or deferred
-        if not interaction.response.is_done():
-            await interaction.response.send_message(error_message, ephemeral=True)
-        else:
-            # If already responded/deferred, use followup
-            await interaction.followup.send(error_message, ephemeral=True)
-    except Exception as send_err:
-        # Log if sending the message fails, but still raise the CheckFailure
-        print(f"Error sending permission denied message to user {interaction.user.id}: {send_err}")
-
-    raise app_commands.CheckFailure(error_message)
+            if not ctx.response.is_done():
+                await ctx.response.send_message(error_message, ephemeral=True)
+            else:
+                await ctx.followup.send(error_message, ephemeral=True)
+        except discord.HTTPException as e:
+            print(f"Failed to send permission error to user {user.id}: {e}")
+        # Raising CheckFailure is the standard way to halt a slash command
+        raise app_commands.CheckFailure(error_message)
+    else:
+        # For prefix commands, returning False is sufficient to block execution
+        # The bot's default error handler can notify the user if needed
+        return False
 
 
 def is_image(attachment):
