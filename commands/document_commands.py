@@ -1230,7 +1230,23 @@ def register_commands(bot):
                  try:
                      await interaction.channel.send(f"{interaction.user.mention} {error_message}")
                  except Exception as final_err:
-                     logger.error(f"Failed to send view_chunk error message via channel: {final_err}")
+                    logger.error(f"Failed to send view_chunk error message via channel: {final_err}")
+
+    @bot.tree.command(name="ressummarize_docs", description="Force regenerate summaries for all documents (admin only)")
+    @app_commands.check(check_permissions)
+    async def ressummarize_docs(interaction: discord.Interaction):
+        """Forces the regeneration of all document summaries."""
+        await interaction.response.defer()
+        try:
+            await interaction.followup.send("*neural core activating... initiating full summary regeneration for all documents. This may take some time...*")
+            
+            updated_count = await bot.document_manager.regenerate_all_summaries()
+            
+            await interaction.followup.send(f"*neural processing complete!* Successfully regenerated and updated summaries for **{updated_count}** documents.")
+            
+        except Exception as e:
+            logger.error(f"Error during summary regeneration command: {e}", exc_info=True)
+            await interaction.followup.send(f"*neural circuit overload!* An error occurred during summary regeneration: {str(e)}")
 
     @bot.tree.command(name="process_docx_lore", description="Process a .docx file to tag specific colored text with XML tags")
     @app_commands.describe(

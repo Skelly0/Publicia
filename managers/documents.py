@@ -1382,6 +1382,63 @@ class DocumentManager:
         """Reload all documents from disk, regenerating embeddings."""
         await self._load_documents(force_reload=True)
 
+    async def regenerate_all_summaries(self) -> int:
+        """
+        Force regeneration of summaries for all documents except the internal list.
+        """
+        logger.info("--- Starting regeneration of all document summaries ---")
+        updated_count = 0
+        needs_saving = False
+        
+        # Create a copy of metadata items to iterate over, as we might modify the original
+        metadata_items = list(self.metadata.items())
+
+        for doc_uuid, meta in metadata_items:
+            original_name = meta.get('original_name', doc_uuid)
+            
+            # Skip the internal list document
+            if original_name == self._internal_list_doc_name:
+                continue
+
+            logger.info(f"Regenerating summary for '{original_name}' (UUID: {doc_uuid})...")
+            doc_path = self.base_dir / f"{doc_uuid}.txt"
+            
+            if doc_path.exists():
+                try:
+                    content = doc_path.read_text(encoding='utf-8-sig')
+                    if content.strip():
+                        new_summary = await self._generate_document_summary(content)
+                        # Check if the summary has actually changed before marking for update
+                        if self.metadata[doc_uuid].get('summary') != new_summary:
+                            self.metadata[doc_uuid]['summary'] = new_summary
+                            self.metadata[doc_uuid]['updated'] = datetime.now().isoformat()
+                            needs_saving = True
+                            updated_count += 1
+                            logger.info(f"Successfully generated new summary for '{original_name}'.")
+                        else:
+                            logger.info(f"Summary for '{original_name}' is already up-to-date.")
+                    else:
+                        if self.metadata[doc_uuid].get('summary') != "Document is empty.":
+                            self.metadata[doc_uuid]['summary'] = "Document is empty."
+                            needs_saving = True
+                except Exception as e:
+                    logger.error(f"Error reading or processing document {doc_path} for summary regeneration: {e}")
+            else:
+                logger.warning(f"Could not find document file for UUID {doc_uuid} to regenerate summary.")
+                if self.metadata[doc_uuid].get('summary') != "Document file not found.":
+                    self.metadata[doc_uuid]['summary'] = "Document file not found."
+                    needs_saving = True
+
+        if needs_saving:
+            logger.info(f"Saving updated metadata after regenerating {updated_count} summaries.")
+            self._save_to_disk()
+            await self._update_document_list_file()
+        else:
+            logger.info("No summaries needed updating.")
+            
+        logger.info("--- Finished regeneration of all document summaries ---")
+        return updated_count
+
     def get_lorebooks_path(self):
         """DEPRECATED: Lorebooks are now integrated. This path is for legacy purposes if any remain."""
         lorebook_legacy_path = self.base_dir / "legacy_lorebooks" # Changed to a subdirectory
