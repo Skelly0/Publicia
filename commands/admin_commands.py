@@ -11,7 +11,7 @@ import base64
 from datetime import datetime
 from dotenv import set_key, find_dotenv # Added for modifying .env
 from utils.helpers import check_permissions
-from prompts.system_prompt import SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, get_system_prompt_with_documents
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ def register_commands(bot):
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT
+                    "content": get_system_prompt_with_documents(bot.document_manager.get_document_list_content())
                 },
                 {
                     "role": "user",

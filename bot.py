@@ -26,7 +26,7 @@ from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import sys
 
-from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # Added INFORMATIONAL_SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
 from utils.logging import sanitize_for_logging
@@ -2404,10 +2404,16 @@ class DiscordBot(commands.Bot):
                 truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
                 google_doc_context_str.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
 
+            # Get document list content
+            document_list_content = self.document_manager.get_document_list_content()
+            
             # Determine which system prompt to use based on user preference
             use_informational_prompt = self.user_preferences_manager.get_informational_prompt_mode(str(message.author.id))
-            selected_system_prompt = INFORMATIONAL_SYSTEM_PROMPT if use_informational_prompt else SYSTEM_PROMPT
-            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt for user {message.author.id}")
+            if use_informational_prompt:
+                selected_system_prompt = get_informational_system_prompt_with_documents(document_list_content)
+            else:
+                selected_system_prompt = get_system_prompt_with_documents(document_list_content)
+            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {message.author.id}")
 
             # Fetch user pronouns
             pronouns = self.user_preferences_manager.get_pronouns(str(message.author.id))
@@ -2443,10 +2449,6 @@ class DiscordBot(commands.Bot):
                 }
                 # Pronoun context will be inserted here if available
             ]
-
-            # Insert the document list message if it was created
-            if document_list_system_message:
-                messages.insert(1, document_list_system_message)
 
             # Insert pronoun context if it exists
             if pronoun_context_message:

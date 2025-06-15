@@ -14,8 +14,8 @@ import os
 import urllib.parse # Moved import to top level
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
 from utils.helpers import split_message, check_permissions # Added check_permissions import
-# Import both system prompts
-from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT
+# Import both system prompts and the new functions
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
 
 logger = logging.getLogger(__name__)
 
@@ -206,10 +206,16 @@ def register_commands(bot):
             else:
                  logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
 
+            # Get document list content
+            document_list_content = bot.document_manager.get_document_list_content()
+            
             # Determine which system prompt to use based on user preference
             use_informational_prompt = bot.user_preferences_manager.get_informational_prompt_mode(str(interaction.user.id))
-            selected_system_prompt = INFORMATIONAL_SYSTEM_PROMPT if use_informational_prompt else SYSTEM_PROMPT
-            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt for user {interaction.user.id} in /query command")
+            if use_informational_prompt:
+                selected_system_prompt = get_informational_system_prompt_with_documents(document_list_content)
+            else:
+                selected_system_prompt = get_system_prompt_with_documents(document_list_content)
+            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {interaction.user.id} in /query command")
 
             # Prepare messages for model using the selected prompt
             messages = [
@@ -557,8 +563,9 @@ def register_commands(bot):
                     "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
                 }
 
-            # Use standard system prompt (or create a specific one later if needed)
-            selected_system_prompt = SYSTEM_PROMPT
+            # Get document list content and use standard system prompt with documents
+            document_list_content = bot.document_manager.get_document_list_content()
+            selected_system_prompt = get_system_prompt_with_documents(document_list_content)
 
             messages = [
                 {"role": "system", "content": selected_system_prompt},

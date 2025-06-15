@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
 from typing import List, Dict, Any # Added typing imports
 from utils.helpers import split_message
-from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT # Added INFORMATIONAL_SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents # Added INFORMATIONAL_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -494,7 +494,7 @@ def register_commands(bot):
     ---------------------------------------------------------
     This defines Publicia's character, abilities, and behavior.
     ---------------------------------------------------------
-    {SYSTEM_PROMPT}
+    {get_system_prompt_with_documents(bot.document_manager.get_document_list_content())}
     =========================================================
 
     #

@@ -231,4 +231,56 @@ Important rules:
 </citation_rules>
 """
 
+def get_system_prompt_with_documents(document_list_content: str = "") -> str:
+    """
+    Generate the system prompt with the document list included.
+    
+    Args:
+        document_list_content: The content of the internal document list
+        
+    Returns:
+        The complete system prompt with document list appended
+    """
+    base_prompt = SYSTEM_PROMPT
+    
+    if document_list_content and document_list_content.strip():
+        document_section = f"""
+
+<available_documents>
+{document_list_content}
+</available_documents>
+
+The above is a list of all documents currently available in your knowledge base. You can reference these documents when answering questions and should be aware of what information is available to you."""
+        
+        # Insert the document section before the closing of the prompt
+        return base_prompt + document_section
+    
+    return base_prompt
+
+def get_informational_system_prompt_with_documents(document_list_content: str = "") -> str:
+    """
+    Generate the informational system prompt with the document list included.
+    
+    Args:
+        document_list_content: The content of the internal document list
+        
+    Returns:
+        The complete informational system prompt with document list appended
+    """
+    base_prompt = INFORMATIONAL_SYSTEM_PROMPT
+    
+    if document_list_content and document_list_content.strip():
+        document_section = f"""
+
+<available_documents>
+{document_list_content}
+</available_documents>
+
+The above is a list of all documents currently available in your knowledge base. You can reference these documents when answering questions and should be aware of what information is available to you."""
+        
+        # Insert the document section before the closing of the prompt
+        return base_prompt + document_section
+    
+    return base_prompt
+
 

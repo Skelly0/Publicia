@@ -28,7 +28,7 @@ from managers.config import Config
 from managers.documents import DocumentManager
 from managers.images import ImageManager
 from managers.preferences import UserPreferencesManager # Keep for potential future use (e.g., model preference)
-from prompts.system_prompt import SYSTEM_PROMPT
+from prompts.system_prompt import SYSTEM_PROMPT, get_system_prompt_with_documents
 from utils.helpers import is_image # Re-use helper
 
 # Configure logging for the CLI
@@ -288,7 +288,8 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
             raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
     # --- Prepare Messages for LLM ---
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}] # Basic system prompt
+    document_list_content = document_manager.get_document_list_content()
+    messages = [{"role": "system", "content": get_system_prompt_with_documents(document_list_content)}] # System prompt with document list
 
     # Add raw document context
     if raw_doc_contexts:

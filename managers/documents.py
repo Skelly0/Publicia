@@ -909,6 +909,45 @@ class DocumentManager:
                 except Exception as e: logger.error(f"Error reading {file_path}: {e}")
             elif doc_uuid in self.chunks: all_contents[doc_uuid] = " ".join(self.chunks[doc_uuid])
         return all_contents
+    def get_document_list_content(self) -> str:
+        """Get the content of the internal document list file."""
+        try:
+            # Find the UUID of the internal document list
+            internal_list_uuid = next((uid for uid, meta in self.metadata.items() 
+                                     if meta.get('original_name') == self._internal_list_doc_name), None)
+            
+            if internal_list_uuid:
+                # Try to read from file first
+                file_path = self.base_dir / f"{internal_list_uuid}.txt"
+                if file_path.exists():
+                    return file_path.read_text(encoding='utf-8-sig')
+                # Fallback to chunks if file doesn't exist
+                elif internal_list_uuid in self.chunks:
+                    return " ".join(self.chunks[internal_list_uuid])
+            
+            # If no internal list exists, generate a basic one
+            logger.warning("Internal document list not found, generating basic list")
+            doc_items = []
+            for doc_uuid, meta in self.metadata.items():
+                original_name = meta.get('original_name', doc_uuid)
+                summary = meta.get('summary', 'No summary available.')
+                doc_items.append((original_name, doc_uuid, summary))
+            
+            doc_items.sort(key=lambda x: x[0])
+            
+            header = "List of Documents Available to Publicia\n=======================================\n\n"
+            if doc_items:
+                content_lines = []
+                for original_name, doc_uuid, summary in doc_items:
+                    content_lines.append(f"- {original_name} (UUID: {doc_uuid})")
+                    content_lines.append(f"  Summary: {summary}\n")
+                return header + "\n".join(content_lines)
+            else:
+                return header + "No documents are currently managed."
+                
+        except Exception as e:
+            logger.error(f"Error getting document list content: {e}")
+            return "Error: Unable to retrieve document list."
 
     async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
