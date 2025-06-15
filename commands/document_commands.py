@@ -167,18 +167,21 @@ def register_commands(bot):
                 await interaction.followup.send("No documents found in the knowledge base (excluding internal list).")
                 return
 
-            doc_list_content = "\n".join(sorted_doc_display_strings)
+            full_message_content = header + "\n" + "\n".join(sorted_doc_display_strings)
             
-            # Split into chunks for Discord message limits
+            # Split the entire message into chunks that will fit in a code block
             # Max length for content inside code block: 1990 (2000 - ```\n - \n```)
-            # Max length for content outside code block: 2000
-            # We'll use code blocks for better readability of UUIDs.
-            
-            message_chunks = split_message(doc_list_content, max_length=1980) 
+            message_chunks = split_message(full_message_content, max_length=1980)
 
-            for i, chunk_content in enumerate(message_chunks):
-                current_header = header if i == 0 else "Documents (continued):"
-                formatted_chunk = f"{current_header}\n```\n{chunk_content}\n```"
+            for i, chunk in enumerate(message_chunks):
+                # The first chunk already contains the main header.
+                # Subsequent chunks can get a "continued" header if we want, but the split is now safe.
+                if i > 0:
+                    # Prepend a continuation header to subsequent chunks
+                    chunk = "Documents (continued):\n" + chunk
+                
+                # Wrap each chunk in a code block for sending
+                formatted_chunk = f"```\n{chunk}\n```"
                 await interaction.followup.send(formatted_chunk)
                 
         except Exception as e:

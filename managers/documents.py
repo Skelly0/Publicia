@@ -280,7 +280,7 @@ class DocumentManager:
     async def _generate_document_summary(self, document_content: str) -> str:
         """Generates a concise summary for a given document's content."""
         try:
-            system_prompt = "You are a helpful AI assistant that creates concise, descriptive summaries of documents. Your task is to provide a short summary (1-2 sentences) that captures the main topics and purpose of the document."
+            system_prompt = "You are a helpful AI assistant that creates concise, comprehensive, descriptive summaries of documents. Your task is to provide a summary that captures the main topics and purpose of the document. Mention every major entity and topic in the document in your summary."
             user_prompt = f"Please provide a short, one-sentence summary for the following document:\n\n<document>\n{document_content}\n</document>\n\nAnswer only with the summary and nothing else."
             
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
