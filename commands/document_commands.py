@@ -54,52 +54,64 @@ def register_commands(bot):
     
     @bot.command(name="add_doc", brief="Add a new document to the knowledge base. (admin only) Usage: Publicia! add_doc \"Document Name\"")
     @commands.check(check_permissions)
-    async def adddoc_prefix(ctx, *, args):
+    async def adddoc_prefix(ctx, *, args: Optional[str] = None):
         """Add a document via prefix command with optional file attachment."""
         try:
-            # Extract name from quotation marks
-            match = re.match(r'"([^"]+)"', args)
-            
-            if not match:
-                await ctx.send('*neural error detected!* Please provide a name in quotes. Example: `Publicia! add_doc "Document Name"`')
+            # If no args and no attachments, there's nothing to do.
+            if args is None and not ctx.message.attachments:
+                await ctx.send('*neural error detected!* Please provide a document name in quotes, attach a file, or both.')
                 return
-                
-            name = match.group(1)  # The text between quotes
-            # lorebooks_path is no longer needed here as DocumentManager handles storage.
 
+            name = None
+            if args:
+                # Extract name from quotation marks if args are provided
+                match = re.match(r'"([^"]+)"', args)
+                if match:
+                    name = match.group(1)
+                else:
+                    # If args are provided but not in quotes, it's an error
+                    await ctx.send('*neural error detected!* If providing a name, it must be in quotes. Example: `Publicia! add_doc "My Doc"`')
+                    return
+            
+            doc_content = None
             if ctx.message.attachments:
                 attachment = ctx.message.attachments[0]
-                # Allow various text-based file types, not just .txt for upload flexibility
-                # The content will be stored as <uuid>.txt by DocumentManager anyway.
-                # Consider adding more sophisticated content extraction for e.g. .docx if desired later.
-                # For now, just read as text.
-                # if not attachment.filename.endswith(('.txt', '.md', '.log', '.py', '.js', '.html', '.css')):
-                #    await ctx.send("Unsupported file type. Please upload a text-based file.")
-                #    return
-                
+                # If no name was provided in args, use the attachment's filename
+                if name is None:
+                    name = Path(attachment.filename).stem # Use filename without extension
+
                 async with aiohttp.ClientSession() as session:
                     async with session.get(attachment.url) as resp:
                         if resp.status != 200:
                             await ctx.send("Failed to download the attachment.")
                             return
-                        # Try to decode with utf-8-sig first, then fallback
                         try:
                             doc_content = await resp.text(encoding='utf-8-sig')
                         except UnicodeDecodeError:
                             logger.warning(f"Failed to decode attachment {attachment.filename} as utf-8-sig, trying plain utf-8.")
                             doc_content = await resp.text(encoding='utf-8')
             else:
-                await ctx.send("Please provide the document content (type it and send within 60 seconds) or attach a text file.")
+                # This block now only runs if there are args but no attachment
+                if name is None: # Should not happen due to earlier checks, but for safety
+                    await ctx.send("An unknown error occurred: No name could be determined.")
+                    return
+
+                await ctx.send("Please provide the document content (type it and send within 60 seconds).")
                 try:
                     msg = await bot.wait_for(
                         'message',
                         timeout=60.0,
-                        check=lambda m: m.author == ctx.author and m.channel == ctx.channel and not m.attachments # Ensure it's a text message not another attachment
+                        check=lambda m: m.author == ctx.author and m.channel == ctx.channel and not m.attachments
                     )
                     doc_content = msg.content
                 except asyncio.TimeoutError:
                     await ctx.send("Timed out waiting for document content.")
                     return
+
+            # Final check for content
+            if doc_content is None:
+                await ctx.send("Could not find any content to add.")
+                return
 
             # DocumentManager's add_document now handles UUID generation and saving.
             doc_uuid = await bot.document_manager.add_document(original_name=name, content=doc_content)
