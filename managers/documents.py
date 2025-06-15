@@ -1259,6 +1259,34 @@ class DocumentManager:
                 logger.info(f"Re-added {orphans_re_added} orphaned document files.")
                 self._save_to_disk()
 
+        # Backfill summaries for existing documents that don't have one
+        logger.info("Checking for and backfilling any missing document summaries...")
+        needs_saving = False
+        for doc_uuid, meta in self.metadata.items():
+            if 'summary' not in meta or not meta['summary']:
+                logger.warning(f"Document '{meta.get('original_name', doc_uuid)}' is missing a summary. Generating one now.")
+                doc_path = self.base_dir / f"{doc_uuid}.txt"
+                if doc_path.exists():
+                    try:
+                        content = doc_path.read_text(encoding='utf-8-sig')
+                        if content.strip():
+                            summary = await self._generate_document_summary(content)
+                            self.metadata[doc_uuid]['summary'] = summary
+                            needs_saving = True
+                        else:
+                            self.metadata[doc_uuid]['summary'] = "Document is empty."
+                            needs_saving = True
+                    except Exception as e:
+                        logger.error(f"Error reading document {doc_path} for summary backfill: {e}")
+                else:
+                    logger.warning(f"Could not find document file for UUID {doc_uuid} to generate summary.")
+                    self.metadata[doc_uuid]['summary'] = "Document file not found."
+                    needs_saving = True
+
+        if needs_saving:
+            logger.info("Saving updated metadata after backfilling summaries.")
+            self._save_to_disk()
+
         await self._update_document_list_file()
         logger.info(f"--- DocumentManager: _load_documents finished. Metadata entries: {len(self.metadata)} ---")
 
