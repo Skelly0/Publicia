@@ -2444,6 +2444,10 @@ class DiscordBot(commands.Bot):
                 # Pronoun context will be inserted here if available
             ]
 
+            # Insert the document list message if it was created
+            if document_list_system_message:
+                messages.insert(1, document_list_system_message)
+
             # Insert pronoun context if it exists
             if pronoun_context_message:
                 messages.insert(1, pronoun_context_message)
