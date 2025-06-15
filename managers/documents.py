@@ -247,10 +247,21 @@ class DocumentManager:
                 if doc_uuid == internal_list_doc_uuid_to_skip:
                     continue
                 original_name = meta.get('original_name', doc_uuid)
-                doc_items_for_list.append(f"{original_name} (UUID: {doc_uuid})")
+                summary = meta.get('summary', 'No summary available.')
+                doc_items_for_list.append((original_name, doc_uuid, summary))
 
-            doc_items_for_list.sort() 
-            content = "Managed Documents:\n\n" + "\n".join(f"- {item}" for item in doc_items_for_list) if doc_items_for_list else "No documents are currently managed."
+            doc_items_for_list.sort(key=lambda x: x[0]) 
+            
+            header = "List of Documents Available to Publicia\n=======================================\n\n"
+            
+            if doc_items_for_list:
+                content_lines = []
+                for original_name, doc_uuid, summary in doc_items_for_list:
+                    content_lines.append(f"- {original_name} (UUID: {doc_uuid})")
+                    content_lines.append(f"  Summary: {summary}\n")
+                content = header + "\n".join(content_lines)
+            else:
+                content = header + "No documents are currently managed."
             
             returned_uuid = await self.add_document(
                 original_name=self._internal_list_doc_name, 
@@ -259,9 +270,48 @@ class DocumentManager:
                 existing_uuid=internal_list_doc_uuid_to_skip,
                 _internal_call=True
             )
-            if returned_uuid: logger.info(f"Successfully updated internal list doc ('{self._internal_list_doc_name}', UUID: {returned_uuid}).")
-            else: logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}').")
-        except Exception as e: logger.error(f"Failed to update internal document list file: {e}", exc_info=True)
+            if returned_uuid:
+                logger.info(f"Successfully updated internal list doc ('{self._internal_list_doc_name}', UUID: {returned_uuid}).")
+            else:
+                logger.error(f"Failed to add/update internal list doc ('{self._internal_list_doc_name}').")
+        except Exception as e:
+            logger.error(f"Failed to update internal document list file: {e}", exc_info=True)
+
+    async def _generate_document_summary(self, document_content: str) -> str:
+        """Generates a concise summary for a given document's content."""
+        try:
+            system_prompt = "You are a helpful AI assistant that creates concise, descriptive summaries of documents. Your task is to provide a short summary (1-2 sentences) that captures the main topics and purpose of the document."
+            user_prompt = f"Please provide a short, one-sentence summary for the following document:\n\n<document>\n{document_content}\n</document>\n\nAnswer only with the summary and nothing else."
+            
+            messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
+            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
+            
+            # Using a list of reliable and fast models for summarization
+            fallback_models = ["google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
+            
+            for model in fallback_models:
+                payload = {"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 200}
+                for _ in range(2):  # Retry once per model
+                    try:
+                        async with aiohttp.ClientSession() as session:
+                            async with session.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45) as response:
+                                if response.status == 200:
+                                    completion = await response.json()
+                                    if completion and completion.get('choices') and completion['choices'][0].get('message', {}).get('content'):
+                                        summary = completion['choices'][0]['message']['content'].strip()
+                                        logger.info(f"Successfully generated summary with model {model}.")
+                                        return summary
+                                logger.error(f"API error for summary generation with model {model} (Status {response.status}): {await response.text()}")
+                                break 
+                    except Exception as e:
+                        logger.error(f"Summary generation error with model {model}: {e}")
+                    await asyncio.sleep(0.5)
+            
+            logger.warning("All models failed to generate a summary. Returning a default summary.")
+            return "No summary could be generated for this document."
+        except Exception as e:
+            logger.error(f"Error in document summary generation: {e}", exc_info=True)
+            return "No summary could be generated for this document."
 
     async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None, max_retries: int = 3) -> Optional[np.ndarray]:
         if not text or not text.strip(): return None
@@ -733,6 +783,7 @@ class DocumentManager:
             needs_processing = content_changed or doc_uuid not in self.embeddings or not is_update
 
             if needs_processing:
+                summary = await self._generate_document_summary(content)
                 # Check if contextualization is enabled and document is within word limit
                 contextualization_enabled = self.config.CONTEXTUALIZATION_ENABLED if self.config and hasattr(self.config, 'CONTEXTUALIZATION_ENABLED') else True
                 use_contextualised = self.config.USE_CONTEXTUALISED_CHUNKS if self.config and hasattr(self.config, 'USE_CONTEXTUALISED_CHUNKS') else True
@@ -787,7 +838,8 @@ class DocumentManager:
                     'uuid': doc_uuid, 'original_name': original_name, 
                     'added': meta_entry.get('added', datetime.now().isoformat()), 
                     'updated': datetime.now().isoformat(), 'chunk_count': len(chunks),
-                    'content_hash': current_hash, 'contextualized': should_ctx and bool(chunks_for_processing)
+                    'content_hash': current_hash, 'contextualized': should_ctx and bool(chunks_for_processing),
+                    'summary': summary
                 })
                 self.metadata[doc_uuid] = meta_entry
                 
