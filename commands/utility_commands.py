@@ -231,7 +231,7 @@ def register_commands(bot):
                     f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
-                    f"**MiniMax M1**: A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
+                    f"**MiniMax M1**: __RECOMMENDED__ - A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                 ]
                 
                 response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
