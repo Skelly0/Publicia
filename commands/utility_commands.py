@@ -134,13 +134,14 @@ def register_commands(bot):
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
         #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
-        app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
+        #app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
         #app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
         #app_commands.Choice(name="Llama 4 Maverick", value="meta-llama/llama-4-maverick:floor"),
         app_commands.Choice(name="Grok 3 Mini", value="x-ai/grok-3-mini-beta"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Mini", value="openai/gpt-4.1-mini"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Nano", value="openai/gpt-4.1-nano"),
         #app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
+        app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
     ])
     async def set_model(interaction: discord.Interaction, model: str):
         await interaction.response.defer()
@@ -205,6 +206,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif model == "minimax/minimax-m1":
+                model_name = "MiniMax M1"
             
             if success:
                 # Create a description of all model strengths
@@ -222,12 +225,13 @@ def register_commands(bot):
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
-                    f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
+                    #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
-                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
+                    f"**MiniMax M1**: A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                 ]
                 
                 response = f"*neural architecture reconfigured!* Your preferred model has been set to **{model_name}**.\n\n**Model strengths:**\n"
@@ -297,6 +301,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif preferred_model == "minimax/minimax-m1":
+                model_name = "Minimax M1"
             
             # Create a description of all model strengths
             model_descriptions = [
@@ -312,12 +318,13 @@ def register_commands(bot):
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
-                    f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
+                    #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
-                    f"**Grok 3 Mini**: An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
+                    f"**MiniMax M1**: A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
             ]
             
             response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"

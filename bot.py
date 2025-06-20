@@ -1048,6 +1048,12 @@ class DiscordBot(commands.Bot):
                         "anthropic/claude-3.5-haiku"
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                elif "claude-3.5-haiku" in model:
+                    fallbacks = [
+                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-haiku"
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 else:
                     # General Anthropic fallbacks
                     fallbacks = [
@@ -1077,6 +1083,14 @@ class DiscordBot(commands.Bot):
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 else:
                     fallbacks = [] # Ensure fallbacks is defined even if no specific match
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+
+            elif model_family == "minimax":
+                if "minimax-m1" in model:
+                    fallbacks = [
+                        "minimax/minimax-m1",
+                        "claude-3.5-haiku:beta",
+                    ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
 
             # Add general fallbacks (cleaned up)
@@ -2642,6 +2656,8 @@ class DiscordBot(commands.Bot):
                 model_name = "4.1 Mini"
             elif "4.1-nano" in preferred_model:
                 model_name = "4.1 Nano"
+            elif preferred_model == "minimax/minimax-m1":
+                model_name = "Minimax M1"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call

@@ -82,6 +82,8 @@ class Config:
             "openai/gpt-4.1-nano": 17,
             # X AI Models
             "x-ai/grok-3-mini-beta": 14,
+            # MiniMax Models
+            "minimax/minimax-m1": 15,
         }
         
         # Validate required environment variables
@@ -99,7 +101,7 @@ class Config:
                 "order": ["Parasail"]
             },
             "qwen/qwq-32b:floor": {
-                "order": ["Groq", "Nineteen", "DeepInfra", "Nebius", "Hyperbolic"]
+                "order": ["Groq", "DeepInfra", "Hyperbolic"]
             },
             # Add any other model variants that need custom provider ordering
         }

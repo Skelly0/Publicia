@@ -131,7 +131,6 @@ Users can select their preferred AI model for responses:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 3.5 Sonnet**: Premium capabilities (admin restricted)
 - **Nous: Hermes 405B**: Balanced between creativity and precision
-- **Wayfarer 70B**: Optimized for narrative-driven roleplay
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
 
 Additional admin-only models include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
