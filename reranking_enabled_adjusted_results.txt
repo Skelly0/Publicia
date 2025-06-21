@@ -1,0 +1,389 @@
+================================================================================
+TESTING SEARCH FOR LEADER OF KRSTOVLJE
+Expected answer: Abstrata
+================================================================================
+Configuration:
+  USE_CONTEXTUALISED_CHUNKS: True
+  RERANKING_ENABLED: True
+
+Documents loaded: 38
+
+TESTING QUERY: 'leader of Krstovlje'
+--------------------------------------------------
+Results found: 10
+  1. Region 01b - Crinia Magna - Chunk 73/131 (score: 5.585)
+     Preview: the rise of the Dawnguard (DF-Dawnguard) as an alternative (zealot, pan-Crinian unificationist, and moralist rather than traditionally abolitionist) f...
+
+  2. Region 01b - Crinia Magna - Chunk 7/131 (score: 5.585)
+     Preview: with the Double Union (DF-Junta). <post-invasion_lore>Post-glassing, the DF-Opposition and DF-Dawnguard are the most prominent remaining forces, due t...
+
+  3. Region 06 - Mons Ochitus - Chunk 9/84 (score: 4.470)
+     Preview: region, when the first Coyacuchi King split from the Suyuchua, and declared himself called by Huyuno himself to conquer the summit, after which he thr...
+
+  4. Region 02 - Siadset - Chunk 16/40 (score: 4.349)
+     Preview: Vardan Siadset's cultural traditions and holidays, including Geralsats and the Prince's Ride. in the town square, locals are quick to change the topic...
+
+  5. Region 02 - Siadset - Chunk 21/40 (score: 4.343)
+     Preview: Marriage customs and traditions in Vardan Siadset, a region with a clan-based society. and though it is not at all a dishonorable thing to do so, the ...
+
+  6. Region 01b - Crinia Magna - Chunk 18/131 (score: 3.906)
+     Preview: taking for freedom. The Erimaean Front runs on a rural commune system, albeit with rigidly defined and closely-packed commune boundaries organized int...
+
+  7. Region 01c - West Crinia - Chunk 30/272 (score: 3.704)
+     Preview: republicanism are simply unpredictable, and Severda, above all, is a woman who chases power so that she may remake nations. <post-invasion_lore>King Ù...
+
+  8. Region 06 - Mons Ochitus - Chunk 23/84 (score: 3.126)
+     Preview: Vras Kamra dies, a council of all the tribes of the Vras Kamra come together to elect a new leader from amongst themselves. Almost always from one of ...
+
+  9. Region 06 - Mons Ochitus - Chunk 44/84 (score: 3.126)
+     Preview: locked into intense conflict. It will take much to reunify it. Some of the independent clans in this region include the neutral Rava and Vaalal, and t...
+
+  10. Region 06 - Mons Ochitus - Chunk 22/84 (score: 3.126)
+     Preview: to the democratic system is only available to those living in the city of Iu itself and the surrounding valley. Regions outside of the valley, notably...
+
+[FAILED] Neither 'Krstovlje' nor 'Abstrata' found
+
+================================================================================
+
+TESTING QUERY: 'Krstovlje leader'
+--------------------------------------------------
+Results found: 10
+  1. Region 01b - Crinia Magna - Chunk 73/131 (score: 5.585)
+     Preview: the rise of the Dawnguard (DF-Dawnguard) as an alternative (zealot, pan-Crinian unificationist, and moralist rather than traditionally abolitionist) f...
+
+  2. Region 01b - Crinia Magna - Chunk 7/131 (score: 5.585)
+     Preview: with the Double Union (DF-Junta). <post-invasion_lore>Post-glassing, the DF-Opposition and DF-Dawnguard are the most prominent remaining forces, due t...
+
+  3. Region 06 - Mons Ochitus - Chunk 9/84 (score: 4.470)
+     Preview: region, when the first Coyacuchi King split from the Suyuchua, and declared himself called by Huyuno himself to conquer the summit, after which he thr...
+
+  4. Region 02 - Siadset - Chunk 16/40 (score: 4.349)
+     Preview: Vardan Siadset's cultural traditions and holidays, including Geralsats and the Prince's Ride. in the town square, locals are quick to change the topic...
+
+  5. Region 02 - Siadset - Chunk 21/40 (score: 4.343)
+     Preview: Marriage customs and traditions in Vardan Siadset, a region with a clan-based society. and though it is not at all a dishonorable thing to do so, the ...
+
+  6. Region 01b - Crinia Magna - Chunk 18/131 (score: 3.906)
+     Preview: taking for freedom. The Erimaean Front runs on a rural commune system, albeit with rigidly defined and closely-packed commune boundaries organized int...
+
+  7. Region 01c - West Crinia - Chunk 30/272 (score: 3.704)
+     Preview: republicanism are simply unpredictable, and Severda, above all, is a woman who chases power so that she may remake nations. <post-invasion_lore>King Ù...
+
+  8. Region 06 - Mons Ochitus - Chunk 23/84 (score: 3.126)
+     Preview: Vras Kamra dies, a council of all the tribes of the Vras Kamra come together to elect a new leader from amongst themselves. Almost always from one of ...
+
+  9. Region 06 - Mons Ochitus - Chunk 72/84 (score: 3.126)
+     Preview: known as the Drangbists. The difference between Drangbists and Neo-Huyunists is the belief that not only did Huyuno live on after his murder, but that...
+
+  10. Region 06 - Mons Ochitus - Chunk 22/84 (score: 3.126)
+     Preview: to the democratic system is only available to those living in the city of Iu itself and the surrounding valley. Regions outside of the valley, notably...
+
+[FAILED] Neither 'Krstovlje' nor 'Abstrata' found
+
+================================================================================
+
+TESTING QUERY: 'who leads Krstovlje'
+--------------------------------------------------
+Results found: 10
+  1. Region 01c - West Crinia - Chunk 101/272 (score: 6.211)
+     Preview: intention to adopt or otherwise declare a successor, he had, early in his reign, established Evedin as a elective (but still absolute) monarchy to be ...
+
+  2. Region 06 - Mons Ochitus - Chunk 23/84 (score: 3.975)
+     Preview: Vras Kamra dies, a council of all the tribes of the Vras Kamra come together to elect a new leader from amongst themselves. Almost always from one of ...
+
+  3. Region 06 - Mons Ochitus - Chunk 62/84 (score: 3.975)
+     Preview: in the aftermath of the Long Dark. This culminated in an event known as the Treaty of Lagang, where he signed a “peace treaty” between man and the ang...
+
+  4. Region 06 - Mons Ochitus - Chunk 49/84 (score: 3.975)
+     Preview: as “easterners”. If one were to follow the natural caves near this region, one would find this true, as heading east into them leads directly up to Su...
+
+  5. Region 01c - West Crinia - Chunk 132/272 (score: 3.105)
+     Preview: the Siradis, this includes corporations, individuals, and settlements of Siradi ethnicities, as well as significant portions of land on the border of ...
+
+  6. Imperial Lore: The Empire - Chunk 18/40 (score: 2.615)
+     Preview: The legal system of Noble Houses and their relationship with Imperial Law. Their ownership formally exists in a separate legal system to that of Imper...
+
+  7. Region 01b - Crinia Magna - Chunk 117/131 (score: 2.502)
+     Preview: to repurpose the captured Aletian merchant marine into a coherent raiding fleet that bled the coalition dry as it attempted to cross the Thursian Gulf...
+
+  8. Region 01b - Crinia Magna - Chunk 54/131 (score: 2.501)
+     Preview: the Gilt Horn would largely prosper, with its refugee population and a steady flow of slaves empowering its economy to survive even with the loss of m...
+
+  9. Region 01b - Crinia Magna - Chunk 77/131 (score: 2.501)
+     Preview: of the few mech fabricators in the equatorial belt. It operates a mechanized, elite expeditionary and advisory force that projects its power across th...
+
+  10. Region 01b - Crinia Magna - Chunk 78/131 (score: 2.501)
+     Preview: also maintains universal conscription, with all able-bodied citizens receiving military training. This leads to a curious situation where the Dionaean...
+
+[FAILED] Neither 'Krstovlje' nor 'Abstrata' found
+
+================================================================================
+
+TESTING QUERY: 'Krstovlje Abstrata'
+--------------------------------------------------
+Results found: 10
+  1. Region 09 - Tawaghet - Chunk 19/28 (score: 2.339)
+     * RELEVANT: Achamast's economy, military, and political integration with Kormest. and festoon the palaces of Kormest. However, maintained only by a (rather exploitative) system of Federal patronage, and limited b...
+
+  2. Region 07 - Zdrolan - Chunk 34/39 (score: 1.722)
+     * RELEVANT: The chunk describes the factions within the Zdrolan Independence Front (ZIF) and their relationships, focusing on the Veljotan Hegemonists and the Mraeran Mercantile League. by almost all other facti...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  3. Region 07 - Zdrolan - Chunk 8/39 (score: 1.357)
+     * RELEVANT: Veljotan's resurgence and economic power in Zdrolan. and mine-owners who rule there see the Front as a tool to reassert dominance over lost territories and trade routes. They provide warships refitted...
+
+  4. Region 07 - Zdrolan - Chunk 29/39 (score: 1.295)
+     * RELEVANT: Trade and industrialization in Zdrolan, leading to social and political changes. up the mountain. Zdrolan supplied the mountain with essential goods and crafts; Malshkurta, particularly Kurtabardh, ex...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  5. Region 04 - Görtatork - Chunk 23/29 (score: 1.255)
+     * RELEVANT: The chunk describes the influence of Grekjan hromada philosophy on neighboring regions, particularly Vardashë and Kurtabadh, and its historical impact on Krstovlje. inspired by the Grekjan model. This...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  6. Region 04 - Görtatork - Chunk 24/29 (score: 1.245)
+     * RELEVANT: The chunk details the influence of Grekjan philosophy and faith on the political landscape of Krstovlje, particularly the rise and suppression of hromadian organizations by the Zdrolan Independence Fr...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  7. Region 07 - Zdrolan - Chunk 33/39 (score: 1.194)
+     * RELEVANT: The chunk describes the Ultraconservatives and Hromadian Opportunists factions within the Zdrolan Independence Front (ZIF), detailing their ideologies, methods, and relationships with other factions. ...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  8. Region 07 - Zdrolan - Chunk 28/39 (score: 0.968)
+     * RELEVANT: The chunk describes the historical development of Zdrolan, focusing on the rise of city-states and the emergence of a distinct Mraeran identity. began developing its canal system, attracting trade be...
+
+  9. Region 07 - Zdrolan - Chunk 38/39 (score: 0.901)
+     * RELEVANT: Description of Zogomilist religious practices and beliefs, including the concept of the Witness. the aforementioned physical disciplines (fasting, dance), contemplation of Zogomilist parables and symb...
+
+  10. Region 01c - West Crinia - Chunk 2/272 (score: 0.812)
+     Preview: of Istra lies the United Kingdoms of Astonia and Lettsland, a dual monarchy composed of a native Dutsasian-converted population. Although they, on pap...
+
+[SUCCESS] Found chunks containing both 'Krstovlje' and 'Abstrata'
+
+================================================================================
+
+TESTING QUERY: 'Abstrata'
+--------------------------------------------------
+Results found: 10
+  1. Region 04 - Görtatork - Chunk 24/29 (score: 4.649)
+     * RELEVANT: The chunk details the influence of Grekjan philosophy and faith on the political landscape of Krstovlje, particularly the rise and suppression of hromadian organizations by the Zdrolan Independence Fr...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  2. Region 07 - Zdrolan - Chunk 33/39 (score: 1.200)
+     * RELEVANT: The chunk describes the Ultraconservatives and Hromadian Opportunists factions within the Zdrolan Independence Front (ZIF), detailing their ideologies, methods, and relationships with other factions. ...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  3. Region 07 - Zdrolan - Chunk 34/39 (score: 1.167)
+     * RELEVANT: The chunk describes the factions within the Zdrolan Independence Front (ZIF) and their relationships, focusing on the Veljotan Hegemonists and the Mraeran Mercantile League. by almost all other facti...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  4. Region 09 - Tawaghet - Chunk 5/28 (score: 0.813)
+     Preview: Political structure and voting dynamics of Kormest, with a focus on the Federal Assembly and its unique bloc system. city of Baskora, located north of...
+
+  5. Region 01c - West Crinia - Chunk 167/272 (score: 0.793)
+     Preview: are predominantly Merouldist, although Seekers and Kerdaghites have a notable presence in rural areas — these minorities are relatively tolerated, eve...
+
+  6. Region 01c - West Crinia - Chunk 31/272 (score: 0.789)
+     Preview: the society they so dream of. At the same time, she has also established herself as the only person who can guide the winds of revolution in such a wa...
+
+  7. Region 01c - West Crinia - Chunk 169/272 (score: 0.783)
+     Preview: lodges that are by-and-large extremely resistant to any form of change (technological, social, political, etc.) and are extremely loyal to the monarch...
+
+  8. _internal_document_list.txt - Chunk 5/9 (score: 0.783)
+     * RELEVANT: Regional details and histories of Görtatork, Taa Herat, Mons Ochitus, Zdrolan, Istrelka, and Tawaghet. Lyrnine Colonies, and Cleft Plain States), and Grekja, with a focus on their internal dynamics, e...
+
+  9. Region 01c - West Crinia - Chunk 15/272 (score: 0.779)
+     Preview: the cities of Lettsland, protected by working-class neighborhoods, as they manufacture bombs and makeshift pistols for fiery attacks against the react...
+
+  10. Region 01c - West Crinia - Chunk 179/272 (score: 0.765)
+     Preview: Economy and Military Economic Base The economy of Istra can be seen as constituting a wealthy and industrialized Lettsland, coupled with a poorer, agr...
+
+[SUCCESS] Found chunks containing both 'Krstovlje' and 'Abstrata'
+
+================================================================================
+
+TESTING QUERY: 'Krstovlje'
+--------------------------------------------------
+Results found: 10
+  1. Region 09 - Tawaghet - Chunk 19/28 (score: 2.467)
+     * RELEVANT: Achamast's economy, military, and political integration with Kormest. and festoon the palaces of Kormest. However, maintained only by a (rather exploitative) system of Federal patronage, and limited b...
+
+  2. Region 04 - Görtatork - Chunk 23/29 (score: 1.308)
+     * RELEVANT: The chunk describes the influence of Grekjan hromada philosophy on neighboring regions, particularly Vardashë and Kurtabadh, and its historical impact on Krstovlje. inspired by the Grekjan model. This...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  3. Region 04 - Görtatork - Chunk 24/29 (score: 1.294)
+     * RELEVANT: The chunk details the influence of Grekjan philosophy and faith on the political landscape of Krstovlje, particularly the rise and suppression of hromadian organizations by the Zdrolan Independence Fr...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  4. Region 07 - Zdrolan - Chunk 28/39 (score: 1.208)
+     * RELEVANT: The chunk describes the historical development of Zdrolan, focusing on the rise of city-states and the emergence of a distinct Mraeran identity. began developing its canal system, attracting trade be...
+
+  5. Region 07 - Zdrolan - Chunk 8/39 (score: 1.205)
+     * RELEVANT: Veljotan's resurgence and economic power in Zdrolan. and mine-owners who rule there see the Front as a tool to reassert dominance over lost territories and trade routes. They provide warships refitted...
+
+  6. Region 07 - Zdrolan - Chunk 11/39 (score: 1.185)
+     * RELEVANT: Funeral and marriage customs in Mraera, Zdrolan. the core function remains. The vessel itself might be decorated with carvings or paint echoing the symbols used on the body, signifying the unity of t...
+
+  7. Region 07 - Zdrolan - Chunk 29/39 (score: 1.184)
+     * RELEVANT: Trade and industrialization in Zdrolan, leading to social and political changes. up the mountain. Zdrolan supplied the mountain with essential goods and crafts; Malshkurta, particularly Kurtabardh, ex...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  8. Region 07 - Zdrolan - Chunk 38/39 (score: 1.101)
+     * RELEVANT: Description of Zogomilist religious practices and beliefs, including the concept of the Witness. the aforementioned physical disciplines (fasting, dance), contemplation of Zogomilist parables and symb...
+
+  9. Region 01c - West Crinia - Chunk 2/272 (score: 0.841)
+     Preview: of Istra lies the United Kingdoms of Astonia and Lettsland, a dual monarchy composed of a native Dutsasian-converted population. Although they, on pap...
+
+  10. Region 07 - Zdrolan - Chunk 9/39 (score: 0.839)
+     * RELEVANT: Zogomilism, a pagan religion, and its symbols and beliefs in Mraera. within the body and a world outside the body, revering their bodies as temples and often practice fasting and dancing to show thei...
+
+[SUCCESS] Found chunks containing both 'Krstovlje' and 'Abstrata'
+
+================================================================================
+
+TESTING WITH EMBEDDING SEARCH:
+--------------------------------------------------
+Embedding search results: 10
+  1. Region 07 - Zdrolan - Chunk 3/39 (score: 0.612)
+     * RELEVANT: Krstovlje's resistance and the rise of the Zdrolan Independence Front (ZIF) authorities believed cooperation would preserve their autonomy and economic privileges.</post-invasion_lore> <post-invasion_...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  2. Region 07 - Zdrolan - Chunk 2/39 (score: 0.609)
+     * RELEVANT: Veljotan's naval resurgence and Krstovlje's Imperial collaboration. naval capacity, converting merchant vessels to warships and recruiting from the liberated territories. While officially aligned with...
+
+  3. Region 04 - Görtatork - Chunk 23/29 (score: 0.588)
+     * RELEVANT: The chunk describes the influence of Grekjan hromada philosophy on neighboring regions, particularly Vardashë and Kurtabadh, and its historical impact on Krstovlje. inspired by the Grekjan model. This...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  4. Region 04 - Görtatork - Chunk 24/29 (score: 0.584)
+     * RELEVANT: The chunk details the influence of Grekjan philosophy and faith on the political landscape of Krstovlje, particularly the rise and suppression of hromadian organizations by the Zdrolan Independence Fr...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  5. Region 07 - Zdrolan - Chunk 4/39 (score: 0.582)
+     * RELEVANT: The chunk describes the successful invasion of Mirkovina by the Zdrolan Independence Front (ZIF), led by Linomusin Abstrata, and the subsequent establishment of a provisional government. This event is...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  6. Region 01c - West Crinia - Chunk 225/272 (score: 0.573)
+     Preview: in shared ideology and outlooks rather than simply sharing the same enemies. In this, does the Archduchy guard such a relationship, sending advisors a...
+
+  7. Region 07 - Zdrolan - Chunk 7/39 (score: 0.565)
+     * RELEVANT: The chunk describes the Zdrolan Independence Front's (ZIF) rise and its impact on the city-states of Mraera, particularly Krstovlje and Veljotan, post-Imperial invasion. geography and synchronized sp...
+     >> CONTAINS BOTH KRSTOVLJE AND ABSTRATA!
+
+  8. Lanamarika Krstmer Bio - Chunk 1/1 (score: 0.560)
+     Preview: Background on Lanamarika Krstmer, the Warden of Mirkovina, and her rise to power. The Warden of Mirkovina. Lanamarika Krstmer rose from the head of a ...
+
+  9. Region 01b - Crinia Magna - Chunk 25/131 (score: 0.550)
+     Preview: arm in decline, the Kerdaghite population in the region has organized itself along the lines of the Erimaean Front into tightly-controlled, devolved c...
+
+  10. Region 01c - West Crinia - Chunk 99/272 (score: 0.549)
+     Preview: of post-Regency reforms has resulted in a popularly-elected Assembly of Commons in addition to the Lords-Assembly, their powers are practically zero i...
+
+
+SEARCHING FOR DOCUMENTS CONTAINING 'KRSTOVLJE':
+--------------------------------------------------
+Found 30 chunks containing 'Krstovlje':
+  [DOC] Region 01c - West Crinia - Chunk 120
+     Content: a return to the absolutism of the old kingdom, and some preferring the establishment of an constitutional monarchy, most are universally aligned with the Verlouse Clique, which, as a pre revolutionary military school, contains many Azuristes in its ranks, as well as supporting many political policie...
+
+  [DOC] Region 01c - West Crinia - Chunk 121
+     Content: on collaborating with the military cliques, and which later radicalized as was inspired by Dimovist thought from Krstovlje. Officially banned by the Kingdom, the Union challenges the state's authority by organizing factory strikes and anti government protests. While it's leaders lead from undergroun...
+
+  [DOC] Region 01c - West Crinia - Chunk 239
+     Content: some preferring the establishment of an constitutional monarchy, most are universally aligned with the Verlouse Clique, which, as a pre revolutionary military school, contains many Azuristes in its ranks, as well as supporting many political policies the most conservative but also centrist Azuristes...
+
+  [DOC] Region 01c - West Crinia - Chunk 240
+     Content: as was inspired by Dimovist thought from Krstovlje. Officially banned by the Kingdom, the Union challenges the state's authority by organizing factory strikes and anti government protests. While it's leaders lead from underground, the movement can often be found out in the open, as it is too popular...
+
+  [DOC] Region 09 - Tawaghet - Chunk 17
+     Content: these pieces from diverging too much from the traditional norm, foreign exports of the Kormestin one-piece women’s suit have been much less inhibited, such that the most stunning and creative examples of Kormestin dress are found on the royal waists of Crinia and Krstovlje, not Baskora. Architecture...
+
+  [DOC] Region 09 - Tawaghet - Chunk 19
+     Content: and festoon the palaces of Kormest. However, maintained only by a (rather exploitative) system of Federal patronage, and limited by cost and expertise, these amazing artworks seem to be permanently limited in supply. Major | Achamast | The Kormestin Clan A major prerequisite for integration into the...
+
+  [DOC] _internal_document_list.txt - Chunk 5
+     Content: Lyrnine Colonies, and Cleft Plain States), and Grekja, with a focus on their internal dynamics, external influences, and post-invasion changes. - Region 05 - Taa Herat (UUID: 601b0c1e-fc4e-433f-9ca8-a66ea790ad9b) Summary: Taa Herat, a land of shifting rifts, is a dominion isolated from equatorial ci...
+
+  [DOC] Region 04 - Görtatork - Chunk 23
+     Content: inspired by the Grekjan model. This success, however, remains localized and doesn't represent a region-wide political shift, partly due to Vardashë's inherent fragmentation and lack of central authority to either promote or suppress the ideology systematically. Influence in Kurtabadh (Malshkurta): T...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 04 - Görtatork - Chunk 24
+     Content: with ZIF: However, this vision clashed fundamentally with Linomusin Abstrata's ZIF ideology. While both were anti-Imperial, the ZIF championed a centralized, pan-Zdrolani nationalist state emphasizing discipline, order, and unity under its leadership. The hromadian focus on decentralized, autonomous...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 2
+     Content: naval capacity, converting merchant vessels to warships and recruiting from the liberated territories. While officially aligned with the Zdrolan Indepence Front, Veljotan maintains significant autonomy and has been known to conduct independent operations against Imperial shipping and outposts.</post...
+
+  [DOC] Region 07 - Zdrolan - Chunk 3
+     Content: authorities believed cooperation would preserve their autonomy and economic privileges.</post-invasion_lore> <post-invasion_lore>However, the harsh reality of Imperial rule, including heavy taxation, forced requisitioning of local resources, and the suppression of academic freedom in the universitie...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 4
+     Content: This event is known as “The March on Krstovlje”. The city's complex canal network proved instrumental, allowing Abstrata's burgundy-uniformed elite forces to move undetected and isolate Imperial strongpoints.</post-invasion_lore> <post-invasion_lore>With Krstovlje secured, Abstrata has leveraged the...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 5
+     Content: constantly busy with ships loading textiles, metalworks, and other produced goods. Mirkovina also acts as the main stopping point between Western Zdrolan and Eastern Zdrolan. The peninsula hosts many towns under Mirkovina’s influence and control, including industrial settlements like the ironworking...
+
+  [DOC] Region 07 - Zdrolan - Chunk 6
+     Content: Imperial rule. Subsequently, they became host to the regional Imperial Manezzo Company (IMC) Marketing Research and Development Headquarters (IMC MRandD HQ). The city's strategic position at the end of the peninsula made it an ideal location for Imperial operations, controlling maritime traffic and ...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 7
+     Content: geography and synchronized spectacle. Their provisional government walks a knife's edge, preserving city-state traditions while centralizing military logistics. Ruthlessly efficient, they've crushed most of the hromadian leftists, other local resistance, and successfully invaded south Mirkovinian te...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 8
+     Content: and mine-owners who rule there see the Front as a tool to reassert dominance over lost territories and trade routes. They provide warships refitted from merchant hulls, iron from their mines, and seasoned crews and soldiers raised on stories of glorious raids. Mraeran Economy The region thrives on ...
+
+  [DOC] Region 07 - Zdrolan - Chunk 9
+     Content: within the body and a world outside the body, revering their bodies as temples and often practice fasting and dancing to show their worship of their god, the Shaper (Formësi), who carved every human out of clay. These Zogomilists are found in great numbers in Krstovlje where many political scholars ...
+
+  [DOC] Region 07 - Zdrolan - Chunk 11
+     Content: the core function remains. The vessel itself might be decorated with carvings or paint echoing the symbols used on the body, signifying the unity of the departed and their transport. Flowers native to the region might adorn the edges. A procession will then occur, where family, friends, and communit...
+
+  [DOC] Region 07 - Zdrolan - Chunk 12
+     Content: people in a marriage will be in romantic relationships with each other. Typically, three of the people will be workers, and the others take responsibility as caretakers of children and the household. People can only get married on Surban Day and do so in large celebratory festivals out in the street...
+
+  [DOC] Region 07 - Zdrolan - Chunk 13
+     Content: honey and purple umber; a favourite snack for sailors and miners. Surban Layer-cake: four or five strata, each tinted the marriage colours of the couple(s); slices are pinched between cloth rather than fingers, respecting the traditional nail-less etiquette. Jellied eel: Eels are chopped and boiled ...
+
+  [DOC] Region 07 - Zdrolan - Chunk 26
+     Content: Dawn and Zdrolani Re-emergence As the worst effects of the Long Dark subsided globally, Crinia began its expansion. Zdrolan, situated across the mountains, eventually became a target for Crinian traders, missionaries, and eventually political influence. Western Zdrolan (Malshkurta) Crinian influence...
+
+  [DOC] Region 07 - Zdrolan - Chunk 27
+     Content: resource discoveries (like nascent iron mines in the north). Proto-Veljotan, Krstovlje, and Mirkovina existed as settlements within these small domains, important market towns or fortified centres, but not yet independent regional powers. Lords from the north settlements would raid trading ships and...
+
+  [DOC] Region 07 - Zdrolan - Chunk 28
+     Content: began developing its canal system, attracting trade between Zangora Lake and the sea, growing wealthy and influential. Mirkovina, benefiting from inherited pre-Dark craft knowledge or skilled artisans, became a center for textile and metalwork production, drawing resources and labor. Resource Contro...
+
+  [DOC] Region 07 - Zdrolan - Chunk 29
+     Content: up the mountain. Zdrolan supplied the mountain with essential goods and crafts; Malshkurta, particularly Kurtabardh, exported significant quantities of durable pottery, vital food staples derived from Fushdelma and freshwater fish, and copper resources, while Mraeran cities contributed textiles, ir...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 30
+     Content: trade links intensified. Vardash remained largely pre-industrial. The cultural gap widened, with Mraera increasingly seen as dynamic but culturally alien by many in Malshkurta. Interaction with Ochitus The Cicihaki during this time migrated out of southern Kurtabardh and the summit road and into O...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 32
+     Content: ruins. They are the true believers and the iron fist of the revolution. Relationship with Others Fiercely loyal to Abstrata, seeing her as the vessel for Zdrolan's destiny (with Actuala as the chief interpreter/enforcer). Deeply suspicious of Hromadians, Merchants, and the pragmatic Veljotans. May c...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 33
+     Content: Zogomilists (wary of Qithionism/Futurism), figures connected to pre-Imperial local power structures. Ideology Support the ZIF primarily as a means to restore traditional Zdrolani values, social structures, and religiosity, purging foreign (Imperial, Crinian) influences. They emphasize local customs,...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 34
+     Content: by almost all other factions (especially Statists, Actualans, Ultraconservatives, Merchants). Their continued existence is likely due to battlefield necessity and Abstrata seeing them as useful cannon fodder and a tool to capture any rebellious leftists and to keep them in check. Their position is h...
+     >> ALSO CONTAINS 'ABSTRATA'!
+
+  [DOC] Region 07 - Zdrolan - Chunk 35
+     Content: provisional government for favorable policies, positioning themselves to profit from reconstruction. Relationship with Others Necessary partners for the Statists. Wary of Actuala's radicalism disrupting stability and trade. May see Futurists as frivolous but potentially useful for marketing a "new" ...
+
+  [DOC] Region 07 - Zdrolan - Chunk 38
+     Content: the aforementioned physical disciplines (fasting, dance), contemplation of Zogomilist parables and symbols (often depicted on their revered pottery), and guidance from experienced teachers or elders. The goal is to awaken the slumbering Spark, to recognise the Outer World (Bata e Shpirtërore) as a r...
+
+================================================================================
+SEARCH TEST COMPLETE
+================================================================================

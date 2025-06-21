@@ -140,10 +140,25 @@ class Config:
 
         # Keyword database system enable/disable setting
         self.KEYWORD_DATABASE_ENABLED = bool(os.getenv('KEYWORD_DATABASE_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+        
+        # Contextualization settings
+        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+        self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
+        self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
 
     def get_reranking_settings_for_query(self, query: str):
-        """Get adaptive reranking settings based on query complexity."""
-        complex_indicators = [
+        """Get adaptive reranking settings based on query type and complexity."""
+        query_lower = query.lower()
+        
+        # Factual/specific information queries
+        factual_indicators = [
+            'where', 'what', 'who', 'when', 'how', 'why',
+            'origin', 'come from', 'came from', 'began', 'started',
+            'definition', 'meaning', 'explain', 'specific', 'particular'
+        ]
+        
+        # Complex analytical queries
+        analytical_indicators = [
             'analysis', 'analyze', 'detailed', 'comprehensive', 'intersection',
             'relationship', 'compare', 'contrast', 'philosophy', 'theology',
             'write about', 'explain in detail', 'discuss', 'elaborate',
@@ -152,26 +167,38 @@ class Config:
             'exploration', 'investigation', 'study', 'research', 'deep dive'
         ]
         
-        is_complex = any(indicator in query.lower() for indicator in complex_indicators)
+        # Check for proper nouns (often indicate specific entity queries)
+        import re
+        has_proper_nouns = bool(re.search(r'\b[A-Z][a-z]+\b', query))
         
-        if is_complex:
-            logger.info("Detected complex query, using lenient reranking settings")
+        factual_score = sum(1 for indicator in factual_indicators if indicator in query_lower)
+        analytical_score = sum(1 for indicator in analytical_indicators if indicator in query_lower)
+        
+        if factual_score > 0 or has_proper_nouns:
+            logger.info("Detected factual/specific query, using high-recall settings")
             return {
-                'min_score': 0.15,      # Even lower threshold for better recall
-                'filter_mode': 'topk',  # No score filtering (was 'strict')
-                'candidates': 40        # Even more candidates for better selection
+                'type': 'factual',
+                'min_score': 0.05,      # Very low threshold to preserve specific content
+                'filter_mode': 'topk',  # Don't filter by score, just take top results
+                'candidates': 60        # Large candidate pool to ensure diverse content
+            }
+        elif analytical_score > 0:
+            logger.info("Detected analytical query, using balanced settings")
+            return {
+                'type': 'analytical',
+                'min_score': 0.15,      # Lower threshold for better recall
+                'filter_mode': 'topk',  # No score filtering for complex queries
+                'candidates': 40        # More candidates for better selection
             }
         else:
+            logger.info("Detected general query, using standard settings")
             return {
+                'type': 'general',
                 'min_score': self.RERANKING_MIN_SCORE,
                 'filter_mode': self.RERANKING_FILTER_MODE,
                 'candidates': self.RERANKING_CANDIDATES
             }
         
-        # Contextualization settings
-        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
-        self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
-        self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
         
         # Validate temperature settings
         if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):

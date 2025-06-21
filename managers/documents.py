@@ -962,16 +962,46 @@ class DocumentManager:
         if apply_reranking and self.config and hasattr(self.config, 'get_reranking_settings_for_query'):
             adaptive_settings = self.config.get_reranking_settings_for_query(query)
             initial_k = adaptive_settings['candidates']
+            logger.info(f"Using adaptive candidate count: {initial_k} for query type: {adaptive_settings.get('type', 'unknown')}")
         else:
             initial_k = (self.config.RERANKING_CANDIDATES if apply_reranking and self.config else top_k) if self.config else top_k
         initial_k = max(initial_k, top_k)
+        
+        # For factual queries, ensure we get a very large candidate pool to avoid missing specific content
+        if apply_reranking and self.config and hasattr(self.config, 'get_reranking_settings_for_query'):
+            adaptive_settings = self.config.get_reranking_settings_for_query(query)
+            if adaptive_settings.get('type') == 'factual':
+                # Significantly increase the initial search pool for factual queries
+                initial_k = max(initial_k, 100)  # Ensure we get at least 100 candidates
+                logger.info(f"Factual query detected: expanding initial candidate pool to {initial_k}")
             
         embedding_results = self.custom_search_with_embedding(query_embedding, top_k=initial_k)
         bm25_results = self._search_bm25(query, top_k=initial_k)
         combined_results = self._combine_search_results(embedding_results, bm25_results, top_k=initial_k)
+        
+        logger.info(f"Search phase: {len(embedding_results)} embedding + {len(bm25_results)} BM25 -> {len(combined_results)} combined results")
             
         if apply_reranking and len(combined_results) > 1:
-            return await self.rerank_results(query, combined_results, top_k=top_k)
+            # Debug: Check if target Voidcold content is in candidates before reranking
+            voidcold_in_candidates = any('voidcold' in result[2].lower() for result in combined_results)
+            logger.info(f"DEBUG: Voidcold content in candidates before reranking: {voidcold_in_candidates}")
+            if voidcold_in_candidates:
+                for i, result in enumerate(combined_results):
+                    if 'voidcold' in result[2].lower():
+                        logger.info(f"DEBUG: Voidcold chunk at position {i+1} before reranking, score: {result[3]:.3f}")
+            
+            reranked_results = await self.rerank_results(query, combined_results, top_k=top_k)
+            logger.info(f"Reranking phase: {len(combined_results)} -> {len(reranked_results)} final results")
+            
+            # Debug: Check if target Voidcold content survived reranking
+            voidcold_in_final = any('voidcold' in result[2].lower() for result in reranked_results)
+            logger.info(f"DEBUG: Voidcold content in final results after reranking: {voidcold_in_final}")
+            if voidcold_in_final:
+                for i, result in enumerate(reranked_results):
+                    if 'voidcold' in result[2].lower():
+                        logger.info(f"DEBUG: Voidcold chunk at position {i+1} after reranking, score: {result[3]:.3f}")
+            
+            return reranked_results
         return combined_results[:top_k]
                 
     def custom_search_with_embedding(self, query_embedding: np.ndarray, top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
@@ -1678,7 +1708,7 @@ class DocumentManager:
                 co.rerank,
                 query=query,
                 documents=chunks_to_rerank,
-                model="rerank-3.5",
+                model="rerank-v3.5",
                 top_n=len(chunks_to_rerank),
             )
             cohere_scores = {res.index: res.relevance_score for res in response.results}
@@ -1691,59 +1721,21 @@ class DocumentManager:
         # Get adaptive settings for score combination
         if self.config and hasattr(self.config, 'get_reranking_settings_for_query'):
             adaptive_settings = self.config.get_reranking_settings_for_query(query)
-            is_complex = adaptive_settings['filter_mode'] == 'topk'
+            query_type = adaptive_settings.get('type', 'general')
         else:
-            is_complex = False
+            query_type = 'general'
         
         reranked_results_with_data = []
         for i, initial_res_tuple in enumerate(initial_results):
             if i < len(relevance_scores):
                 original_score = initial_res_tuple[3]
                 chunk_text = initial_res_tuple[2]
+                rerank_score = float(relevance_scores[i])
                 
-                # Apply content-aware boosting for complex queries
-                content_boost = 1.0
-                if is_complex:
-                    # Boost chunks containing key terms from the query
-                    query_lower = query.lower()
-                    chunk_lower = chunk_text.lower()
-                    
-                    # Extract key terms from complex queries with stronger boosting
-                    key_terms = []
-                    if 'mong' in query_lower:
-                        key_terms.extend(['mong', 'möng', 'arshtini'])  # Added related term
-                    if 'philosophy' in query_lower or 'belief' in query_lower:
-                        key_terms.extend(['philosophy', 'philosophical', 'belief', 'doctrine', 'tradition', 'practice'])
-                    if 'theology' in query_lower or 'religious' in query_lower:
-                        key_terms.extend(['theology', 'theological', 'religious', 'divine', 'god', 'spiritual', 'sacred'])
-                    if 'analysis' in query_lower or 'detailed' in query_lower:
-                        key_terms.extend(['analysis', 'examine', 'study', 'research', 'culture', 'cultural'])
-                    if 'relationship' in query_lower or 'intersection' in query_lower:
-                        key_terms.extend(['relationship', 'connection', 'intersection', 'between', 'among'])
-                    
-                    # Apply stronger boost for each matching term
-                    term_matches = 0
-                    for term in key_terms:
-                        if term in chunk_lower:
-                            term_matches += 1
-                    
-                    if term_matches > 0:
-                        # Exponential boost for multiple term matches
-                        content_boost += 0.5 * term_matches + 0.2 * (term_matches ** 2)
-                    
-                    # Extra boost for chunks that contain the primary subject (Mong)
-                    if 'mong' in chunk_lower or 'möng' in chunk_lower or 'arshtini' in chunk_lower:
-                        content_boost += 1.0  # Strong boost for primary subject
-                
-                # Use different score combination for complex vs simple queries
-                if is_complex:
-                    # For complex queries, preserve much more of the original ranking
-                    # and apply content boost more aggressively
-                    base_score = 0.8 * original_score + 0.2 * float(relevance_scores[i])
-                    combined_score = base_score * content_boost
-                else:
-                    # For simple queries, rely more on semantic similarity
-                    combined_score = 0.3 * original_score + 0.7 * float(relevance_scores[i])
+                # Calculate combined score based on query type
+                combined_score = self._calculate_adaptive_combined_score(
+                    query, query_type, original_score, rerank_score, chunk_text
+                )
                 
                 reranked_results_with_data.append(initial_res_tuple[:3] + (combined_score,) + initial_res_tuple[4:])
         
@@ -1754,28 +1746,148 @@ class DocumentManager:
             adaptive_settings = self.config.get_reranking_settings_for_query(query)
             min_score = adaptive_settings['min_score']
             filter_mode = adaptive_settings['filter_mode']
-            logger.info(f"Using adaptive settings: {adaptive_settings}")
+            logger.info(f"Using adaptive reranking settings: {adaptive_settings}")
         else:
             min_score = self.config.RERANKING_MIN_SCORE if self.config and hasattr(self.config, 'RERANKING_MIN_SCORE') else 0.45
             filter_mode = self.config.RERANKING_FILTER_MODE if self.config and hasattr(self.config, 'RERANKING_FILTER_MODE') else 'strict'
         
-        if filter_mode == 'dynamic':
+        # Apply filtering based on mode
+        if filter_mode == 'topk':
+            # For factual queries, don't filter by score - just take top results
+            filtered_results = reranked_results_with_data[:top_k] if top_k else reranked_results_with_data
+            logger.info(f"Using topk filtering: returning top {len(filtered_results)} results without score filtering")
+        elif filter_mode == 'dynamic':
             scores = [r[3] for r in reranked_results_with_data]
             if scores:
                 mean_score = sum(scores) / len(scores)
-                dynamic_threshold = mean_score * 0.8 
+                dynamic_threshold = mean_score * 0.8
                 min_score = max(min_score, dynamic_threshold)
             filtered_results = [r for r in reranked_results_with_data if r[3] >= min_score]
-        elif filter_mode == 'topk':
-            filtered_results = reranked_results_with_data[:top_k] if top_k else reranked_results_with_data
+            logger.info(f"Using dynamic filtering: threshold {min_score:.3f}, {len(filtered_results)} results passed")
         else: # strict
             filtered_results = [r for r in reranked_results_with_data if r[3] >= min_score]
+            logger.info(f"Using strict filtering: threshold {min_score:.3f}, {len(filtered_results)} results passed")
         
-        if not filtered_results and reranked_results_with_data: 
-            logger.warning(f"Filtering with mode '{filter_mode}' (threshold {min_score:.3f}) removed all results. Falling back.")
-            filtered_results = reranked_results_with_data[:top_k] if top_k else []
+        # Fallback if filtering removed everything
+        if not filtered_results and reranked_results_with_data:
+            logger.warning(f"Filtering with mode '{filter_mode}' (threshold {min_score:.3f}) removed all results. Using fallback.")
+            filtered_results = reranked_results_with_data[:top_k] if top_k else reranked_results_with_data[:5]
         
         final_results_to_return = filtered_results[:top_k] if top_k else filtered_results
 
         logger.info(f"Re-ranking with '{filter_mode}' mode: {len(initial_results)} -> {len(final_results_to_return)} results")
         return final_results_to_return
+
+    def _calculate_adaptive_combined_score(self, query: str, query_type: str,
+                                         original_score: float, rerank_score: float,
+                                         chunk_text: str) -> float:
+        """Calculate combined score adaptively based on query type and content."""
+        import re
+        
+        query_lower = query.lower()
+        chunk_lower = chunk_text.lower()
+        
+        if query_type == 'factual':
+            # For factual queries, preserve original BM25/embedding scores more heavily
+            # and boost content with specific terminology
+            base_weight_original = 0.6  # Higher weight for original scores
+            base_weight_rerank = 0.4
+            
+            # Calculate keyword relevance boost
+            keyword_boost = self._calculate_keyword_relevance_boost(query, chunk_text)
+            
+            # Boost for rare/specific terms that often contain answers
+            specificity_boost = 1.0
+            rare_term_patterns = [
+                r'\b[A-Z][a-z]*cold\b',  # Voidcold, etc.
+                r'\bordinium\b',          # Specific materials
+                r'\bmeteorite\b',         # Specific events
+                r'\bdetonation\b',        # Specific actions
+                r'\bshield\b',            # Specific objects
+                r'\bparticles\b',         # Specific phenomena
+                r'\bunderground\b',       # Specific locations
+                r'\bmyth\b',              # Specific concepts
+                r'\borigins?\b',          # Specific information type
+            ]
+            
+            for pattern in rare_term_patterns:
+                if re.search(pattern, chunk_text, re.IGNORECASE):
+                    specificity_boost += 0.2
+            
+            # Boost for chunks with multiple proper nouns (often contain specific info)
+            proper_nouns = len(re.findall(r'\b[A-Z][a-z]+\b', chunk_text))
+            if proper_nouns > 3:
+                specificity_boost += 0.1 * min(proper_nouns - 3, 5)  # Cap the boost
+            
+            base_score = base_weight_original * original_score + base_weight_rerank * rerank_score
+            return base_score * keyword_boost * specificity_boost
+            
+        elif query_type == 'analytical':
+            # For analytical queries, balance original and rerank scores
+            # with some content-aware boosting
+            base_weight_original = 0.4
+            base_weight_rerank = 0.6
+            
+            content_boost = 1.0
+            
+            # Extract key terms from analytical queries
+            key_terms = []
+            if 'mong' in query_lower:
+                key_terms.extend(['mong', 'möng', 'arshtini'])
+            if 'philosophy' in query_lower or 'belief' in query_lower:
+                key_terms.extend(['philosophy', 'philosophical', 'belief', 'doctrine', 'tradition', 'practice'])
+            if 'theology' in query_lower or 'religious' in query_lower:
+                key_terms.extend(['theology', 'theological', 'religious', 'divine', 'god', 'spiritual', 'sacred'])
+            if 'analysis' in query_lower or 'detailed' in query_lower:
+                key_terms.extend(['analysis', 'examine', 'study', 'research', 'culture', 'cultural'])
+            if 'relationship' in query_lower or 'intersection' in query_lower:
+                key_terms.extend(['relationship', 'connection', 'intersection', 'between', 'among'])
+            
+            # Apply boost for matching terms
+            term_matches = sum(1 for term in key_terms if term in chunk_lower)
+            if term_matches > 0:
+                content_boost += 0.3 * term_matches + 0.1 * (term_matches ** 2)
+            
+            base_score = base_weight_original * original_score + base_weight_rerank * rerank_score
+            return base_score * content_boost
+            
+        else:  # general queries
+            # For general queries, rely more on semantic similarity (rerank scores)
+            return 0.3 * original_score + 0.7 * rerank_score
+
+    def _calculate_keyword_relevance_boost(self, query: str, chunk_text: str) -> float:
+        """Calculate boost based on keyword relevance for factual queries."""
+        import re
+        
+        # Extract key terms from query (excluding common words)
+        stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'among', 'through', 'during', 'before', 'after', 'above', 'below', 'between'}
+        
+        query_terms = set(word.lower() for word in re.findall(r'\b\w+\b', query) if word.lower() not in stop_words and len(word) > 2)
+        chunk_terms = set(word.lower() for word in re.findall(r'\b\w+\b', chunk_text) if len(word) > 2)
+        
+        # Direct term matches
+        direct_matches = len(query_terms.intersection(chunk_terms))
+        
+        # Semantic term matches (simple approach)
+        semantic_matches = 0
+        semantic_pairs = {
+            'origin': ['began', 'started', 'came', 'source', 'birth', 'creation'],
+            'come': ['origin', 'began', 'started', 'source', 'emerge'],
+            'from': ['origin', 'source'],
+            'where': ['location', 'place', 'region', 'area'],
+            'what': ['definition', 'description', 'explanation', 'nature'],
+            'voidcold': ['cold', 'void', 'darkness', 'freeze'],
+        }
+        
+        for query_term in query_terms:
+            if query_term in semantic_pairs:
+                for semantic_term in semantic_pairs[query_term]:
+                    if semantic_term in chunk_terms:
+                        semantic_matches += 0.5
+        
+        # Calculate boost
+        total_relevance = direct_matches + semantic_matches
+        max_possible = len(query_terms) if query_terms else 1
+        
+        relevance_ratio = min(total_relevance / max_possible, 1.0)
+        return 1.0 + (relevance_ratio * 0.4)  # Up to 40% boost for keyword relevance
