@@ -15,6 +15,7 @@ class Config:
         self.DISCORD_BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
         self.OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
         self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+        self.COHERE_API_KEY = os.getenv('COHERE_API_KEY')
         
         # Configure models with defaults
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.5-flash-preview')

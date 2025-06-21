@@ -1650,7 +1650,7 @@ class DocumentManager:
 
     async def rerank_results(self, query: str, initial_results: List[Tuple[str, str, str, float, Optional[str], int, int]], top_k: int = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         """
-        Re-rank search results using the Gemini embedding model for more nuanced relevance.
+        Re-rank search results using Cohere's `rerank-3.5` model for more nuanced relevance.
         
         Args:
             query: The search query
@@ -1664,31 +1664,29 @@ class DocumentManager:
         if not initial_results: return []
         
         logger.info(f"Re-ranking {len(initial_results)} initial results for query: {query}")
-        
-        chunks_to_rerank = [result[2] for result in initial_results] 
-        
-        # Use adaptive query context based on query complexity
-        if self.config and hasattr(self.config, 'get_reranking_settings_for_query'):
-            adaptive_settings = self.config.get_reranking_settings_for_query(query)
-            if adaptive_settings['filter_mode'] == 'topk':  # Complex query
-                # Use more direct context for complex queries to reduce semantic mismatch
-                query_context = f"Find content related to: {query}"
-            else:  # Simple query
-                query_context = f"Question: {query}\nWhat information would fully answer this question?"
-        else:
-            query_context = f"Question: {query}\nWhat information would fully answer this question?"
-            
-        query_embedding_result = await self.generate_embeddings([query_context], is_query=True)
-        if query_embedding_result.size == 0: return initial_results 
-        query_embedding = query_embedding_result[0]
 
-        content_texts = [f"This document contains the following information: {chunk}" for chunk in chunks_to_rerank]
-        content_embeddings = await self.generate_embeddings(content_texts, is_query=False) 
-        if content_embeddings.size == 0 or content_embeddings.shape[0] != len(content_texts): return initial_results
+        chunks_to_rerank = [result[2] for result in initial_results]
 
-        if query_embedding.shape[0] != content_embeddings.shape[1]: return initial_results
+        if not self.config or not getattr(self.config, 'COHERE_API_KEY', None):
+            logger.warning("COHERE_API_KEY not set. Skipping reranking.")
+            return initial_results[:top_k] if top_k else initial_results
 
-        relevance_scores = np.dot(content_embeddings, query_embedding)
+        try:
+            import cohere
+            co = cohere.Client(self.config.COHERE_API_KEY)
+            response = await asyncio.to_thread(
+                co.rerank,
+                query=query,
+                documents=chunks_to_rerank,
+                model="rerank-3.5",
+                top_n=len(chunks_to_rerank),
+            )
+            cohere_scores = {res.index: res.relevance_score for res in response.results}
+        except Exception as e:
+            logger.error(f"Cohere rerank error: {e}")
+            return initial_results[:top_k] if top_k else initial_results
+
+        relevance_scores = [cohere_scores.get(i, 0.0) for i in range(len(initial_results))]
         
         # Get adaptive settings for score combination
         if self.config and hasattr(self.config, 'get_reranking_settings_for_query'):
