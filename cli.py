@@ -288,7 +288,7 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
             raw_doc_contexts.append(f"From document '{doc}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}")
 
     # --- Prepare Messages for LLM ---
-    document_list_content = document_manager.get_document_list_content()
+    document_list_content = doc_manager.get_document_list_content()
     messages = [{"role": "system", "content": get_system_prompt_with_documents(document_list_content)}] # System prompt with document list
 
     # Add raw document context
