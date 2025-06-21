@@ -239,9 +239,10 @@ def register_commands(bot):
 
             # Add fetched Google Doc content if available
             if google_doc_context:
+                google_docs_content = "\n\n".join(google_doc_context)
                 messages.append({
                     "role": "system",
-                    "content": f"Content from Google Docs linked in the query:\n\n{'\n\n'.join(google_doc_context)}"
+                    "content": f"Content from Google Docs linked in the query:\n\n{google_docs_content}"
                 })
 
             # --- Add Keyword Context ---
