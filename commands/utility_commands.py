@@ -302,7 +302,7 @@ def register_commands(bot):
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
             elif preferred_model == "minimax/minimax-m1":
-                model_name = "Minimax M1"
+                model_name = "MiniMax M1"
             
             # Create a description of all model strengths
             model_descriptions = [

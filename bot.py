@@ -2658,7 +2658,7 @@ class DiscordBot(commands.Bot):
             elif "4.1-nano" in preferred_model:
                 model_name = "4.1 Nano"
             elif preferred_model == "minimax/minimax-m1":
-                model_name = "Minimax M1"
+                model_name = "MiniMax M1"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call

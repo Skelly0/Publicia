@@ -360,7 +360,7 @@ def register_commands(bot):
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
             elif preferred_model == "minimax/minimax-m1":
-                model_name = "Minimax M1"
+                model_name = "MiniMax M1"
 
             if (image_attachments or image_ids) and preferred_model not in bot.vision_capable_models:
                 await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*\n*note: your preferred model ({model_name}) doesn't support image analysis. only the text content will be processed.*")
