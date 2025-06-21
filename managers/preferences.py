@@ -103,16 +103,18 @@ class UserPreferencesManager:
 
     def toggle_debug_mode(self, user_id: str) -> bool:
         """Toggle the user's debug mode preference and return the new state."""
+        preferences = {}
         try:
             file_path = self.get_file_path(user_id)
-            preferences = {}
             if os.path.exists(file_path):
-                 try:
+                try:
                     with open(file_path, 'r', encoding='utf-8') as file:
                         preferences = json.load(file)
-                 except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON in {file_path} for user {user_id}. Overwriting.")
-                    preferences = {} # Reset if invalid
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Invalid JSON in {file_path} for user {user_id}. Overwriting."
+                    )
+                    preferences = {}  # Reset if invalid
 
             current_mode = preferences.get("debug_mode", False)
             new_mode = not current_mode
