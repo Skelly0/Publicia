@@ -36,16 +36,16 @@ class Config:
 
         self.MODEL_TOP_K = {
             # DeepSeek models
-            "deepseek/deepseek-chat-v3-0324": 10, # User specified value
-            "deepseek/deepseek-chat-v3-0324:floor": 10, # User specified value
-            "deepseek/deepseek-chat-v3-0324": 10, # User specified value
-            "deepseek/deepseek-chat": 10,
-            "deepseek/deepseek-r1": 10,
+            "deepseek/deepseek-chat-v3-0324": 15, # User specified value
+            "deepseek/deepseek-chat-v3-0324:floor": 15, # User specified value
+            "deepseek/deepseek-chat-v3-0324": 15, # User specified value
+            "deepseek/deepseek-chat": 15,
+            "deepseek/deepseek-r1": 15,
             "deepseek/deepseek-r1-distill-llama-70b": 14,
             "deepseek/deepseek-r1:floor": 10,
             "deepseek/deepseek-r1:nitro": 7,
-            "deepseek/deepseek-r1-0528": 10,
-            "deepseek/deepseek-r1-0528:floor": 10,
+            "deepseek/deepseek-r1-0528": 15,
+            "deepseek/deepseek-r1-0528:floor": 1150,
             # Gemini models 
             "google/gemini-2.5-flash-preview": 18,
             "google/gemini-2.5-flash-preview:thinking": 16,
@@ -54,14 +54,14 @@ class Config:
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
             # Claude models
-            "anthropic/claude-3.5-haiku:beta": 9,
-            "anthropic/claude-3.5-haiku": 9,
+            "anthropic/claude-3.5-haiku:beta": 13,
+            "anthropic/claude-3.5-haiku": 13,
             "anthropic/claude-3.5-sonnet:beta": 5,
             "anthropic/claude-3.5-sonnet": 5,
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models
-            "qwen/qwq-32b": 13,
+            "qwen/qwq-32b": 20,
             "qwen/qwen3-235b-a22b": 17,
             # Testing models
             "thedrummer/unslopnemo-12b": 12,
@@ -81,9 +81,9 @@ class Config:
             "openai/gpt-4.1-mini": 11,
             "openai/gpt-4.1-nano": 17,
             # X AI Models
-            "x-ai/grok-3-mini-beta": 14,
+            "x-ai/grok-3-mini-beta": 20,
             # MiniMax Models
-            "minimax/minimax-m1": 15,
+            "minimax/minimax-m1": 20,
         }
         
         # Validate required environment variables
