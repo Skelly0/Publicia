@@ -26,7 +26,7 @@ class Config:
         self.EMBEDDING_DIMENSIONS = int(os.getenv('EMBEDDING_DIMENSIONS', '0'))
         
         # Chunk size configuration
-        self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '300'))  # Default to 750 words per chunk
+        self.CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '300'))  # Default to 300 words per chunk
         self.CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '30'))  # Default to 125 words overlap
         
         # TOP_K configuration with multiplier
