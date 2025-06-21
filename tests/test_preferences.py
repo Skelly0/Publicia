@@ -19,3 +19,11 @@ def test_toggle_debug_mode_with_faulty_path(tmp_path):
     manager.preferences_dir = None
     result = manager.toggle_debug_mode("user")
     assert result is False
+
+
+def test_toggle_info_prompt_with_faulty_path(tmp_path):
+    prefs = load_preferences_module()
+    manager = prefs.UserPreferencesManager(base_dir=str(tmp_path))
+    manager.preferences_dir = None
+    result = manager.toggle_informational_prompt_mode("user")
+    assert result is False
