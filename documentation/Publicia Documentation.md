@@ -219,6 +219,7 @@ Sophisticated reranking of search results to improve relevance:
 - Customizable minimum score threshold
 - Reranking candidates configuration
 - Weighted combination of initial and reranked scores
+- Powered by Cohere's `rerank-3.5` model
 - Fallback mechanism to ensure results are always returned
 - TOP_K now acts as a maximum limit for chunks parsed
 
@@ -252,6 +253,7 @@ pip install -r requirements.txt
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
+COHERE_API_KEY=your_cohere_api_key
 
 # Optional (defaults shown)
 LLM_MODEL=google/gemini-2.5-flash-preview # Default model for text generation

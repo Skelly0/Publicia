@@ -54,6 +54,7 @@ pip install -r requirements.txt
 DISCORD_BOT_TOKEN=your_discord_bot_token
 OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
+COHERE_API_KEY=your_cohere_api_key
 
 # Optional (defaults shown)
 LLM_MODEL=google/gemini-2.5-flash-preview # Default model for text generation
@@ -142,6 +143,7 @@ Publicia uses Google's Generative AI embeddings with sophisticated reranking mec
 - Multiple filter modes for improved relevance (strict, dynamic, topk)
 - Customizable minimum score threshold
 - Weighted combination of initial and reranked scores
+- Powered by Cohere's `rerank-3.5` model for final ranking
 - Dynamic parsing limits based on query complexity
 
 ### Conversation Memory
