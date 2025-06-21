@@ -143,9 +143,9 @@ class UserPreferencesManager:
 
     def toggle_informational_prompt_mode(self, user_id: str) -> bool:
         """Toggle the user's informational prompt mode preference and return the new state."""
+        preferences = {}
         try:
             file_path = self.get_file_path(user_id)
-            preferences = {}
             if os.path.exists(file_path):
                 try:
                     with open(file_path, 'r', encoding='utf-8') as file:
