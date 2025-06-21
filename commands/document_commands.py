@@ -656,6 +656,7 @@ def register_commands(bot):
             
             # Function to fetch messages in smaller batches with delays
             async def fetch_messages_carefully(limit=None):
+                nonlocal last_update_time
                 collected = []
                 last_id = None
                 remaining = limit
