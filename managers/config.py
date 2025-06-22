@@ -56,8 +56,8 @@ class Config:
             # Claude models
             "anthropic/claude-3.5-haiku:beta": 13,
             "anthropic/claude-3.5-haiku": 13,
-            "anthropic/claude-3.5-sonnet:beta": 5,
-            "anthropic/claude-3.5-sonnet": 5,
+            "anthropic/claude-4-sonnet:beta": 5,
+            "anthropic/claude-4-sonnet": 5,
             "anthropic/claude-3.7-sonnet:beta": 5,
             "anthropic/claude-3.7-sonnet": 5,
             # Qwen models

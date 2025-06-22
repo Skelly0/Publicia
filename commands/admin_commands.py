@@ -98,7 +98,7 @@ def register_commands(bot):
                 ],
                 "claude": [
                     "anthropic/claude-3.5-haiku:beta",
-                    "anthropic/claude-3.5-sonnet:beta",
+                    "anthropic/claude-4-sonnet:beta",
                     "anthropic/claude-3.7-sonnet:beta",
                 ],
                 "qwen": [

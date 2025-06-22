@@ -333,8 +333,8 @@ def register_commands(bot):
                 model_name = "Nous: Hermes 405B Instruct"
             elif "claude-3.5-haiku" in preferred_model:
                 model_name = "Claude 3.5 Haiku"
-            elif "claude-3.5-sonnet" in preferred_model:
-                model_name = "Claude 3.5 Sonnet"
+            elif "claude-4-sonnet" in preferred_model:
+                model_name = "Claude 4 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in preferred_model:

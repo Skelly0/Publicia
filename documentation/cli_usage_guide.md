@@ -33,7 +33,7 @@ python cli.py [options] "Your question here"
 
 3.  **`--model`** (Optional)
     *   Type: `string`
-    *   Description: Specifies the exact OpenRouter model identifier (e.g., `anthropic/claude-3.5-sonnet`, `google/gemini-2.0-flash-001`) to use for generating the response. If omitted, the script uses the `LLM_MODEL` defined in the `.env` file or the hardcoded default in `managers/config.py`.
+    *   Description: Specifies the exact OpenRouter model identifier (e.g., `anthropic/claude-4-sonnet`, `google/gemini-2.0-flash-001`) to use for generating the response. If omitted, the script uses the `LLM_MODEL` defined in the `.env` file or the hardcoded default in `managers/config.py`.
 
 ## Execution Flow
 
@@ -58,7 +58,7 @@ python cli.py [options] "Your question here"
 5.  **LLM Interaction (`_cli_try_ai_completion`):**
     *   Constructs the message list (system prompt, document context, image data if applicable, user question).
     *   Attempts to get a completion from the specified or default model using the OpenRouter API.
-    *   **Fallback Logic:** If the initial model fails (e.g., rate limit 429, API error, timeout), it automatically attempts a sequence of predefined fallback models (currently: `anthropic/claude-3.5-sonnet`, `google/gemini-2.0-flash-001`, `mistralai/mistral-large`).
+    *   **Fallback Logic:** If the initial model fails (e.g., rate limit 429, API error, timeout), it automatically attempts a sequence of predefined fallback models (currently: `anthropic/claude-4-sonnet`, `google/gemini-2.0-flash-001`, `mistralai/mistral-large`).
     *   Uses the `API_TIMEOUT` value from the `Config` object for the API call timeout.
 6.  **Output:**
     *   If a valid response is received from any model, logs the model used and prints the formatted response content to standard output (stdout).

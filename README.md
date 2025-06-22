@@ -129,7 +129,7 @@ Users can select their preferred AI model for responses:
 - **DeepSeek V3 0324**: Advanced conversational model with improved performance
 - **DeepSeek-R1**: Best for immersive roleplaying and reasoning
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5 Sonnet**: Premium capabilities (admin restricted)
+- **Claude 4 Sonnet**: Premium capabilities (admin restricted)
 - **Nous: Hermes 405B**: Balanced between creativity and precision
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
 

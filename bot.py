@@ -91,8 +91,8 @@ class DiscordBot(commands.Bot):
             "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet:beta",
             "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-3.5-sonnet:beta", 
-            "anthropic/claude-3.5-sonnet",
+            "anthropic/claude-4-sonnet:beta", 
+            "anthropic/claude-4-sonnet",
             "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku",
             "anthropic/claude-3-haiku:beta",
@@ -1034,14 +1034,14 @@ class DiscordBot(commands.Bot):
                 if "claude-3.7-sonnet" in model:
                     fallbacks = [
                         "anthropic/claude-3.7-sonnet",
-                        "anthropic/claude-3.5-sonnet:beta",
+                        "anthropic/claude-4-sonnet:beta",
                         "anthropic/claude-3.5-haiku:beta",
                         "anthropic/claude-3.5-haiku"
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
-                elif "claude-3.5-sonnet" in model:
+                elif "claude-4-sonnet" in model:
                     fallbacks = [
-                        "anthropic/claude-3.5-sonnet",
+                        "anthropic/claude-4-sonnet",
                         "anthropic/claude-3.7-sonnet:beta",
                         "anthropic/claude-3.7-sonnet",
                         "anthropic/claude-3.5-haiku:beta",
@@ -2644,7 +2644,7 @@ class DiscordBot(commands.Bot):
             elif preferred_model.startswith("google/"): model_name = "Gemini 2.0 Flash" # Fallback for other google models
             elif preferred_model.startswith("nousresearch/"): model_name = "Nous: Hermes 405B"
             elif "claude-3.5-haiku" in preferred_model: model_name = "Claude 3.5 Haiku"
-            elif "claude-3.5-sonnet" in preferred_model: model_name = "Claude 3.5 Sonnet"
+            elif "claude-4-sonnet" in preferred_model: model_name = "Claude 4 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model: model_name = "Claude 3.7 Sonnet"
             elif "maverick" in preferred_model: model_name = "Llama 4 Maverick"
             elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"

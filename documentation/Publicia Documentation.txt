@@ -156,7 +156,7 @@ Users can choose their preferred AI model:
 - **DeepSeek V3 0324**: Advanced conversational model with improved performance
 - **DeepSeek-R1**: Best for immersive roleplaying and reasoning
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
-- **Claude 3.5 Sonnet**: Premium capabilities (admin restricted)
+- **Claude 4 Sonnet**: Premium capabilities (admin restricted)
 - **Nous: Hermes 405B**: Balanced between creativity and precision
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
@@ -492,7 +492,7 @@ Choose models based on your needs:
 - **DeepSeek V3 0324**: Advanced conversational model with improved performance and efficiency
 - **DeepSeek-R1**: Use for immersive, creative responses and advanced reasoning
 - **Claude 3.5 Haiku**: Fast responses with image capabilities and good efficiency
-- **Claude 3.5 Sonnet**: Advanced capabilities with enhanced creativity (admin-only)
+- **Claude 4 Sonnet**: Advanced capabilities with enhanced creativity (admin-only)
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
 - **Grok 3 Mini**: X.AI's efficient model for quick, conversational responses
