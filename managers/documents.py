@@ -287,7 +287,7 @@ class DocumentManager:
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             
             # Using a list of reliable and fast models for summarization
-            fallback_models = ["google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
+            fallback_models = ["google/gemini-2.5-flash-lite-preview-06-17", "google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
             
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 200}
