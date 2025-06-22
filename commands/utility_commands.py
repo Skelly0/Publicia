@@ -33,7 +33,7 @@ def register_commands(bot):
                 "Document Management": ["list_docs", "search_docs", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
-                "Context/Memory Management": ["history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives"]
+                "Context/Memory Management": ["history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]
             }
 
             # Define admin-only command categories
@@ -41,7 +41,6 @@ def register_commands(bot):
                 "Document Management": ["add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel", "track_channel", "untrack_channel", "reload_docs", "regenerate_embeddings", "refresh_docs"],
                 "Image Management": ["edit_image", "remove_image", "update_image_description"],
                 "Utility": ["ban_user", "unban_user", "parse_channel", "compare_models"],
-                "Context/Memory Management": ["archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]
             }
 
             # Define a set of admin command names for easy checking (not strictly needed for the new output structure, but fixing syntax)
