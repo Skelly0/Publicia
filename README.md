@@ -2,7 +2,7 @@
 
 *A hybrid RAG (Retrieval-Augmented Generation) Discord bot using vector embeddings, BM25 search, and multi-model LLM integration for intelligent document querying and conversational AI.*
 
-*Created for DPS Season 7 as a lore repository for players, Publicia’s commands and default system prompt are designed to fit into the setting.*
+*Created for DPS Season 7 as a lore repository for players, Publicia's commands and default system prompt are designed to fit into the setting.*
 ***A general purpose version without the S7 specific prose and prompts is intended to be made once Season 7 finishes.***
 
 ## Overview
