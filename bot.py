@@ -91,7 +91,7 @@ class DiscordBot(commands.Bot):
             "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet:beta",
             "anthropic/claude-3.7-sonnet",
-            "anthropic/claude-sonnet-4:beta", 
+            "anthropic/claude-sonnet-4", 
             "anthropic/claude-sonnet-4",
             "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku",
@@ -1034,7 +1034,7 @@ class DiscordBot(commands.Bot):
                 if "claude-3.7-sonnet" in model:
                     fallbacks = [
                         "anthropic/claude-3.7-sonnet",
-                        "anthropic/claude-sonnet-4:beta",
+                        "anthropic/claude-sonnet-4",
                         "anthropic/claude-3.5-haiku:beta",
                         "anthropic/claude-3.5-haiku"
                     ]

@@ -131,7 +131,7 @@ def register_commands(bot):
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1-0528"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
-        app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4:beta"),
+        app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
         #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
@@ -151,7 +151,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
 
-            if model == "anthropic/claude-sonnet-4:beta" and str(interaction.user.id) != "203229662967627777":
+            if model == "anthropic/claude-sonnet-4" and str(interaction.user.id) != "203229662967627777":
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
             
