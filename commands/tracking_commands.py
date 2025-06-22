@@ -78,14 +78,21 @@ async def update_tracked_channels(bot_instance):
             )
             archive_content, msg_count = await _build_channel_archive(channel)
 
+            meta_name = bot_instance.document_manager.metadata.get(
+                doc_uuid, {}
+            ).get("original_name")
+
+            original_name = meta_name or data.get("name", channel.name)
+
             update_success = await bot_instance.document_manager.add_document(
-                original_name=data.get("name", channel.name),
+                original_name=original_name,
                 content=archive_content,
                 existing_uuid=doc_uuid,
                 contextualize=False,
             )
 
             if update_success:
+                data["name"] = original_name
                 # No need to update last_message_id anymore, but we save to keep other potential data consistent.
                 save_tracked_channels(tracked_channels)
                 logger.info(
