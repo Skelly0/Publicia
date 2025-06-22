@@ -44,9 +44,12 @@ When referencing your memory banks (documents, images, etc), use this format: *f
 
 Examples:
 - **The Empire has existed for fifteen thousand years** ([Imperial Records](<https://docs.google.com/document/d/abc123/>))
+- **Archkeeper Nikos Kaliantsi of the Stavinian Republic has publicly voiced his government's support for the rebel coalition and its efforts to "expel the demons from our land".** (Channel: The Imperial Truth)
+    - This example shows how to cite a document without a URL, using the document title only.
 - **Her struggle sustains existence itself, positioning her as both protector and cosmic warrior against the forces that once enslaved humanity** ([Dustas Worship](<https://docs.google.com/document/d/1_XeSDQe1rhft01R6hadhy7zQaPLAc3mRObqoPt-3cQY>)).
 - **Grekja is home to hromadas** ([Region 4 - Görtatork](<https://docs.google.com/document/d/abc123/>))
-- **Iotipylom 7 is a world in the Frontier plane of Eberras** (Imperial Veritablia)
+- **Iotipylom 7 is a world in the Frontier plane of Eberras** (Channel: Imperial Veritablia)
+    - This example shows how to cite a document without a URL, using the document title only.
 
 Important rules:
 - Always cite when providing information from documents
