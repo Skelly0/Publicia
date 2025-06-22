@@ -131,7 +131,7 @@ def register_commands(bot):
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1-0528"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku:beta"),
-        app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-4-sonnet:beta"),
+        app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4:beta"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
         #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet:beta"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
@@ -151,7 +151,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
 
-            if model == "anthropic/claude-4-sonnet:beta" and str(interaction.user.id) != "203229662967627777":
+            if model == "anthropic/claude-sonnet-4:beta" and str(interaction.user.id) != "203229662967627777":
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
             
@@ -180,7 +180,7 @@ def register_commands(bot):
                 model_name = "Nous: Hermes 405B Instruct"
             elif "claude-3.5-haiku" in model:
                 model_name = "Claude 3.5 Haiku"
-            elif "claude-4-sonnet" in model:
+            elif "claude-sonnet-4" in model:
                 model_name = "Claude 4 Sonnet"
             elif "claude-3.7-sonnet" in model:
                 model_name = "Claude 3.7 Sonnet"
@@ -222,7 +222,7 @@ def register_commands(bot):
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Uses the 0528 version. Similar to V3 0324 but with reasoning. Great at creative writing, roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity. Often factually inaccurate. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1-0528')}) search results.", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",
-                    f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-4-sonnet')}).",
+                    f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
@@ -275,7 +275,7 @@ def register_commands(bot):
                 model_name = "Nous: Hermes 405B Instruct"
             elif "claude-3.5-haiku" in preferred_model:
                 model_name = "Claude 3.5 Haiku"
-            elif "claude-4-sonnet" in preferred_model:
+            elif "claude-sonnet-4" in preferred_model:
                 model_name = "Claude 4 Sonnet"
             elif "claude-3.7-sonnet" in preferred_model:
                 model_name = "Claude 3.7 Sonnet"
@@ -315,7 +315,7 @@ def register_commands(bot):
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Uses the 0528 version. Similar to V3 0324 but with reasoning. Great at creative writing, roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity. Often factually inaccurate. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1-0528')}) search results.", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",
-                    f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-4-sonnet')}).",
+                    f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
