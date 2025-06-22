@@ -27,6 +27,33 @@ def save_tracked_channels(data):
     with open(TRACKED_CHANNELS_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
+# Helper to fetch a channel's entire history and return formatted text
+async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int]:
+    """Return formatted archive text and message count for the channel."""
+    all_messages = [m async for m in channel.history(limit=None)]
+
+    if not all_messages:
+        content = (
+            f"# Archive of channel: {channel.name}\n"
+            f"# Last updated: {datetime.now(timezone.utc).isoformat()}\n\n"
+            "(Channel is empty)"
+        )
+        return content, 0
+
+    # sort oldest -> newest
+    all_messages.sort(key=lambda m: m.created_at)
+
+    archive = (
+        f"# Archive of channel: {channel.name}\n"
+        f"# Last updated: {datetime.now(timezone.utc).isoformat()}\n"
+    )
+    for msg in all_messages:
+        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+        author = msg.author.display_name
+        archive += f"\n[{timestamp}] {author}:\n    {msg.content}\n"
+
+    return archive, len(all_messages)
+
 # Background task for updating tracked channels (moved to module level)
 @tasks.loop(hours=6)
 async def update_tracked_channels(bot_instance):
@@ -45,44 +72,25 @@ async def update_tracked_channels(bot_instance):
                 continue
 
             doc_uuid = data["document_uuid"]
-            
-            # Fetch all messages in the channel
-            logger.info(f"Redownloading entire history for channel {channel.name} ({channel_id})...")
-            all_messages = [message async for message in channel.history(limit=None)]
-            
-            if not all_messages:
-                logger.info(f"No messages found in channel {channel.name} ({channel_id}). Clearing archive.")
-                # Overwrite with empty content to reflect deletion of all messages
-                await bot_instance.document_manager.add_document(
-                    original_name=data.get("name", channel.name),
-                    content=f"# Archive of channel: {channel.name}\n# Last updated: {datetime.now(timezone.utc).isoformat()}\n\n(Channel is empty)",
-                    existing_uuid=doc_uuid,
-                    contextualize=False
-                )
-                continue
 
-            # Sort messages by timestamp (oldest first)
-            all_messages.sort(key=lambda m: m.created_at)
-            
-            # Format all messages
-            full_content = f"# Archive of channel: {channel.name}\n# Last updated: {datetime.now(timezone.utc).isoformat()}\n"
-            for message in all_messages:
-                timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S")
-                author_name = message.author.display_name
-                full_content += f"\n[{timestamp}] {author_name}:\n    {message.content}\n"
+            logger.info(
+                f"Redownloading entire history for channel {channel.name} ({channel_id})..."
+            )
+            archive_content, msg_count = await _build_channel_archive(channel)
 
-            # Overwrite the existing document with the full history
             update_success = await bot_instance.document_manager.add_document(
                 original_name=data.get("name", channel.name),
-                content=full_content,
+                content=archive_content,
                 existing_uuid=doc_uuid,
-                contextualize=False
+                contextualize=False,
             )
 
             if update_success:
                 # No need to update last_message_id anymore, but we save to keep other potential data consistent.
                 save_tracked_channels(tracked_channels)
-                logger.info(f"Successfully updated and overwrote archive for channel {channel.name} ({channel_id}) with {len(all_messages)} messages.")
+                logger.info(
+                    f"Successfully updated and overwrote archive for channel {channel.name} ({channel_id}) with {msg_count} messages."
+                )
             else:
                 logger.error(f"Failed to overwrite document for channel {channel.name} ({channel_id}).")
 
@@ -112,18 +120,15 @@ def register_commands(bot):
         timestamp = datetime.now().strftime("%Y%m%d_%H%M")
         doc_name = f"channel_archive_{channel.name}_{timestamp}"
         
-        # Call the existing archive_channel logic (or a refactored version)
-        # For now, let's simulate the initial archival process
-        await interaction.followup.send(f"Performing initial archive of {channel.mention}...")
-        
-        # This would be a call to a function similar to the body of the original archive_channel command
-        # For simplicity, we'll just create a placeholder document for now.
-        # In a real implementation, you would reuse the message fetching and formatting logic.
-        
-        initial_content = f"# Archive of channel: {channel.name}\n"
-        initial_content += f"# Tracked starting from: {datetime.now(timezone.utc).isoformat()}\n"
-        
-        doc_uuid = await bot.document_manager.add_document(original_name=doc_name, content=initial_content, contextualize=False)
+        await interaction.followup.send(
+            f"Performing initial archive of {channel.mention}..."
+        )
+
+        initial_content, msg_count = await _build_channel_archive(channel)
+
+        doc_uuid = await bot.document_manager.add_document(
+            original_name=doc_name, content=initial_content, contextualize=False
+        )
 
         if not doc_uuid:
             await interaction.followup.send("Failed to create initial archive document.")
@@ -140,7 +145,7 @@ def register_commands(bot):
         
         await interaction.followup.send(
             f"Channel {channel.mention} is now being tracked. "
-            f"Initial archive created with document UUID: `{doc_uuid}`. "
+            f"Initial archive created with document UUID: `{doc_uuid}` containing {msg_count} messages. "
             f"Updates will occur every {update_interval_hours} hours."
         )
 
