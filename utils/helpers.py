@@ -1,10 +1,9 @@
 """
 Utility functions for Publicia bot
 """
+import os
 import re
 import discord
-import string # Added for filename sanitization
-from typing import List
 from discord import app_commands
 from managers.config import Config  # Import the Config class
 
@@ -191,5 +190,4 @@ def split_message(text, max_length=1750):
     return chunks
 
 
-# --- Add import for os used in sanitize_filename ---
-import os
+# --- End of module ---
