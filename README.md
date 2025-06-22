@@ -95,6 +95,7 @@ USE_CONTEXTUALISED_CHUNKS=true # Use contextualized chunks in prompts
 # Feature toggles
 KEYWORD_DATABASE_ENABLED=true # Enable keyword database system
 KEYWORD_CHECK_CHUNK_LIMIT=5 # Number of chunks to check for keywords
+DOCUMENT_LIST_ENABLED=true # Include internal document list in LLM prompts
 
 # Optional: Auto-process Google Docs with lore tagging
 AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing

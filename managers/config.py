@@ -140,6 +140,9 @@ class Config:
         # Keyword database system enable/disable setting
         self.KEYWORD_DATABASE_ENABLED = bool(os.getenv('KEYWORD_DATABASE_ENABLED', 'True').lower() in ('true', '1', 'yes'))
 
+        # Toggle LLM access to the internal document list
+        self.DOCUMENT_LIST_ENABLED = bool(os.getenv('DOCUMENT_LIST_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+
     def get_reranking_settings_for_query(self, query: str):
         """Get adaptive reranking settings based on query complexity."""
         complex_indicators = [

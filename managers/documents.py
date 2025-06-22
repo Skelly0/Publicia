@@ -912,8 +912,12 @@ class DocumentManager:
     def get_document_list_content(self) -> str:
         """Get the content of the internal document list file."""
         try:
+            # Respect config toggle for exposing the document list to the LLM
+            if self.config and hasattr(self.config, 'DOCUMENT_LIST_ENABLED') and not self.config.DOCUMENT_LIST_ENABLED:
+                return ""
+
             # Find the UUID of the internal document list
-            internal_list_uuid = next((uid for uid, meta in self.metadata.items() 
+            internal_list_uuid = next((uid for uid, meta in self.metadata.items()
                                      if meta.get('original_name') == self._internal_list_doc_name), None)
             
             if internal_list_uuid:

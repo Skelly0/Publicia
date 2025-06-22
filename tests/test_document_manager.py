@@ -1,0 +1,80 @@
+import importlib.util
+from pathlib import Path
+import sys
+import types
+
+
+def load_document_module():
+    module_path = Path(__file__).resolve().parents[1] / "managers" / "documents.py"
+    # Stub google.generativeai to avoid heavy import and API calls
+    if 'google.generativeai' not in sys.modules:
+        google_pkg = types.ModuleType('google')
+        genai_mod = types.ModuleType('google.generativeai')
+        def configure(api_key=None):
+            pass
+        genai_mod.configure = configure
+        google_pkg.generativeai = genai_mod
+        sys.modules['google'] = google_pkg
+        sys.modules['google.generativeai'] = genai_mod
+    if 'aiohttp' not in sys.modules:
+        aiohttp_dummy = types.ModuleType('aiohttp')
+        sys.modules['aiohttp'] = aiohttp_dummy
+    if 'rank_bm25' not in sys.modules:
+        bm25_dummy = types.ModuleType('rank_bm25')
+        class DummyBM25:
+            def __init__(self, *args, **kwargs):
+                pass
+        bm25_dummy.BM25Okapi = DummyBM25
+        sys.modules['rank_bm25'] = bm25_dummy
+    if 'utils.logging' not in sys.modules:
+        utils_pkg = types.ModuleType('utils')
+        logging_pkg = types.ModuleType('utils.logging')
+        def sanitize_for_logging(message):
+            return message
+        logging_pkg.sanitize_for_logging = sanitize_for_logging
+        utils_pkg.logging = logging_pkg
+        sys.modules['utils'] = utils_pkg
+        sys.modules['utils.logging'] = logging_pkg
+    if 'dotenv' not in sys.modules:
+        dotenv_dummy = types.ModuleType('dotenv')
+        def load_dotenv():
+            pass
+        dotenv_dummy.load_dotenv = load_dotenv
+        sys.modules['dotenv'] = dotenv_dummy
+    if 'discord' not in sys.modules:
+        dummy_discord = types.ModuleType('discord')
+        dummy_discord.Interaction = object
+        app_cmds = types.ModuleType('discord.app_commands')
+        class DummyCheckFailure(Exception):
+            pass
+        app_cmds.CheckFailure = DummyCheckFailure
+        dummy_discord.app_commands = app_cmds
+        sys.modules['discord'] = dummy_discord
+        sys.modules['discord.app_commands'] = app_cmds
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    spec = importlib.util.spec_from_file_location("documents", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+documents = load_document_module()
+DocumentManager = documents.DocumentManager
+
+
+class DummyConfig:
+    DOCUMENT_LIST_ENABLED = False
+    GOOGLE_API_KEY = 'x'
+    EMBEDDING_MODEL = 'models/text-embedding-004'
+    EMBEDDING_DIMENSIONS = 0
+    def __init__(self):
+        pass
+
+
+def test_document_list_disabled(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    # Ensure no metadata so basic list would be generated if enabled
+    manager.metadata = {}
+    assert manager.get_document_list_content() == ""
