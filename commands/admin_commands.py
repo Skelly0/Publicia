@@ -97,9 +97,9 @@ def register_commands(bot):
                     "google/gemini-2.5-flash-preview",
                 ],
                 "claude": [
-                    "anthropic/claude-3.5-haiku:beta",
+                    "anthropic/claude-3.5-haiku",
                     "anthropic/claude-sonnet-4",
-                    "anthropic/claude-3.7-sonnet:beta",
+                    "anthropic/claude-3.7-sonnet",
                 ],
                 "qwen": [
                     "qwen/qwq-32b",

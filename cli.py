@@ -90,10 +90,10 @@ async def _cli_try_ai_completion(
     vision_capable_models = [
         "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
         "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
-        "anthropic/claude-3.7-sonnet:beta", "anthropic/claude-3.7-sonnet",
+        "anthropic/claude-3.7-sonnet", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-sonnet-4", "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-haiku:beta", "anthropic/claude-3.5-haiku",
-        "anthropic/claude-3-haiku:beta"
+        "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-haiku",
+        "anthropic/claude-3-haiku"
     ]
 
     headers = {
@@ -234,10 +234,10 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
     vision_capable_models = [
         "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
         "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
-        "anthropic/claude-3.7-sonnet:beta", "anthropic/claude-3.7-sonnet",
+        "anthropic/claude-3.7-sonnet", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-sonnet-4", "anthropic/claude-sonnet-4",
-        "anthropic/claude-3.5-haiku:beta", "anthropic/claude-3.5-haiku",
-        "anthropic/claude-3-haiku:beta"
+        "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-haiku",
+        "anthropic/claude-3-haiku"
     ]
 
     logger.info(f"Processing query: '{shorten(question, 100)}'")

@@ -89,13 +89,13 @@ class DiscordBot(commands.Bot):
             "google/gemini-2.5-flash-preview",
             "google/gemini-2.0-flash-001",
             "microsoft/phi-4-multimodal-instruct",
-            "anthropic/claude-3.7-sonnet:beta",
+            "anthropic/claude-3.7-sonnet",
             "anthropic/claude-3.7-sonnet",
             "anthropic/claude-sonnet-4", 
             "anthropic/claude-sonnet-4",
-            "anthropic/claude-3.5-haiku:beta",
             "anthropic/claude-3.5-haiku",
-            "anthropic/claude-3-haiku:beta",
+            "anthropic/claude-3.5-haiku",
+            "anthropic/claude-3-haiku",
             "meta-llama/llama-4-maverick:floor",
             "openai/gpt-4.1-mini",
             "openai/gpt-4.1-nano",
@@ -1035,22 +1035,22 @@ class DiscordBot(commands.Bot):
                     fallbacks = [
                         "anthropic/claude-3.7-sonnet",
                         "anthropic/claude-sonnet-4",
-                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-haiku",
                         "anthropic/claude-3.5-haiku"
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 elif "claude-sonnet-4" in model:
                     fallbacks = [
                         "anthropic/claude-sonnet-4",
-                        "anthropic/claude-3.7-sonnet:beta",
                         "anthropic/claude-3.7-sonnet",
-                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.7-sonnet",
+                        "anthropic/claude-3.5-haiku",
                         "anthropic/claude-3.5-haiku"
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 elif "claude-3.5-haiku" in model:
                     fallbacks = [
-                        "anthropic/claude-3.5-haiku:beta",
+                        "anthropic/claude-3.5-haiku",
                         "anthropic/claude-3.5-haiku"
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
@@ -1089,7 +1089,8 @@ class DiscordBot(commands.Bot):
                 if "minimax-m1" in model:
                     fallbacks = [
                         "minimax/minimax-m1",
-                        "claude-3.5-haiku:beta",
+                        "minimax/minimax-m1:extended",
+                        "anthropic/claude-3.5-haiku",
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
 
@@ -1105,7 +1106,7 @@ class DiscordBot(commands.Bot):
                 "deepseek/deepseek-chat",
                 "google/gemini-2.0-pro-exp-02-05",
                 "nousresearch/hermes-3-llama-3.1-405b",
-                "anthropic/claude-3.5-haiku:beta",
+                "anthropic/claude-3.5-haiku",
                 "anthropic/claude-3.5-haiku"
             ]
             models_to_try.extend([fb for fb in general_fallbacks if fb not in models_to_try])
