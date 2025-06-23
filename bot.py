@@ -1091,6 +1091,7 @@ class DiscordBot(commands.Bot):
                         "minimax/minimax-m1",
                         "minimax/minimax-m1:extended",
                         "anthropic/claude-3.5-haiku",
+                        "qwen/qwq-32b",
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
 
