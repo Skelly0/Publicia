@@ -82,7 +82,7 @@ class DiscordBot(commands.Bot):
         # Schedule the async function directly
         self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6) 
         self.scheduler.start()
-        
+
         # List of models that support vision capabilities
         self.vision_capable_models = [
             "google/gemini-2.5-flash-preview:thinking",
@@ -100,6 +100,10 @@ class DiscordBot(commands.Bot):
             "openai/gpt-4.1-mini",
             "openai/gpt-4.1-nano",
         ]
+
+        # Log every command invocation to the console
+        self.tree.interaction_check(self._log_slash_command)
+        self.before_invoke(self._log_prefix_command)
 
     def sanitize_discord_text(self, text: str) -> str:
         """Sanitize text for Discord message display by escaping special characters."""
@@ -166,6 +170,19 @@ class DiscordBot(commands.Bot):
                 json.dump({'banned_users': list(self.banned_users)}, f)
         except Exception as e:
             logger.error(f"Error saving banned users: {e}")
+
+    async def _log_slash_command(self, interaction: discord.Interaction) -> bool:
+        """Log execution of a slash command."""
+        cmd_name = getattr(interaction.command, 'qualified_name', 'unknown')
+        channel = getattr(interaction.channel, 'name', 'DM')
+        logger.info(f"[Slash Command] {interaction.user} invoked /{cmd_name} in {channel}")
+        return True
+
+    async def _log_prefix_command(self, ctx: commands.Context):
+        """Log execution of a prefix command."""
+        cmd_name = getattr(ctx.command, 'qualified_name', 'unknown')
+        channel = getattr(ctx.channel, 'name', 'DM')
+        logger.info(f"[Prefix Command] {ctx.author} invoked {cmd_name} in {channel}")
             
     async def _generate_image_description(self, image_data: bytes) -> str:
         """Generate a description for an image using a vision-capable model."""
