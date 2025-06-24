@@ -51,28 +51,24 @@ def register_commands(bot):
             channel_name = interaction.channel.name if interaction.guild else "DM" # Correctly indented under outer try
             nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name # Correctly indented under outer try
             
-            # Process image URL if provided # Keep this line for context matching
-            image_attachments = []
+            # Process image URL if provided
+            image_attachments = [] # This will hold tuples of (bytes, base64_string)
             status_message = None
             
             if image_url:
                 try:
-                    # Check if URL appears to be a direct image link
                     if any(image_url.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
                         status_message = await interaction.followup.send("*neural pathways activating... analyzing query and image...*", ephemeral=False)
                         
-                        # Download the image
                         async with aiohttp.ClientSession() as session:
                             async with session.get(image_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                                 if resp.status == 200:
-                                    # Determine content type
                                     content_type = resp.headers.get('Content-Type', 'image/jpeg')
                                     if content_type.startswith('image/'):
                                         image_data = await resp.read()
-                                        # Convert to base64
-                                        base64_data = base64.b64encode(image_data).decode('utf-8')
-                                        image_base64 = f"data:{content_type};base64,{base64_data}"
-                                        image_attachments.append(image_base64)
+                                        base64_encoded = base64.b64encode(image_data).decode('utf-8')
+                                        base64_string = f"data:{content_type};base64,{base64_encoded}"
+                                        image_attachments.append((image_data, base64_string)) # Append tuple
                                         logger.info(f"Processed image from URL: {image_url}")
                                     else:
                                         await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=False)
@@ -298,14 +294,27 @@ def register_commands(bot):
                 "content": f"You are responding to a message in the Discord channel: {channel_name}"
             })
             
+            # --- Vision Fallback Handling ---
+            # This function will generate descriptions if the model is not vision-capable
+            # and modify the messages list accordingly. It returns the final images to be sent to the API.
+            if image_attachments and preferred_model not in bot.vision_capable_models:
+                await status_message.edit(content=f"*Your preferred model model doesn't support images. Using a vision model to generate descriptions first...*")
+
+            messages, api_image_attachments = await bot._handle_image_vision_fallback(
+                preferred_model,
+                image_attachments, # This is the list of (bytes, base64) tuples
+                messages
+            )
+            # --- End Vision Fallback Handling ---
+
             # Add image context if there are images from search or attachments
-            if image_ids or image_attachments:
-                total_images = len(image_ids) + len(image_attachments)
+            if image_ids or api_image_attachments:
+                total_images = len(image_ids) + len(api_image_attachments)
                 img_source = []
                 if image_ids:
                     img_source.append(f"{len(image_ids)} from search results")
-                if image_attachments:
-                    img_source.append(f"{len(image_attachments)} from attachments")
+                if api_image_attachments:
+                    img_source.append(f"{len(api_image_attachments)} from attachments")
                 
                 messages.append({
                     "role": "system",
@@ -415,7 +424,7 @@ def register_commands(bot):
                 preferred_model,
                 messages,
                 image_ids=image_ids,
-                image_attachments=image_attachments,
+                image_attachments=api_image_attachments, # Use the (potentially empty) list from the fallback handler
                 temperature=temperature 
             )
 

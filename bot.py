@@ -878,8 +878,8 @@ class DiscordBot(commands.Bot):
             logger.error(f"Error getting title for doc {doc_id}: {e}")
             return None
             
-    async def _download_image_to_base64(self, attachment):
-        """Download an image attachment and convert it to base64."""
+    async def _download_image_to_base64(self, attachment) -> Optional[Tuple[bytes, str]]:
+        """Download an image attachment and return its raw bytes and base64 representation."""
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(attachment.url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
@@ -892,10 +892,55 @@ class DiscordBot(commands.Bot):
                     
                     # Convert to base64
                     base64_data = base64.b64encode(image_data).decode('utf-8')
-                    return f"data:{mime_type};base64,{base64_data}"
+                    base64_string = f"data:{mime_type};base64,{base64_data}"
+                    
+                    return image_data, base64_string
         except Exception as e:
             logger.error(f"Error downloading image: {e}")
             return None
+
+    async def _handle_image_vision_fallback(self, preferred_model: str, image_attachments: List[Tuple[bytes, str]], messages: List[Dict]) -> Tuple[List[Dict], List[str]]:
+        """
+        Handle cases where a non-vision model is used with images.
+        Generates descriptions for images and injects them into the message history.
+        
+        Args:
+            preferred_model (str): The model the user wants to use.
+            image_attachments (List[Tuple[bytes, str]]): List of tuples containing (raw_bytes, base64_string).
+            messages (List[Dict]): The current list of messages for the AI.
+
+        Returns:
+            Tuple[List[Dict], List[str]]: Updated messages list and a (potentially empty) list of base64 images for the API.
+        """
+        # If there are no images or the model is vision-capable, do nothing.
+        if not image_attachments or preferred_model in self.vision_capable_models:
+            # Return original messages and just the base64 strings for the API call
+            base64_images = [img[1] for img in image_attachments]
+            return messages, base64_images
+
+        logger.info(f"Model '{preferred_model}' is not vision-capable. Generating image descriptions as a fallback.")
+        
+        descriptions = []
+        for i, (image_data, _) in enumerate(image_attachments):
+            logger.info(f"Generating description for image {i+1}/{len(image_attachments)}...")
+            description = await self._generate_image_description(image_data)
+            descriptions.append(f"Image {i+1}: {description}")
+        
+        if descriptions:
+            # Create a new system message with the descriptions
+            description_context = (
+                "The user provided one or more images that your current model cannot see. "
+                "A vision-capable model has generated the following descriptions for you to use as context:\n\n"
+                + "\n\n".join(descriptions)
+            )
+            
+            # Insert this context into the messages list
+            # We can insert it after the main system prompt for better visibility
+            messages.insert(1, {"role": "system", "content": description_context})
+            logger.info("Injected image descriptions into message history.")
+
+        # Return the modified messages and an empty list for images, as they've been processed into text
+        return messages, []
     
     async def _try_ai_completion(self, model: Union[str, List[str]], messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
         """Get AI completion with dynamic fallback options or a specific model list.
@@ -1953,6 +1998,44 @@ class DiscordBot(commands.Bot):
         logger.info(f"Enhanced query with username: '{question}' -> '{enhanced_query}'")
         return enhanced_query
 
+    async def _get_channel_context(self, channel: discord.TextChannel, original_question: str) -> Optional[str]:
+        """Fetches and formats recent channel messages for context."""
+        channel_id = str(channel.id)
+        parsing_enabled, message_count = self.user_preferences_manager.get_channel_parsing_settings(channel_id)
+
+        if not (parsing_enabled and message_count > 0):
+            return None
+
+        logger.info(f"Channel parsing enabled for {channel_id}. Fetching last {message_count} messages.")
+        try:
+            # Fetch recent messages (excluding the current one)
+            channel_messages = await self.fetch_channel_messages(channel, limit=message_count + 1)
+
+            # Filter out the current message if it was included
+            channel_messages = [msg for msg in channel_messages if msg.get('content') != original_question]
+
+            if not channel_messages:
+                logger.info("No recent channel messages found or fetched to add to context.")
+                return None
+
+            # Format the channel messages for the AI
+            formatted_channel_context = "Recent messages from this channel (for general context):\n"
+            for msg in channel_messages:
+                formatted_channel_context += f"- {msg['author']}: {msg['content']}\n"
+
+            # Truncate if excessively long
+            max_channel_context_len = 8000
+            if len(formatted_channel_context) > max_channel_context_len:
+                formatted_channel_context = formatted_channel_context[:max_channel_context_len] + "\n... [Channel Context Truncated]"
+                logger.warning(f"Channel context truncated to {max_channel_context_len} characters.")
+
+            logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
+            return formatted_channel_context.strip()
+
+        except Exception as fetch_err:
+            logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
+            return None
+
     async def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True): # Make async
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
         # Enhance the query with username if it would be helpful
@@ -2286,39 +2369,36 @@ class DiscordBot(commands.Bot):
                 await thinking_msg.edit(content="*neural pathways activating... processing query and analyzing direct images...*")
                 for attachment in message.attachments:
                     if is_image(attachment):
-                        base64_image = await self._download_image_to_base64(attachment)
-                        if base64_image:
-                            direct_image_attachments.append(base64_image)
+                        image_data = await self._download_image_to_base64(attachment)
+                        if image_data:
+                            direct_image_attachments.append(image_data) # Appending tuple (bytes, base64)
                             logger.info(f"Processed direct image attachment: {attachment.filename}")
 
             # Process image attachments from the REPLIED-TO message
             if referenced_message and referenced_message.attachments:
-                # Update thinking message based on whether direct images were also found
-                current_thinking_content = thinking_msg.content # Get current content directly
-
-                if direct_image_attachments:
-                    new_thinking_content = "*neural pathways activating... processing query, direct images, and images from reply...*"
-                else:
-                    new_thinking_content = "*neural pathways activating... processing query and analyzing images from reply...*"
-                # Only edit if the content needs changing
+                current_thinking_content = await thinking_msg.content
+                new_thinking_content = (
+                    "*neural pathways activating... processing query, direct images, and images from reply...*"
+                    if direct_image_attachments
+                    else "*neural pathways activating... processing query and analyzing images from reply...*"
+                )
                 if current_thinking_content != new_thinking_content:
-                    try: # Add try-except around edits in case the message was deleted
+                    try:
                         await thinking_msg.edit(content=new_thinking_content)
                     except discord.NotFound:
                         logger.warning("Thinking message was deleted before edit for referenced images.")
                     except Exception as edit_err:
                         logger.error(f"Error editing thinking message for referenced images: {edit_err}")
 
-
                 for attachment in referenced_message.attachments:
                     if is_image(attachment):
-                        base64_image = await self._download_image_to_base64(attachment)
-                        if base64_image:
-                            referenced_image_attachments.append(base64_image)
+                        image_data = await self._download_image_to_base64(attachment)
+                        if image_data:
+                            referenced_image_attachments.append(image_data) # Appending tuple
                             logger.info(f"Processed referenced image attachment: {attachment.filename}")
 
-            # Combine all image attachments for the API call
-            all_api_image_attachments = direct_image_attachments + referenced_image_attachments
+            # Combine all image attachments
+            all_image_attachments = direct_image_attachments + referenced_image_attachments
             # --- End Image Processing ---
 
             # Get conversation history for context
@@ -2501,40 +2581,10 @@ class DiscordBot(commands.Bot):
             messages.extend(conversation_messages)
 
             # --- Add Channel Parsing Context (if enabled) ---
-            if message.guild: # Only apply in guild channels
-                channel_id = str(message.channel.id)
-                parsing_enabled, message_count = self.user_preferences_manager.get_channel_parsing_settings(channel_id)
-
-                if parsing_enabled and message_count > 0:
-                    logger.info(f"Channel parsing enabled for {channel_id}. Fetching last {message_count} messages.")
-                    try:
-                        # Fetch recent messages (excluding the current one)
-                        channel_messages = await self.fetch_channel_messages(message.channel, limit=message_count + 1) # Fetch one extra to potentially exclude current
-
-                        # Filter out the current message if it was included
-                        channel_messages = [msg for msg in channel_messages if msg.get('content') != original_question] # Simple content check
-
-                        if channel_messages:
-                            # Format the channel messages for the AI
-                            formatted_channel_context = "Recent messages from this channel (for general context):\n"
-                            for msg in channel_messages:
-                                formatted_channel_context += f"- {msg['author']}: {msg['content']}\n"
-
-                            # Truncate if excessively long
-                            max_channel_context_len = 8000 # Adjust as needed
-                            if len(formatted_channel_context) > max_channel_context_len:
-                                formatted_channel_context = formatted_channel_context[:max_channel_context_len] + "\n... [Channel Context Truncated]"
-                                logger.warning(f"Channel context truncated to {max_channel_context_len} characters.")
-
-                            messages.append({
-                                "role": "system",
-                                "content": formatted_channel_context.strip()
-                            })
-                            logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
-                        else:
-                            logger.info("No recent channel messages found or fetched to add to context.")
-                    except Exception as fetch_err:
-                        logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
+            if message.guild:
+                channel_context = await self._get_channel_context(message.channel, original_question)
+                if channel_context:
+                    messages.append({"role": "system", "content": channel_context})
             # --- End Channel Parsing Context ---
 
             if referenced_message:
@@ -2646,7 +2696,7 @@ class DiscordBot(commands.Bot):
             # --- End Keyword Context ---
 
             # Add image context summary system message
-            total_api_images = len(image_ids) + len(all_api_image_attachments)
+            total_api_images = len(image_ids) + len(all_image_attachments)
             if total_api_images > 0:
                 img_source_parts = []
                 if image_ids: img_source_parts.append(f"{len(image_ids)} from search")
@@ -2663,6 +2713,17 @@ class DiscordBot(commands.Bot):
                 "content": f"{nickname}: {original_question}" # Use original question here for clarity
             })
             # --- End Preparing Messages ---
+
+            # --- Vision Fallback Handling ---
+            # This function is called *after* the main messages list is constructed.
+            # It will generate descriptions if the model is not vision-capable
+            # and modify the messages list accordingly. It returns the final images to be sent to the API.
+            messages, all_api_image_attachments = await self._handle_image_vision_fallback(
+                preferred_model,
+                all_image_attachments,
+                messages
+            )
+            # --- End Vision Fallback Handling ---
 
             # Get friendly model name for status updates
             model_name = "Unknown Model"
@@ -2723,7 +2784,7 @@ class DiscordBot(commands.Bot):
                 preferred_model,
                 messages,
                 image_ids=image_ids, # From search
-                image_attachments=all_api_image_attachments, # Combined direct + referenced
+                image_attachments=all_api_image_attachments, # Now potentially empty if descriptions were generated
                 temperature=temperature
             )
 
