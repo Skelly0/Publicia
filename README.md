@@ -202,6 +202,7 @@ Comprehensive tools to help troubleshoot issues:
 | `/list_docs` | List all documents (shows names and UUIDs) |
 | `/remove_doc` | Remove a document by its UUID (`doc_uuid`) |
 | `/search_docs` | Search documents directly |
+| `/search_keyword` | Find occurrences of a specific keyword |
 | `/add_googledoc` | Track a Google Doc |
 | `/list_googledocs` | List all tracked Google Docs |
 | `/remove_googledoc` | Remove a tracked Google Doc |

@@ -1013,6 +1013,37 @@ class DocumentManager:
         results.sort(key=lambda x: x[3], reverse=True)
         return results[:top_k]
 
+    def search_keyword(self, keyword: str, top_k: int = 5) -> List[Tuple[str, str, str, int, int]]:
+        """Search documents for a keyword using simple case-insensitive matching.
+
+        Args:
+            keyword (str): The keyword to search for.
+            top_k (int): Maximum number of matches to return.
+
+        Returns:
+            List[Tuple[str, str, str, int, int]]: A list of matches containing
+            `(doc_uuid, original_name, chunk_text, chunk_index, total_chunks)`.
+        """
+
+        if not keyword:
+            return []
+
+        keyword_lower = keyword.lower()
+        results: List[Tuple[str, str, str, int, int]] = []
+
+        for doc_uuid, chunks in self.chunks.items():
+            original_name = self.metadata.get(doc_uuid, {}).get('original_name', doc_uuid)
+            if original_name == self._internal_list_doc_name:
+                continue
+            total_chunks = len(chunks)
+            for idx, chunk in enumerate(chunks):
+                if keyword_lower in chunk.lower():
+                    results.append((doc_uuid, original_name, chunk, idx + 1, total_chunks))
+                    if len(results) >= top_k:
+                        return results
+
+        return results
+
     def _save_to_disk(self):
         try:
             for data_dict, filename in [

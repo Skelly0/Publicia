@@ -16,6 +16,13 @@ def load_document_module():
         google_pkg.generativeai = genai_mod
         sys.modules['google'] = google_pkg
         sys.modules['google.generativeai'] = genai_mod
+    if 'numpy' not in sys.modules:
+        numpy_dummy = types.ModuleType('numpy')
+        numpy_dummy.ndarray = object
+        def array(val):
+            return val
+        numpy_dummy.array = array
+        sys.modules['numpy'] = numpy_dummy
     if 'aiohttp' not in sys.modules:
         aiohttp_dummy = types.ModuleType('aiohttp')
         sys.modules['aiohttp'] = aiohttp_dummy
@@ -78,3 +85,17 @@ def test_document_list_disabled(tmp_path):
     # Ensure no metadata so basic list would be generated if enabled
     manager.metadata = {}
     assert manager.get_document_list_content() == ""
+
+
+def test_search_keyword(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.chunks = {"abc": ["An airship sails the skies", "Nothing here"]}
+    manager.metadata = {"abc": {"original_name": "TestDoc"}}
+
+    results = manager.search_keyword("airship")
+    assert len(results) == 1
+    doc_uuid, name, chunk, index, total = results[0]
+    assert doc_uuid == "abc"
+    assert name == "TestDoc"
+    assert index == 1 and total == 2
+    assert "airship" in chunk.lower()
