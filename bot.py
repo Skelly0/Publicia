@@ -2376,7 +2376,7 @@ class DiscordBot(commands.Bot):
 
             # Process image attachments from the REPLIED-TO message
             if referenced_message and referenced_message.attachments:
-                current_thinking_content = await thinking_msg.content
+                current_thinking_content = thinking_msg.content
                 new_thinking_content = (
                     "*neural pathways activating... processing query, direct images, and images from reply...*"
                     if direct_image_attachments
