@@ -104,75 +104,105 @@ async def _cli_try_ai_completion(
     }
 
     for current_model in models_to_try:
-        logger.info(f"Trying model: {current_model}")
+        provider_base = config.get_provider_config(current_model)
+        provider_order = []
+        if isinstance(provider_base, dict) and provider_base.get("order"):
+            provider_order = provider_base.get("order")
+        if not provider_order:
+            provider_order = [None]
 
-        processed_messages = messages.copy()
-        need_vision = image_attachments and len(image_attachments) > 0
-        is_vision_model = current_model in vision_capable_models
-
-        if need_vision:
-            if not is_vision_model:
-                logger.warning(f"Model {current_model} does not support vision, but images were provided. Ignoring images.")
+        for provider_choice in provider_order:
+            if provider_choice:
+                logger.info(
+                    f"Trying model: {current_model} with provider {provider_choice}"
+                )
             else:
-                # Add images to the last user message
-                for i in range(len(processed_messages) - 1, -1, -1):
-                            if processed_messages[i]["role"] == "user":
-                                user_msg = processed_messages[i]
-                                text_content = user_msg["content"]
-                                content_array = [{"type": "text", "text": text_content}]
-                                for img_data in image_attachments:
-                                    if img_data:
-                                        content_array.append({
-                                            "type": "image_url",
-                                            "image_url": {"url": img_data}
-                                        })
-                                processed_messages[i]["content"] = content_array
-                                logger.info(f"Added {len(content_array) - 1} images to message for vision model {current_model}")
-                                break
+                logger.info(f"Trying model: {current_model}")
 
-        payload = {
-            "model": current_model, # Use current_model in loop
-            "messages": processed_messages,
-            "temperature": temperature,
-            "max_tokens": 8000 # Keep max tokens high
-        }
+            processed_messages = messages.copy()
+            need_vision = image_attachments and len(image_attachments) > 0
+            is_vision_model = current_model in vision_capable_models
 
-        # Add provider config if available
-        provider_config = config.get_provider_config(current_model)
-        if provider_config:
-            payload["provider"] = provider_config
-            logger.info(f"Using custom provider configuration for {current_model}: {provider_config}")
+            if need_vision:
+                if not is_vision_model:
+                    logger.warning(
+                        f"Model {current_model} does not support vision, but images were provided. Ignoring images."
+                    )
+                else:
+                    # Add images to the last user message
+                    for i in range(len(processed_messages) - 1, -1, -1):
+                                if processed_messages[i]["role"] == "user":
+                                    user_msg = processed_messages[i]
+                                    text_content = user_msg["content"]
+                                    content_array = [{"type": "text", "text": text_content}]
+                                    for img_data in image_attachments:
+                                        if img_data:
+                                            content_array.append({
+                                                "type": "image_url",
+                                                "image_url": {"url": img_data}
+                                            })
+                                    processed_messages[i]["content"] = content_array
+                                    logger.info(
+                                        f"Added {len(content_array) - 1} images to message for vision model {current_model}"
+                                    )
+                                    break
 
-        # Log sanitized messages
-        sanitized_messages = []
-        for msg in processed_messages:
-            content_repr = ""
-            if isinstance(msg["content"], list):
-                image_count = sum(1 for item in msg["content"] if item.get("type") == "image_url")
-                text_parts = [item["text"] for item in msg["content"] if item.get("type") == "text"]
-                text_content = " ".join(text_parts)
-                content_repr = f"{shorten(text_content, width=100, placeholder='...')} [+ {image_count} images]"
-            else:
-                content_repr = shorten(msg["content"], width=100, placeholder='...')
-            sanitized_messages.append({"role": msg["role"], "content": content_repr})
-        logger.debug(f"Request payload messages for {current_model}: {json.dumps(sanitized_messages, indent=2)}")
+            payload = {
+                "model": current_model,  # Use current_model in loop
+                "messages": processed_messages,
+                "temperature": temperature,
+                "max_tokens": 8000,  # Keep max tokens high
+            }
 
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=payload,
-                    timeout=timeout_duration
-                ) as response:
-                    if response.status == 429: # Specifically handle rate limit
-                        logger.warning(f"Rate limit hit for model {current_model}. Trying next model.")
-                        continue # Move to the next model in the list
+            provider_config = provider_base
+            if provider_choice:
+                provider_config = provider_config.copy() if provider_config else {}
+                provider_config["order"] = [provider_choice]
 
-                    if response.status != 200:
-                        error_text = await response.text()
-                        logger.error(f"API error (Status {response.status}) for model {current_model}: {error_text}")
-                        continue # Try next model on other errors too
+            if provider_config:
+                payload["provider"] = provider_config
+                logger.info(
+                    f"Using custom provider configuration for {current_model}: {provider_config}"
+                )
+
+            # Log sanitized messages
+            sanitized_messages = []
+            for msg in processed_messages:
+                content_repr = ""
+                if isinstance(msg["content"], list):
+                    image_count = sum(
+                        1 for item in msg["content"] if item.get("type") == "image_url"
+                    )
+                    text_parts = [item["text"] for item in msg["content"] if item.get("type") == "text"]
+                    text_content = " ".join(text_parts)
+                    content_repr = f"{shorten(text_content, width=100, placeholder='...')} [+ {image_count} images]"
+                else:
+                    content_repr = shorten(msg["content"], width=100, placeholder="...")
+                sanitized_messages.append({"role": msg["role"], "content": content_repr})
+            logger.debug(
+                f"Request payload messages for {current_model}: {json.dumps(sanitized_messages, indent=2)}"
+            )
+
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(
+                        "https://openrouter.ai/api/v1/chat/completions",
+                        headers=headers,
+                        json=payload,
+                        timeout=timeout_duration
+                    ) as response:
+                        if response.status == 429:  # Specifically handle rate limit
+                            logger.warning(
+                                f"Rate limit hit for model {current_model}. Trying next provider."
+                            )
+                            continue  # Move to the next provider in the list
+
+                        if response.status != 200:
+                            error_text = await response.text()
+                            logger.error(
+                                f"API error (Status {response.status}) for model {current_model}: {error_text}"
+                            )
+                            continue  # Try next provider on other errors too
 
                     completion = await response.json()
 
@@ -183,22 +213,35 @@ async def _cli_try_ai_completion(
                             # Return completion AND the model that succeeded
                             return completion, current_model
                         else:
-                            logger.error(f"LLM response structure invalid (missing message/content) from {current_model}: {completion}")
-                            # Don't immediately fail, try next model
+                            logger.error(
+                                f"LLM response structure invalid (missing message/content) from {current_model}: {completion}"
+                            )
+                            # Don't immediately fail, try next provider
                     else:
-                        logger.error(f"LLM response structure invalid (missing choices) from {current_model}: {completion}")
-                        # Don't immediately fail, try next model
+                        logger.error(
+                            f"LLM response structure invalid (missing choices) from {current_model}: {completion}"
+                        )
+                        # Don't immediately fail, try next provider
 
         except asyncio.TimeoutError:
-            logger.error(f"API call timed out after {timeout_duration}s for model {current_model}. Trying next model.")
+            logger.error(
+                f"API call timed out after {timeout_duration}s for model {current_model}. Trying next provider."
+            )
         except aiohttp.ClientError as e:
-             logger.error(f"Network error during API call for model {current_model}: {e}. Trying next model.")
+            logger.error(
+                f"Network error during API call for model {current_model}: {e}. Trying next provider."
+            )
         except Exception as e:
-            logger.error(f"Unexpected error during API call for model {current_model}: {e}. Trying next model.", exc_info=True)
+            logger.error(
+                f"Unexpected error during API call for model {current_model}: {e}. Trying next provider.",
+                exc_info=True,
+            )
 
-        # If we reach here, the current model failed, loop continues to the next
+    # If we reach here, the current provider failed, try the next one
 
-    logger.error(f"All models failed to generate a valid completion. Tried: {', '.join(models_to_try)}")
+    logger.error(
+        f"All models/providers failed to generate a valid completion. Tried: {', '.join(models_to_try)}"
+    )
     return None, None # Return None for both if all fail
 
 # --- Core CLI Logic ---
