@@ -103,6 +103,9 @@ class Config:
             "qwen/qwq-32b:floor": {
                 "order": ["Groq", "DeepInfra", "Hyperbolic"]
             },
+            "minimax/minimax-m1": {
+                "order": ["minimax", "novita"]
+            },
             # Add any other model variants that need custom provider ordering
         }
 
