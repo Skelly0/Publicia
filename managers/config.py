@@ -146,6 +146,11 @@ class Config:
         # Toggle LLM access to the internal document list
         self.DOCUMENT_LIST_ENABLED = bool(os.getenv('DOCUMENT_LIST_ENABLED', 'True').lower() in ('true', '1', 'yes'))
 
+        # Contextualization settings
+        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
+        self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
+        self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
+
     def get_reranking_settings_for_query(self, query: str):
         """Get adaptive reranking settings based on query complexity."""
         complex_indicators = [
@@ -173,20 +178,6 @@ class Config:
                 'candidates': self.RERANKING_CANDIDATES
             }
         
-        # Contextualization settings
-        self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
-        self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
-        self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
-        
-        # Validate temperature settings
-        if not (0 <= self.TEMPERATURE_MIN <= self.TEMPERATURE_BASE <= self.TEMPERATURE_MAX <= 1):
-            logger.warning(f"Invalid temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")
-            logger.warning("Temperatures should satisfy: 0 ≤ MIN ≤ BASE ≤ MAX ≤ 1")
-            # Fall back to defaults if settings are invalid
-            self.TEMPERATURE_BASE = 0.1 
-            self.TEMPERATURE_MIN = 0.0
-            self.TEMPERATURE_MAX = 0.4
-            logger.warning(f"Using fallback temperature settings: MIN({self.TEMPERATURE_MIN}), BASE({self.TEMPERATURE_BASE}), MAX({self.TEMPERATURE_MAX})")
    
     def get_provider_config(self, model: str):
         """Get provider config for a specific model."""
