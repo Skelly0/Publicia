@@ -1193,25 +1193,25 @@ class DiscordBot(commands.Bot):
                                 image_count = len(content_array) - 1  # Subtract 1 for the text content
                                 logger.info(f"Added {image_count} images to message for vision model")
                                 break
-    
-                        provider_config = provider_base
-                        if provider_choice:
-                            provider_config = provider_config.copy() if provider_config else {}
-                            provider_config["order"] = [provider_choice]
-    
-                        payload = {
-                            "model": current_model,
-                            "messages": processed_messages,
-                            "temperature": temperature,
-                            "max_tokens": 20000,
-                            **kwargs,
-                        }
-    
-                        if provider_config:
-                            payload["provider"] = provider_config
-                            logger.info(
-                                f"Using custom provider configuration for {current_model}: {provider_config}"
-                            )
+
+                    provider_config = provider_base
+                    if provider_choice:
+                        provider_config = provider_config.copy() if provider_config else {}
+                        provider_config["order"] = [provider_choice]
+
+                    payload = {
+                        "model": current_model,
+                        "messages": processed_messages,
+                        "temperature": temperature,
+                        "max_tokens": 20000,
+                        **kwargs,
+                    }
+
+                    if provider_config:
+                        payload["provider"] = provider_config
+                        logger.info(
+                            f"Using custom provider configuration for {current_model}: {provider_config}"
+                        )
     
                     if current_model.startswith("deepseek/"):
                         payload["max_price"] = {
