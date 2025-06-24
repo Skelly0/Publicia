@@ -242,7 +242,6 @@ Comprehensive tools to help troubleshoot issues:
 | `/reload_docs` | Reload all documents from disk |
 | `/regenerate_embeddings` | Regenerate all document embeddings |
 | `/refresh_docs` | Manually refresh all tracked Google Docs |
-| `/parse_channel` | Toggle parsing of channel messages for context (Admin can toggle for others) |
 | `/compare_models` | Compare responses from multiple AI models |
 
 ## Documentation

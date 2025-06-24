@@ -463,7 +463,7 @@ The bot will display a startup banner and initialize all components.
 
 - `/list_commands`: Show all available commands, categorized by function and indicating admin-only status.
 - `/help`: Show a succinct overview of capabilities and direct to `/list_commands` for details
-- `/parse_channel`: Toggle parsing of recent channel messages to be included as general context in AI prompts **(Admin Only)**
+- `/parse_channel`: Toggle parsing of recent channel messages to be included as general context in AI prompts
   - **Parameters**: `enabled` (true/false), `message_count` (number of messages, 1-200)
 - `/ban_user`: Ban a user from using the bot **(Admin Only)**
   - **Parameters**: `user` (Discord user)
