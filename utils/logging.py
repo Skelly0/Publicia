@@ -54,20 +54,28 @@ def configure_logging():
         
     # Create formatters
     log_format = '%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    detailed_format = '%(asctime)s - %(levelname)s - %(name)s - %(funcName)s:%(lineno)d - %(message)s'
     file_formatter = logging.Formatter(log_format)
+    detailed_formatter = logging.Formatter(detailed_format)
     console_formatter = ColoredFormatter(log_format)
     
     # Create handlers
     file_handler = logging.FileHandler('bot_detailed.log', encoding='utf-8', errors='replace')
     file_handler.setFormatter(file_formatter)
-    
+    file_handler.setLevel(logging.INFO)
+
+    hf_file_handler = logging.FileHandler('bot_high_fidelity.log', encoding='utf-8', errors='replace')
+    hf_file_handler.setFormatter(detailed_formatter)
+    hf_file_handler.setLevel(logging.DEBUG)
+
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(console_formatter)
+    console_handler.setLevel(logging.INFO)
     
     # Configure root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
-    root_logger.handlers = [file_handler, console_handler]
+    root_logger.setLevel(logging.DEBUG)
+    root_logger.handlers = [file_handler, hf_file_handler, console_handler]
     
     return logging.getLogger(__name__)
 

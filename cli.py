@@ -284,6 +284,7 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
     ]
 
     logger.info(f"Processing query: '{shorten(question, 100)}'")
+    logger.debug(f"Full query: {question}")
     logger.info(f"Using model: {preferred_model}")
 
     image_attachments = []
@@ -396,6 +397,7 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
         logger.info(f"Response generated using model: {actual_model_used}")
         # The validation is now done inside _cli_try_ai_completion
         response = completion_result['choices'][0]['message']['content']
+        logger.debug(f"Full response: {response}")
         # Print the response
         print("\n--- Publicia Response ---")
         print(response)
