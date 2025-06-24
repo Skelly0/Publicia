@@ -277,9 +277,35 @@ def register_commands(bot):
             # Send each batch as a separate message
             for batch in batches:
                 await interaction.followup.send(batch)
-                
+
         except Exception as e:
             await interaction.followup.send(f"Error searching documents: {str(e)}")
+
+    @bot.tree.command(name="search_keyword", description="Search documents for a specific keyword")
+    @app_commands.describe(keyword="Keyword to search for")
+    async def search_keyword(interaction: discord.Interaction, keyword: str):
+        """Return chunks containing the given keyword."""
+        await interaction.response.defer()
+        try:
+            if not keyword:
+                await interaction.followup.send("*neural error detected!* Please provide a keyword to search for.")
+                return
+
+            results = bot.document_manager.search_keyword(keyword, top_k=5)
+            if not results:
+                await interaction.followup.send("No occurrences found for that keyword.")
+                return
+
+            message = "Keyword results:\n"
+            for doc_uuid, original_name, chunk, chunk_index, total_chunks in results:
+                snippet = bot.sanitize_discord_text(chunk[:300])
+                message += f"\n**From {original_name}** (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}):\n" \
+                           f"```{snippet}...```\n"
+
+            await interaction.followup.send(message)
+
+        except Exception as e:
+            await interaction.followup.send(f"Error searching for keyword: {str(e)}")
 
     @bot.tree.command(name="add_googledoc", description="Add a Google Doc to the tracked list (admin only)")
     @app_commands.describe(
