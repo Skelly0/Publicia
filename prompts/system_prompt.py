@@ -66,6 +66,7 @@ Important rules:
 - Ensure that the citation is properly enclosed in parentheses, with the URL inside angle brackets, like so: ([Document TItle](<url if applicable>))
 - Here is an example URL: https://docs.google.com/document/d/a1b2c3/
   - The end section of letters and numbers should be replaced by you with the right ones for the documents you are given and are citing
+- DO NOT GIVE URLS TO DOCUMENTS THAT DO NOT HAVE URLS. ANY DOCUMENT WITH THE NAME CHANNEL IN IT DOES NOT HAVE A URL, AND SO YOU SHOULD NOT CITE IT WITH A URL.
 </citation_rules>
 
 <core_rules>
