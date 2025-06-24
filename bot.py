@@ -543,9 +543,10 @@ class DiscordBot(commands.Bot):
                         # Pass the persistent_original_name (or the constructed name_for_doc_mgr)
                         # refresh_single_google_doc will handle existing_uuid internally based on this.
                         success_refresh, _ = await self.refresh_single_google_doc(
-                            google_doc_id, 
+                            google_doc_id,
                             custom_name=name_for_doc_mgr, # This is the crucial name to preserve/use
-                            force_process=force_process
+                            force_process=force_process,
+                            delay_internal_list_update=True
                         )
 
                         if success_refresh:
@@ -589,6 +590,7 @@ class DiscordBot(commands.Bot):
 
             # Save to disk once at the end if any docs were updated
             if updated_docs:
+                await self.document_manager._update_document_list_file()
                 self.document_manager._save_to_disk()
         except Exception as e:
             logger.error(f"Error refreshing Google Docs: {e}")
@@ -633,7 +635,7 @@ class DiscordBot(commands.Bot):
             # If there's any error during the check, assume it has changed to be safe
             return True
             
-    async def refresh_single_google_doc(self, doc_id: str, custom_name: Optional[str] = None, force_process: bool = False, interaction_for_feedback: Optional[discord.Interaction] = None) -> Tuple[bool, Optional[str]]:
+    async def refresh_single_google_doc(self, doc_id: str, custom_name: Optional[str] = None, force_process: bool = False, interaction_for_feedback: Optional[discord.Interaction] = None, delay_internal_list_update: bool = False) -> Tuple[bool, Optional[str]]:
         """
         Refresh a single Google Doc: fetch, process, add to DocumentManager, and track.
 
@@ -642,6 +644,8 @@ class DiscordBot(commands.Bot):
             custom_name (str, optional): Custom name for the document.
             force_process (bool): If True, process even if no changes detected.
             interaction_for_feedback (Optional[discord.Interaction]): For sending followup messages.
+            delay_internal_list_update (bool): If True, skip updating the internal
+                document list until batching is complete.
 
         Returns:
             Tuple[bool, Optional[str]]: (success_status, internal_doc_uuid or None)
@@ -755,9 +759,11 @@ class DiscordBot(commands.Bot):
         
         # Add/Update document in DocumentManager using final_original_name
         internal_doc_uuid = await self.document_manager.add_document(
-            original_name=final_original_name, 
+            original_name=final_original_name,
             content=final_content,
-            existing_uuid=existing_internal_uuid 
+            existing_uuid=existing_internal_uuid,
+            save_to_disk=not delay_internal_list_update,
+            _internal_call=delay_internal_list_update
         )
 
         if not internal_doc_uuid:
