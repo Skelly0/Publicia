@@ -69,7 +69,7 @@ def register_commands(bot):
                                         base64_encoded = base64.b64encode(image_data).decode('utf-8')
                                         base64_string = f"data:{content_type};base64,{base64_encoded}"
                                         image_attachments.append((image_data, base64_string)) # Append tuple
-                                        logger.info(f"Processed image from URL: {image_url}")
+                                        logger.debug(f"Processed image from URL: {image_url}")
                                     else:
                                         await interaction.followup.send("*neural error detected!* The URL does not point to a valid image.", ephemeral=False)
                                         return
@@ -115,7 +115,7 @@ def register_commands(bot):
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
-                    logger.info(f"Found relevant image: {image_id}")
+                    logger.debug(f"Found relevant image: {image_id}")
             
             # Check if the question contains any Google Doc links
             doc_ids = await bot._extract_google_doc_ids(question)
@@ -180,7 +180,7 @@ def register_commands(bot):
             pronouns = bot.user_preferences_manager.get_pronouns(str(interaction.user.id))
             pronoun_context_message = None
             if pronouns:
-                logger.info(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
+                logger.debug(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
                 pronoun_context_message = {
                     "role": "system",
                     "content": f"""User Information: The users nickname is: {nickname}. 
@@ -199,7 +199,7 @@ def register_commands(bot):
                     """
                     }
             else:
-                 logger.info(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
+                 logger.debug(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
 
             # Get document list content
             document_list_content = bot.document_manager.get_document_list_content()
@@ -210,7 +210,7 @@ def register_commands(bot):
                 selected_system_prompt = get_informational_system_prompt_with_documents(document_list_content)
             else:
                 selected_system_prompt = get_system_prompt_with_documents(document_list_content)
-            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {interaction.user.id} in /query command")
+            logger.debug(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {interaction.user.id} in /query command")
 
             # Prepare messages for model using the selected prompt
             messages = [
@@ -245,20 +245,20 @@ def register_commands(bot):
             if search_results:
                 # Limit the number of chunks to check based on config
                 limit = bot.config.KEYWORD_CHECK_CHUNK_LIMIT
-                logger.info(f"Scanning up to {limit} search result chunks for keywords in /query...")
+                logger.debug(f"Scanning up to {limit} search result chunks for keywords in /query...")
                 # Unpack 7 items, ignoring those not used in this loop
                 for i, (_, _, chunk, _, _, _, _) in enumerate(search_results):
                     if i >= limit:
-                        logger.info(f"Reached keyword check limit ({limit}), stopping scan.")
+                        logger.debug(f"Reached keyword check limit ({limit}), stopping scan.")
                         break # Stop checking after reaching the limit
                     # Use bot.keyword_manager here
                     keywords_in_chunk = bot.keyword_manager.find_keywords_in_text(chunk)
                     if keywords_in_chunk:
                         found_keywords_in_chunks.update(keywords_in_chunk)
                 if found_keywords_in_chunks:
-                    logger.info(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
+                    logger.debug(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
                 else:
-                    logger.info("No keywords found in search chunks.")
+                    logger.debug("No keywords found in search chunks.")
 
             if found_keywords_in_chunks:
                 keyword_context_parts = []
@@ -284,7 +284,7 @@ def register_commands(bot):
                         "role": "system",
                         "content": keyword_context_str
                     })
-                    logger.info(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords) to /query.")
+                    logger.debug(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords) to /query.")
             # --- End Keyword Context ---
 
             # Add the query itself
@@ -412,7 +412,7 @@ def register_commands(bot):
                         "content": channel_context
                     })
                     
-                    logger.info(f"Added {len(channel_messages)} channel messages to context")
+                    logger.debug(f"Added {len(channel_messages)} channel messages to context")
                     await status_message.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
                     
             temperature = bot.calculate_dynamic_temperature(
@@ -470,9 +470,9 @@ def register_commands(bot):
         # --- Check if user is admin (bypass limit if so) using helper ---
         is_admin = await check_permissions(interaction)
         if is_admin:
-            logger.info(f"User {user_name} (ID: {user_id_str}) has admin privileges. Bypassing usage limit.")
+            logger.debug(f"User {user_name} (ID: {user_id_str}) has admin privileges. Bypassing usage limit.")
         else:
-             logger.info(f"User {user_name} (ID: {user_id_str}) does not have admin privileges. Applying usage limit.")
+             logger.debug(f"User {user_name} (ID: {user_id_str}) does not have admin privileges. Applying usage limit.")
 
 
         # --- Daily Usage Limit Check (Skip for Admins) ---
@@ -549,7 +549,7 @@ def register_commands(bot):
             TOKEN_LIMIT = 800000
             truncated = False
 
-            logger.info(f"Estimated total characters: {total_chars}, Estimated tokens: {estimated_tokens}")
+            logger.debug(f"Estimated total characters: {total_chars}, Estimated tokens: {estimated_tokens}")
 
             # --- Truncate if Necessary ---
             if estimated_tokens > TOKEN_LIMIT:
@@ -602,7 +602,7 @@ def register_commands(bot):
             temperature = bot.calculate_dynamic_temperature(question) # Use dynamic temp
 
             # Log the models being attempted
-            logger.info(f"Attempting full context query with models: {target_models}")
+            logger.debug(f"Attempting full context query with models: {target_models}")
 
             # Call _try_ai_completion - Assuming it can handle a list of models to try
             # If not, bot.py needs adjustment. For now, passing the list.
@@ -623,7 +623,7 @@ def register_commands(bot):
 
                     # Record usage *after* successful generation
                     bot.user_preferences_manager.record_full_context_usage(user_id_str)
-                    logger.info(f"Recorded full context usage for user {user_id_str}")
+                    logger.debug(f"Recorded full context usage for user {user_id_str}")
 
                     await bot.send_split_message(
                         interaction.channel,

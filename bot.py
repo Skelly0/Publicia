@@ -1497,6 +1497,7 @@ class DiscordBot(commands.Bot):
                             # Normal case - response is long enough
                             logger.info(f"Successful completion from {current_model}")
                             logger.info(f"Response: {shorten(response_content, width=200, placeholder='...')}")
+                            logger.debug(f"Full response: {response_content}")
                             
                             # For analytics, log which model was actually used
                             if requested_model_or_list != current_model and isinstance(requested_model_or_list, str):
@@ -2299,12 +2300,12 @@ class DiscordBot(commands.Bot):
             if message.reference and message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
                 # Ensure the resolved reference is actually a message object
                 referenced_message = message.reference.resolved
-                logger.info(f"Message is a reply to a message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
+                logger.debug(f"Message is a reply to a message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
             elif message.reference and message.reference.message_id:
                 # If resolved is not a message object (might happen if message is old/deleted), try fetching
                 try:
                     referenced_message = await message.channel.fetch_message(message.reference.message_id)
-                    logger.info(f"Fetched replied-to message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
+                    logger.debug(f"Fetched replied-to message from {referenced_message.author.name}: {shorten(referenced_message.content, width=100, placeholder='...')}")
                 except discord.NotFound:
                     logger.warning(f"Could not fetch replied-to message (ID: {message.reference.message_id}), might be deleted.")
                 except discord.Forbidden:
@@ -2313,7 +2314,10 @@ class DiscordBot(commands.Bot):
                     logger.error(f"Error fetching replied-to message (ID: {message.reference.message_id}): {e}")
 
 
-            logger.info(f"Processing message from {message.author.name} (ID: {message.author.id}): {shorten(message.content, width=100, placeholder='...')}")
+            logger.info(
+                f"Processing message from {message.author.name} (ID: {message.author.id}): {shorten(message.content, width=100, placeholder='...')}"
+            )
+            logger.debug(f"Full message content: {message.content}")
 
             # Get nickname or username early to ensure it's available for all subsequent operations
             nickname = message.author.nick if (message.guild and hasattr(message.author, 'nick') and message.author.nick) else message.author.name
@@ -2324,10 +2328,12 @@ class DiscordBot(commands.Bot):
                 question = question.replace(f'<@{mention.id}>', '').replace(f'<@!{mention.id}>', '')
             question = question.strip()
 
+            logger.debug(f"Full query after mention removal: {question}")
+
             # Check if the stripped question is empty
             if not question:
                 question = "Hello" # Default to a simple greeting if message is just a ping
-                logger.info("Received empty message after stripping mentions, defaulting to 'Hello'")
+                logger.debug("Received empty message after stripping mentions, defaulting to 'Hello'")
 
             # Check for memory clearing commands in the original message content (only for bot accounts)
             original_content = message.content.lower()
@@ -2389,7 +2395,7 @@ class DiscordBot(commands.Bot):
                         image_data = await self._download_image_to_base64(attachment)
                         if image_data:
                             direct_image_attachments.append(image_data) # Appending tuple (bytes, base64)
-                            logger.info(f"Processed direct image attachment: {attachment.filename}")
+                            logger.debug(f"Processed direct image attachment: {attachment.filename}")
 
             # Process image attachments from the REPLIED-TO message
             if referenced_message and referenced_message.attachments:
@@ -2412,7 +2418,7 @@ class DiscordBot(commands.Bot):
                         image_data = await self._download_image_to_base64(attachment)
                         if image_data:
                             referenced_image_attachments.append(image_data) # Appending tuple
-                            logger.info(f"Processed referenced image attachment: {attachment.filename}")
+                            logger.debug(f"Processed referenced image attachment: {attachment.filename}")
 
             # Combine all image attachments
             all_image_attachments = direct_image_attachments + referenced_image_attachments
@@ -2458,7 +2464,7 @@ class DiscordBot(commands.Bot):
                             # Write back to file
                             with open(file_path, 'w', encoding='utf-8') as file:
                                 json.dump(messages, file, indent=2)
-                            logger.info("Removed temporary referenced message from conversation history")
+                            logger.debug("Removed temporary referenced message from conversation history")
                     except Exception as e:
                         logger.error(f"Error removing temporary referenced message: {e}")
 
@@ -2467,20 +2473,20 @@ class DiscordBot(commands.Bot):
             if search_results:
                 # Limit the number of chunks to check based on config
                 limit = self.config.KEYWORD_CHECK_CHUNK_LIMIT
-                logger.info(f"Scanning up to {limit} search result chunks for keywords...")
+                logger.debug(f"Scanning up to {limit} search result chunks for keywords...")
                 # Assuming search_results returns (doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks)
                 # Unpack 7 items, ignoring those not used in this loop
                 for i, (_, _, chunk, _, _, _, _) in enumerate(search_results):
                     if i >= limit:
-                        logger.info(f"Reached keyword check limit ({limit}), stopping scan.")
+                        logger.debug(f"Reached keyword check limit ({limit}), stopping scan.")
                         break # Stop checking after reaching the limit
                     keywords_in_chunk = self.keyword_manager.find_keywords_in_text(chunk)
                     if keywords_in_chunk:
                         found_keywords_in_chunks.update(keywords_in_chunk)
                 if found_keywords_in_chunks:
-                    logger.info(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
+                    logger.debug(f"Found keywords in search chunks: {', '.join(found_keywords_in_chunks)}")
                 else:
-                    logger.info("No keywords found in search chunks.")
+                    logger.debug("No keywords found in search chunks.")
             # --- End Keyword Extraction ---
 
             # Load Google Doc ID mapping for citation links
@@ -2492,7 +2498,7 @@ class DiscordBot(commands.Bot):
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in search_results:
                 if image_id and image_id not in image_ids:
                     image_ids.append(image_id)
-                    logger.info(f"Found relevant image from search: {image_id}")
+                    logger.debug(f"Found relevant image from search: {image_id}")
 
             # Fetch content for Google Doc links found in the *original* question
             if google_doc_ids:
@@ -2500,7 +2506,7 @@ class DiscordBot(commands.Bot):
                 for doc_id, doc_url in google_doc_ids:
                     content = await self._fetch_google_doc_content(doc_id)
                     if content:
-                        logger.info(f"Fetched content from linked Google Doc {doc_id}")
+                        logger.debug(f"Fetched content from linked Google Doc {doc_id}")
                         google_doc_contents.append((doc_id, doc_url, content))
 
             # Format raw results with citation info
@@ -2553,13 +2559,13 @@ class DiscordBot(commands.Bot):
                 selected_system_prompt = get_informational_system_prompt_with_documents(document_list_content)
             else:
                 selected_system_prompt = get_system_prompt_with_documents(document_list_content)
-            logger.info(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {message.author.id}")
+            logger.debug(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {message.author.id}")
 
             # Fetch user pronouns
             pronouns = self.user_preferences_manager.get_pronouns(str(message.author.id))
             pronoun_context_message = None
             if pronouns:
-                logger.info(f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}")
+                logger.debug(f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}")
                 pronoun_context_message = {
                     "role": "system",
                     "content": f"""User Information: The users nickname is: {nickname}. 
@@ -2578,7 +2584,7 @@ class DiscordBot(commands.Bot):
                     """
                 }
             else:
-                 logger.info(f"User {message.author.id} ({nickname}) has no pronouns set.")
+                 logger.debug(f"User {message.author.id} ({nickname}) has no pronouns set.")
 
 
             # --- Prepare messages for AI Model ---
@@ -2651,7 +2657,7 @@ class DiscordBot(commands.Bot):
                         channel_name
                     )
                     temp_ref_message_added = True
-                    logger.info(f"Added temporary referenced message from {reply_author_name} to conversation history")
+                    logger.debug(f"Added temporary referenced message from {reply_author_name} to conversation history")
 
             # Add raw document context from search results
             if raw_doc_contexts:
@@ -2709,7 +2715,7 @@ class DiscordBot(commands.Bot):
                         "role": "system",
                         "content": keyword_context_str
                     })
-                    logger.info(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords).")
+                    logger.debug(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords).")
             # --- End Keyword Context ---
 
             # Add image context summary system message
