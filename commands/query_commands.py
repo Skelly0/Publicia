@@ -166,8 +166,7 @@ def register_commands(bot):
                     # Display original_name for non-Google Docs
                     raw_doc_contexts.append(
                         f"{preamble}"
-                        f"From document '{original_name}' (UUID: `{doc_uuid}`, "
-                        f"Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}"
+                        f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}"
                     )
 
             # Add fetched Google Doc content to context
