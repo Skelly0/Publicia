@@ -1143,25 +1143,25 @@ class DiscordBot(commands.Bot):
                         )
                     else:
                         logger.info(f"Attempting completion with model: {current_model}")
-                
-                        # Check if current model supports vision
-                        is_vision_model = current_model in self.vision_capable_models
-    
-                        # Prepare messages based on whether we're using a vision model
-                        processed_messages = messages.copy()
-    
-                        # If we have images and this is a vision-capable model, add them to the last user message
-                        if need_vision and is_vision_model:
-                            # Find the last user message
-                            for i in range(len(processed_messages) - 1, -1, -1):
-                                if processed_messages[i]["role"] == "user":
-                                    # Convert the content to the multimodal format
-                                    user_msg = processed_messages[i]
-                                    text_content = user_msg["content"]
-                                
+
+                    # Check if current model supports vision
+                    is_vision_model = current_model in self.vision_capable_models
+
+                    # Prepare messages based on whether we're using a vision model
+                    processed_messages = messages.copy()
+
+                    # If we have images and this is a vision-capable model, add them to the last user message
+                    if need_vision and is_vision_model:
+                        # Find the last user message
+                        for i in range(len(processed_messages) - 1, -1, -1):
+                            if processed_messages[i]["role"] == "user":
+                                # Convert the content to the multimodal format
+                                user_msg = processed_messages[i]
+                                text_content = user_msg["content"]
+
                                 # Create a multimodal content array
                                 content_array = [{"type": "text", "text": text_content}]
-                                
+
                                 # Add each image from attachments
                                 if image_attachments:
                                     for img_data in image_attachments:
@@ -1171,7 +1171,7 @@ class DiscordBot(commands.Bot):
                                                 "image_url": {"url": img_data}
                                             })
                                             logger.info(f"Added direct attachment image to message")
-                                
+
                                 # Add each image from image_ids
                                 if image_ids:
                                     for img_id in image_ids:
@@ -1185,10 +1185,10 @@ class DiscordBot(commands.Bot):
                                             logger.info(f"Added search result image {img_id} to message")
                                         except Exception as e:
                                             logger.error(f"Error adding image {img_id} to message: {e}")
-                                
+
                                 # Replace the content with the multimodal array
                                 processed_messages[i]["content"] = content_array
-                                
+
                                 # Log the number of images added
                                 image_count = len(content_array) - 1  # Subtract 1 for the text content
                                 logger.info(f"Added {image_count} images to message for vision model")
