@@ -41,7 +41,7 @@ async def _download_image_to_base64(image_url: str) -> Optional[str]:
     try:
         logger.info(f"Attempting to download image from URL: {image_url}")
         async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as resp:
+            async with session.get(image_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                 if resp.status != 200:
                     logger.error(f"Failed to download image: {resp.status} {resp.reason}")
                     return None
