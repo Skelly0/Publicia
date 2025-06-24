@@ -1128,8 +1128,21 @@ class DiscordBot(commands.Bot):
         }
 
         for current_model in models_to_try:
-            try:
-                logger.info(f"Attempting completion with model: {current_model}")
+            provider_base = self.config.get_provider_config(current_model)
+            provider_order = []
+            if isinstance(provider_base, dict) and provider_base.get("order"):
+                provider_order = provider_base.get("order")
+            if not provider_order:
+                provider_order = [None]
+
+            for provider_choice in provider_order:
+                try:
+                    if provider_choice:
+                        logger.info(
+                            f"Attempting completion with model: {current_model} using provider {provider_choice}"
+                        )
+                    else:
+                        logger.info(f"Attempting completion with model: {current_model}")
                 
                 # Check if current model supports vision
                 is_vision_model = current_model in self.vision_capable_models
@@ -1181,19 +1194,24 @@ class DiscordBot(commands.Bot):
                             logger.info(f"Added {image_count} images to message for vision model")
                             break
 
-                provider_config = self.config.get_provider_config(current_model)
-                
-                payload = {
-                    "model": current_model,
-                    "messages": processed_messages,
-                    "temperature": temperature,
-                    "max_tokens": 20000,
-                    **kwargs
-                }
+                    provider_config = provider_base
+                    if provider_choice:
+                        provider_config = provider_config.copy() if provider_config else {}
+                        provider_config["order"] = [provider_choice]
 
-                if provider_config:
-                    payload["provider"] = provider_config
-                    logger.info(f"Using custom provider configuration for {current_model}: {provider_config}")
+                    payload = {
+                        "model": current_model,
+                        "messages": processed_messages,
+                        "temperature": temperature,
+                        "max_tokens": 20000,
+                        **kwargs,
+                    }
+
+                    if provider_config:
+                        payload["provider"] = provider_config
+                        logger.info(
+                            f"Using custom provider configuration for {current_model}: {provider_config}"
+                        )
 
                 if current_model.startswith("deepseek/"):
                     payload["max_price"] = {
@@ -1403,8 +1421,15 @@ class DiscordBot(commands.Bot):
                                     **retry_kwargs
                                 )
                             else:
-                                # If we've used all retries for this model, log it and continue to the next model
-                                logger.warning(f"Used all retries for {current_model}, continuing to next model")
+                                # If we've used all retries for this provider, try the next one
+                                if provider_choice:
+                                    logger.warning(
+                                        f"Used all retries for {current_model} with provider {provider_choice}, continuing to next provider"
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Used all retries for {current_model}, continuing to next provider"
+                                    )
                                 continue
                         
                         # Normal case - response is long enough
@@ -1430,7 +1455,9 @@ class DiscordBot(commands.Bot):
                 logger.error(f"Error with model {current_model}: {str(e)}\nTraceback:\n{tb}")
                 continue
         
-        logger.error(f"All models failed to generate completion. Attempted models: {', '.join(models_to_try)}")
+        logger.error(
+            f"All models/providers failed to generate completion. Attempted models: {', '.join(models_to_try)}"
+        )
         return None, None  # Return None for both completion and model used
 
     def calculate_dynamic_temperature(self, query: str, conversation_history=None):
