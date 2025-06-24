@@ -242,22 +242,29 @@ class DocumentManager:
                 if meta_val.get('original_name') == self._internal_list_doc_name:
                     internal_list_doc_uuid_to_skip = doc_uuid_key
                     break
-            
+
+            googledoc_mapping = self.get_original_name_to_googledoc_id_mapping()
+
             for doc_uuid, meta in self.metadata.items():
                 if doc_uuid == internal_list_doc_uuid_to_skip:
                     continue
                 original_name = meta.get('original_name', doc_uuid)
                 summary = meta.get('summary', 'No summary available.')
-                doc_items_for_list.append((original_name, doc_uuid, summary))
+                gdoc_id = googledoc_mapping.get(original_name)
+                doc_items_for_list.append((original_name, gdoc_id, summary))
 
-            doc_items_for_list.sort(key=lambda x: x[0]) 
+            doc_items_for_list.sort(key=lambda x: x[0])
             
             header = "List of Documents Available to Publicia\n=======================================\n\n"
             
             if doc_items_for_list:
                 content_lines = []
-                for original_name, doc_uuid, summary in doc_items_for_list:
-                    content_lines.append(f"- {original_name} (UUID: {doc_uuid})")
+                for original_name, gdoc_id, summary in doc_items_for_list:
+                    if gdoc_id:
+                        url = f"https://docs.google.com/document/d/{gdoc_id}/"
+                        content_lines.append(f"- {original_name} (Google Doc URL: {url})")
+                    else:
+                        content_lines.append(f"- {original_name}")
                     content_lines.append(f"  Summary: {summary}\n")
                 content = header + "\n".join(content_lines)
             else:
@@ -932,18 +939,24 @@ class DocumentManager:
             # If no internal list exists, generate a basic one
             logger.warning("Internal document list not found, generating basic list")
             doc_items = []
+            googledoc_mapping = self.get_original_name_to_googledoc_id_mapping()
             for doc_uuid, meta in self.metadata.items():
                 original_name = meta.get('original_name', doc_uuid)
                 summary = meta.get('summary', 'No summary available.')
-                doc_items.append((original_name, doc_uuid, summary))
+                gdoc_id = googledoc_mapping.get(original_name)
+                doc_items.append((original_name, gdoc_id, summary))
             
             doc_items.sort(key=lambda x: x[0])
             
             header = "List of Documents Available to Publicia\n=======================================\n\n"
             if doc_items:
                 content_lines = []
-                for original_name, doc_uuid, summary in doc_items:
-                    content_lines.append(f"- {original_name} (UUID: {doc_uuid})")
+                for original_name, gdoc_id, summary in doc_items:
+                    if gdoc_id:
+                        url = f"https://docs.google.com/document/d/{gdoc_id}/"
+                        content_lines.append(f"- {original_name} (Google Doc URL: {url})")
+                    else:
+                        content_lines.append(f"- {original_name}")
                     content_lines.append(f"  Summary: {summary}\n")
                 return header + "\n".join(content_lines)
             else:
