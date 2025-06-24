@@ -7,7 +7,7 @@ from discord.ext import commands, tasks
 import logging
 import json
 import os
-from datetime import datetime, timezone
+
 import asyncio
 from utils.helpers import check_permissions, sanitize_filename
 
@@ -35,7 +35,6 @@ async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int
     if not all_messages:
         content = (
             f"# Archive of channel: {channel.name}\n"
-            f"# Last updated: {datetime.now(timezone.utc).isoformat()}\n\n"
             "(Channel is empty)"
         )
         return content, 0
@@ -43,14 +42,10 @@ async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int
     # sort oldest -> newest
     all_messages.sort(key=lambda m: m.created_at)
 
-    archive = (
-        f"# Archive of channel: {channel.name}\n"
-        f"# Last updated: {datetime.now(timezone.utc).isoformat()}\n"
-    )
+    archive = f"# Archive of channel: {channel.name}\n"
     for msg in all_messages:
-        timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
         author = msg.author.display_name
-        archive += f"\n[{timestamp}] {author}:\n    {msg.content}\n"
+        archive += f"\n{author}:\n    {msg.content}\n"
 
     return archive, len(all_messages)
 
@@ -123,9 +118,8 @@ def register_commands(bot):
             await interaction.followup.send(f"Channel {channel.mention} is already being tracked.")
             return
 
-        # Create initial archive
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
-        doc_name = f"channel_archive_{channel.name}_{timestamp}"
+        # Create initial archive without timestamp for a cleaner name
+        doc_name = sanitize_filename(f"channel_archive_{channel.name}")
         
         await interaction.followup.send(
             f"Performing initial archive of {channel.mention}..."
