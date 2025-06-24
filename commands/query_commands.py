@@ -184,7 +184,7 @@ def register_commands(bot):
                 pronoun_context_message = {
                     "role": "system",
                     "content": f"""User Information: The users nickname is: {nickname}. 
-                    The user provided this pronouns string: "{pronouns}".
+                    The user provided this pronoun string: "{pronouns}".
 
                     Your job:
                     1. split that string on “/” into segments.
