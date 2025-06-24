@@ -101,8 +101,11 @@ class DiscordBot(commands.Bot):
             "openai/gpt-4.1-nano",
         ]
 
-        # Log every command invocation to the console
-        self.tree.interaction_check(self._log_slash_command)
+        # Log every command invocation to the console by overriding the
+        # global interaction check method. The original implementation simply
+        # returns ``True`` but by assigning our custom coroutine here we ensure
+        # each slash command invocation is logged before continuing.
+        self.tree.interaction_check = self._log_slash_command
         self.before_invoke(self._log_prefix_command)
 
     def sanitize_discord_text(self, text: str) -> str:
