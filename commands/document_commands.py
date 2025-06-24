@@ -299,10 +299,13 @@ def register_commands(bot):
             message = "Keyword results:\n"
             for doc_uuid, original_name, chunk, chunk_index, total_chunks in results:
                 snippet = bot.sanitize_discord_text(chunk[:300])
-                message += f"\n**From {original_name}** (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}):\n" \
-                           f"```{snippet}...```\n"
+                message += (
+                    f"\n**From {original_name}** (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}):\n"
+                    f"```{snippet}...```\n"
+                )
 
-            await interaction.followup.send(message)
+            for chunk in split_message(message, max_length=1980):
+                await interaction.followup.send(chunk)
 
         except Exception as e:
             await interaction.followup.send(f"Error searching for keyword: {str(e)}")
