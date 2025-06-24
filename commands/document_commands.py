@@ -81,7 +81,7 @@ def register_commands(bot):
                     name = Path(attachment.filename).stem # Use filename without extension
 
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(attachment.url) as resp:
+                    async with session.get(attachment.url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                         if resp.status != 200:
                             await ctx.send("Failed to download the attachment.")
                             return

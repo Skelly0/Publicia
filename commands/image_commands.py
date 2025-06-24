@@ -83,7 +83,7 @@ def register_commands(bot):
                 
             # Download image
             async with aiohttp.ClientSession() as session:
-                async with session.get(valid_attachment.url) as resp:
+                async with session.get(valid_attachment.url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                     if resp.status != 200:
                         await ctx.send(f"*neural error detected!* Failed to download image (status: {resp.status})")
                         return

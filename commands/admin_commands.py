@@ -61,7 +61,7 @@ def register_commands(bot):
                         
                         # Download the image
                         async with aiohttp.ClientSession() as session:
-                            async with session.get(image_url) as resp:
+                            async with session.get(image_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                                 if resp.status == 200:
                                     # Determine content type
                                     content_type = resp.headers.get('Content-Type', 'image/jpeg')

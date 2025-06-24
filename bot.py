@@ -882,7 +882,7 @@ class DiscordBot(commands.Bot):
         """Download an image attachment and convert it to base64."""
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(attachment.url) as resp:
+                async with session.get(attachment.url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                     if resp.status != 200:
                         logger.error(f"Failed to download image: {resp.status}")
                         return None
