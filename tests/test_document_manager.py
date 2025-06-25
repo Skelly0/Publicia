@@ -29,8 +29,17 @@ def load_document_module():
     if 'rank_bm25' not in sys.modules:
         bm25_dummy = types.ModuleType('rank_bm25')
         class DummyBM25:
-            def __init__(self, *args, **kwargs):
-                pass
+            def __init__(self, corpus, *args, **kwargs):
+                self.corpus = corpus
+
+            def get_scores(self, query_tokens):
+                scores = []
+                for doc in self.corpus:
+                    # simple match score: count occurrences of any token
+                    score = sum(1 for token in query_tokens if token in doc)
+                    scores.append(float(score))
+                return scores
+
         bm25_dummy.BM25Okapi = DummyBM25
         sys.modules['rank_bm25'] = bm25_dummy
     if 'utils.logging' not in sys.modules:
@@ -93,6 +102,21 @@ def test_search_keyword(tmp_path):
     manager.metadata = {"abc": {"original_name": "TestDoc"}}
 
     results = manager.search_keyword("airship")
+    assert len(results) == 1
+    doc_uuid, name, chunk, index, total = results[0]
+    assert doc_uuid == "abc"
+    assert name == "TestDoc"
+    assert index == 1 and total == 2
+    assert "airship" in chunk.lower()
+
+
+def test_search_keyword_bm25(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.chunks = {"abc": ["An airship sails the skies", "Nothing here"]}
+    manager.metadata = {"abc": {"original_name": "TestDoc"}}
+
+    # BM25 search should also find the chunk containing the keyword
+    results = manager.search_keyword_bm25("airship")
     assert len(results) == 1
     doc_uuid, name, chunk, index, total = results[0]
     assert doc_uuid == "abc"

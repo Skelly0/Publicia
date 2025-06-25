@@ -356,6 +356,8 @@ The bot will display a startup banner and initialize all components.
   - **Parameters**: `query` (The search term or question).
 - `/search_keyword`: Search for a specific keyword within documents.
   - **Parameters**: `keyword` (The word to search for).
+- `/search_keyword_bm25`: Search for a keyword using BM25 ranking.
+  - **Parameters**: `keyword` (The word to search for).
 
 - `/add_googledoc`: Track a Google Doc, linking it to an internal document UUID. **(Admin Only)**
   - **Parameters**: `doc_url` (The URL or ID of the Google Doc), `name` (Optional custom original name for this document in Publicia).
