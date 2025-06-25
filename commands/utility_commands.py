@@ -30,7 +30,7 @@ def register_commands(bot):
             # Define standard command categories
             standard_categories = {
                 "Lore Queries": ["query", "query_full_context"],
-                "Document Management": ["list_docs", "search_docs", "search_keyword", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
+                "Document Management": ["list_docs", "search_docs", "search_keyword", "search_keyword_bm25", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
                 "Context/Memory Management": ["parse_channel", "history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]

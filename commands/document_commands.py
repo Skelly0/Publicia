@@ -310,6 +310,35 @@ def register_commands(bot):
         except Exception as e:
             await interaction.followup.send(f"Error searching for keyword: {str(e)}")
 
+    @bot.tree.command(name="search_keyword_bm25", description="Search documents for a keyword using BM25")
+    @app_commands.describe(keyword="Keyword to search for")
+    async def search_keyword_bm25(interaction: discord.Interaction, keyword: str):
+        """Return chunks containing the given keyword ranked by BM25."""
+        await interaction.response.defer()
+        try:
+            if not keyword:
+                await interaction.followup.send("*neural error detected!* Please provide a keyword to search for.")
+                return
+
+            results = bot.document_manager.search_keyword_bm25(keyword, top_k=5)
+            if not results:
+                await interaction.followup.send("No occurrences found for that keyword.")
+                return
+
+            message = "Keyword results (BM25):\n"
+            for doc_uuid, original_name, chunk, chunk_index, total_chunks in results:
+                snippet = bot.sanitize_discord_text(chunk[:300])
+                message += (
+                    f"\n**From {original_name}** (UUID: `{doc_uuid}`, Chunk {chunk_index}/{total_chunks}):\n"
+                    f"```{snippet}...```\n"
+                )
+
+            for chunk in split_message(message, max_length=1980):
+                await interaction.followup.send(chunk)
+
+        except Exception as e:
+            await interaction.followup.send(f"Error searching for keyword: {str(e)}")
+
     @bot.tree.command(name="add_googledoc", description="Add a Google Doc to the tracked list (admin only)")
     @app_commands.describe(
         doc_url="Google Doc URL or ID",

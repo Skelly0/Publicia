@@ -1044,6 +1044,40 @@ class DocumentManager:
 
         return results
 
+    def search_keyword_bm25(self, keyword: str, top_k: int = 5) -> List[Tuple[str, str, str, int, int]]:
+        """Search documents for a keyword using BM25 ranking.
+
+        This method mirrors :meth:`search_keyword` but relies on the internal
+        BM25 indexes to rank results by relevance rather than doing simple
+        substring matching.
+
+        Args:
+            keyword: The keyword to search for.
+            top_k: Maximum number of matches to return.
+
+        Returns:
+            A list of matches with ``(doc_uuid, original_name, chunk_text,
+            chunk_index, total_chunks)``. Results are ordered by BM25 score.
+        """
+
+        if not keyword:
+            return []
+
+        bm25_results = self._search_bm25(keyword, top_k=top_k)
+
+        # _search_bm25 returns tuples with an image id and score; filter out
+        # image results and any results with a zero score, then drop the score
+        # for compatibility with ``search_keyword``.
+        filtered: List[Tuple[str, str, str, int, int]] = []
+        for doc_uuid, original_name, chunk_text, score, image_id, chunk_idx, total_chunks in bm25_results:
+            if image_id is not None or score <= 0:
+                continue
+            filtered.append((doc_uuid, original_name, chunk_text, chunk_idx, total_chunks))
+            if len(filtered) >= top_k:
+                break
+
+        return filtered
+
     def _save_to_disk(self):
         try:
             for data_dict, filename in [
