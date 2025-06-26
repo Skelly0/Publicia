@@ -441,6 +441,7 @@ def register_commands(bot):
             
             # Get channel and user info
             channel_name = interaction.channel.name if interaction.guild else "DM"
+            channel_description = getattr(interaction.channel, "topic", None)
             nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
             
             # Process exactly like a regular query until we have the messages
@@ -473,6 +474,7 @@ def register_commands(bot):
     Query: {question}
     User: {nickname}
     Channel: {channel_name}
+    {f'The channel has the description: {channel_description}\n' if channel_description else ''}
     Preferred model: {preferred_model}
 
     This file contains the complete prompt that would be sent to 
