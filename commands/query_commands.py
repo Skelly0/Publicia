@@ -14,6 +14,7 @@ import os
 import urllib.parse # Moved import to top level
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
 from utils.helpers import split_message, check_permissions # Added check_permissions import
+from utils.logging import log_qa_pair
 # Import both system prompts and the new functions
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
 
@@ -439,6 +440,14 @@ def register_commands(bot):
                         user_id=str(interaction.user.id),
                         existing_message=status_message
                     )
+                    log_qa_pair(
+                        question,
+                        response,
+                        interaction.user.name,
+                        channel_name,
+                        multi_turn=False,
+                        interaction_type="slash_command",
+                    )
                 else:
                     logger.error(f"Unexpected response structure: {completion}")
                     await status_message.edit(content="*neural circuit overload!* I received an unexpected response structure.")
@@ -631,6 +640,14 @@ def register_commands(bot):
                         model_used=actual_model or target_models[0], # Show model used
                         user_id=user_id_str,
                         existing_message=status_message
+                    )
+                    log_qa_pair(
+                        question,
+                        response,
+                        interaction.user.name,
+                        channel_name,
+                        multi_turn=False,
+                        interaction_type="slash_command",
                     )
                 else:
                     logger.error(f"Unexpected response structure from full context query: {completion}")

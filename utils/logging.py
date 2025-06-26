@@ -6,6 +6,8 @@ import sys
 import time
 import random
 import logging
+import json
+from datetime import datetime
 
 def sanitize_for_logging(text: str) -> str:
     """Remove problematic characters from the string for safe logging.
@@ -76,8 +78,29 @@ def configure_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.handlers = [file_handler, hf_file_handler, console_handler]
-    
+
     return logging.getLogger(__name__)
+
+# File to store question/response pairs as JSON Lines
+QA_LOG_FILE = 'qa_log.jsonl'
+
+def log_qa_pair(question: str, response: str, username: str, channel: str = None,
+                multi_turn: bool = False, interaction_type: str = 'message'):
+    """Append a question/response pair to the QA log."""
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'username': username,
+        'channel': channel,
+        'interaction_type': interaction_type,
+        'multi_turn': multi_turn,
+        'question': sanitize_for_logging(question),
+        'response': sanitize_for_logging(response)
+    }
+    try:
+        with open(QA_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception as log_err:
+        logging.getLogger(__name__).error(f"Failed to write QA log: {log_err}")
 
 def display_startup_banner():
     """Display super cool ASCII art banner on startup with simple search indicator."""

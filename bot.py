@@ -29,7 +29,7 @@ import sys
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
 from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
-from utils.logging import sanitize_for_logging
+from utils.logging import sanitize_for_logging, log_qa_pair
 from managers.keywords import KeywordManager # Added import
 # Import the docx processing function and availability flag
 from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
@@ -2857,11 +2857,23 @@ class DiscordBot(commands.Bot):
                 if referenced_image_attachments: history_notes.append("reply images")
                 if history_notes: user_history_content += f" [{', '.join(history_notes)}]"
 
+                pre_history = self.conversation_manager.read_conversation(message.author.name, limit=1)
+                is_multiturn = len(pre_history) > 0
+
                 self.conversation_manager.write_conversation(
                     message.author.name, "user", user_history_content, channel_name
                 )
                 self.conversation_manager.write_conversation(
                     message.author.name, "assistant", response, channel_name
+                )
+
+                log_qa_pair(
+                    original_question,
+                    response,
+                    message.author.name,
+                    channel_name,
+                    multi_turn=is_multiturn,
+                    interaction_type="message",
                 )
 
                 # Send the response, replacing thinking message
