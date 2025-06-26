@@ -2302,6 +2302,7 @@ class DiscordBot(commands.Bot):
                 return
 
             channel_name = message.channel.name if message.guild else "DM"
+            channel_description = getattr(message.channel, "topic", None)
 
             # Check if the message is a reply and get the referenced message
             referenced_message = None
@@ -2690,9 +2691,14 @@ class DiscordBot(commands.Bot):
                 })
 
             # Add channel context
+            description_note = (
+                f"\nThe channel has the description: {channel_description}"
+                if channel_description
+                else ""
+            )
             messages.append({
                 "role": "system",
-                    "content": f"You are responding to a message in the Discord channel: {channel_name}"
+                "content": f"You are responding to a message in the Discord channel: {channel_name}{description_note}"
             })
 
             # --- Add Keyword Context ---
