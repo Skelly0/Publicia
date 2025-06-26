@@ -80,3 +80,4 @@ debug_scripts/
 test_scripts/
 temp_files/
 credentials/
+qa_log.jsonl
