@@ -50,9 +50,22 @@ class ColoredFormatter(logging.Formatter):
 
 def configure_logging():
     """Set up colored logging for both file and console."""
-    # Reconfigure stdout to use UTF-8 with error replacement
-    if sys.stdout.encoding != 'utf-8':
-        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    # Reconfigure stdout to use UTF-8 with error replacement. On Windows,
+    # reassigning ``sys.stdout`` can lead to ``OSError: [Errno 22]`` when
+    # flushing the stream.  ``reconfigure`` updates the existing wrapper
+    # safely if available.
+    try:
+        enc = sys.stdout.encoding or ''
+        if enc.lower() != 'utf-8':
+            try:
+                sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            except (AttributeError, ValueError):
+                # Fallback for older Python versions
+                sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    except Exception:
+        # If any unexpected issue occurs, keep stdout unchanged to avoid
+        # disrupting logging completely.
+        pass
         
     # Create formatters
     log_format = '%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
