@@ -95,15 +95,20 @@ def register_commands(bot):
 
             # Use the hybrid search system
             await status_message.edit(content="*analyzing query and searching imperial databases...*")
-            search_results = await bot.process_hybrid_query( # Await async call
+            search_results = await bot.process_hybrid_query(  # Await async call
                 question,
                 nickname,  # Use nickname instead of interaction.user.name for better search context
                 max_results=bot.config.get_top_k_for_model(preferred_model),
-                use_context=False  # this disables all the context logic for slash commands
+                use_context=False,  # this disables all the context logic for slash commands
             )
-            
+
+            # Determine how many unique documents were returned
+            doc_count = len({doc_uuid for doc_uuid, *_ in search_results})
+
             # Log the results
-            logger.info(f"Found {len(search_results)} relevant document sections")
+            logger.info(
+                f"Found {len(search_results)} relevant document sections from {doc_count} documents"
+            )
             
             await status_message.edit(content="*synthesizing information...*")
             
@@ -452,7 +457,9 @@ def register_commands(bot):
                         user_id=str(interaction.user.id),
                         existing_message=status_message
                     )
-                    total_chunks = sum(len(chunks) for chunks in bot.document_manager.chunks.values())
+                    total_chunks = sum(
+                        len(chunks) for chunks in bot.document_manager.chunks.values()
+                    )
                     context_info = {
                         "reply": False,
                         "direct_images": 0,
@@ -461,7 +468,7 @@ def register_commands(bot):
                         "google_docs": 0,
                         "chunks": total_chunks,
                         "channel_messages": 0,
-                        "doc_count": len(all_doc_contents),
+                        "doc_count": doc_count,
                     }
                     log_qa_pair(
                         question,
