@@ -2593,7 +2593,7 @@ class DiscordBot(commands.Bot):
                     "role": "system",
                     "content": xml_wrap(
                         "user_pronouns",
-                        f"""User Information: The users nickname is: {nickname}.\n"
+                         f"""User Information: The users nickname is: {nickname}.\n"""
                         f"The user provided this pronoun string: \"{pronouns}\".\n\n"
                         "Your job:\n"
                         "1. split that string on “/” into segments.\n"
