@@ -2904,6 +2904,10 @@ class DiscordBot(commands.Bot):
                     "search_images": len(image_ids),
                     "google_docs": len(google_doc_contents),
                     "chunks": len(search_results),
+                    "chunk_details": [
+                        f"{name}:{idx}"
+                        for _, name, _, _, _, idx, _ in search_results
+                    ],
                     "channel_messages": channel_message_count,
                 }
 

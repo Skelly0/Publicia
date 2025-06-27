@@ -105,6 +105,11 @@ def register_commands(bot):
             # Determine how many unique documents were returned
             doc_count = len({doc_uuid for doc_uuid, *_ in search_results})
 
+            chunk_details = [
+                f"{name}:{idx}"
+                for _, name, _, _, _, idx, _ in search_results
+            ]
+
             # Log the results
             logger.info(
                 f"Found {len(search_results)} relevant document sections from {doc_count} documents"
@@ -467,6 +472,7 @@ def register_commands(bot):
                         "search_images": 0,
                         "google_docs": 0,
                         "chunks": total_chunks,
+                        "chunk_details": chunk_details,
                         "channel_messages": 0,
                         "doc_count": doc_count,
                     }
@@ -583,6 +589,8 @@ def register_commands(bot):
                 full_context_str += f"<document name=\"{name}\">\n{content}\n</document>\n\n"
                 total_chars += len(content)
 
+            chunk_details = [f"{name}:ALL" for name in all_doc_contents.keys()]
+
             # Estimate tokens (simple heuristic: 4 chars/token)
             estimated_tokens = total_chars // 4
             # Define model context limit (adjust as needed for Gemini 2.5 Pro)
@@ -693,6 +701,7 @@ def register_commands(bot):
                         "search_images": 0,
                         "google_docs": 0,
                         "chunks": total_chunks,
+                        "chunk_details": chunk_details,
                         "channel_messages": 0,
                         "doc_count": len(all_doc_contents),
                     }
