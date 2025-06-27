@@ -2915,6 +2915,7 @@ class DiscordBot(commands.Bot):
                     multi_turn=is_multiturn,
                     interaction_type="message",
                     context=context_info,
+                    model_used=actual_model,
                 )
 
                 # Send the response, replacing thinking message
