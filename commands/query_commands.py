@@ -440,6 +440,17 @@ def register_commands(bot):
                         user_id=str(interaction.user.id),
                         existing_message=status_message
                     )
+                    total_chunks = sum(len(chunks) for chunks in bot.document_manager.chunks.values())
+                    context_info = {
+                        "reply": False,
+                        "direct_images": 0,
+                        "reply_images": 0,
+                        "search_images": 0,
+                        "google_docs": 0,
+                        "chunks": total_chunks,
+                        "channel_messages": 0,
+                        "doc_count": len(all_doc_contents),
+                    }
                     log_qa_pair(
                         question,
                         response,
@@ -447,6 +458,7 @@ def register_commands(bot):
                         channel_name,
                         multi_turn=False,
                         interaction_type="slash_command",
+                        context=context_info,
                     )
                 else:
                     logger.error(f"Unexpected response structure: {completion}")
@@ -641,6 +653,17 @@ def register_commands(bot):
                         user_id=user_id_str,
                         existing_message=status_message
                     )
+                    total_chunks = sum(len(chunks) for chunks in bot.document_manager.chunks.values())
+                    context_info = {
+                        "reply": False,
+                        "direct_images": 0,
+                        "reply_images": 0,
+                        "search_images": 0,
+                        "google_docs": 0,
+                        "chunks": total_chunks,
+                        "channel_messages": 0,
+                        "doc_count": len(all_doc_contents),
+                    }
                     log_qa_pair(
                         question,
                         response,
@@ -648,6 +671,7 @@ def register_commands(bot):
                         channel_name,
                         multi_turn=False,
                         interaction_type="slash_command",
+                        context=context_info,
                     )
                 else:
                     logger.error(f"Unexpected response structure from full context query: {completion}")

@@ -97,9 +97,32 @@ def configure_logging():
 # File to store question/response pairs as JSON Lines
 QA_LOG_FILE = 'qa_log.jsonl'
 
+from typing import Optional, Dict, Any
+
+
 def log_qa_pair(question: str, response: str, username: str, channel: str = None,
-                multi_turn: bool = False, interaction_type: str = 'message'):
-    """Append a question/response pair to the QA log."""
+                multi_turn: bool = False, interaction_type: str = 'message',
+                context: Optional[Dict[str, Any]] = None):
+    """Append a question/response pair to the QA log.
+
+    Parameters
+    ----------
+    question: str
+        The user's question.
+    response: str
+        The bot's response.
+    username: str
+        Name of the user who asked the question.
+    channel: str, optional
+        Channel where the interaction happened.
+    multi_turn: bool
+        Whether this was part of a multi-turn conversation.
+    interaction_type: str
+        Type of interaction (e.g. "message" or "slash_command").
+    context: dict, optional
+        Additional context information about the request, such as number of
+        chunks or whether images were included.
+    """
     entry = {
         'timestamp': datetime.now().isoformat(),
         'username': username,
@@ -109,6 +132,14 @@ def log_qa_pair(question: str, response: str, username: str, channel: str = None
         'question': sanitize_for_logging(question),
         'response': sanitize_for_logging(response)
     }
+    if context:
+        sanitized_context = {}
+        for key, value in context.items():
+            if isinstance(value, str):
+                sanitized_context[key] = sanitize_for_logging(value)
+            else:
+                sanitized_context[key] = value
+        entry['context'] = sanitized_context
     try:
         with open(QA_LOG_FILE, 'a', encoding='utf-8') as f:
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
