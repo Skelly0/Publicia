@@ -2032,13 +2032,18 @@ class DiscordBot(commands.Bot):
         logger.info(f"Enhanced query with username: '{question}' -> '{enhanced_query}'")
         return enhanced_query
 
-    async def _get_channel_context(self, channel: discord.TextChannel, original_question: str) -> Optional[str]:
-        """Fetches and formats recent channel messages for context."""
+    async def _get_channel_context(self, channel: discord.TextChannel, original_question: str) -> Tuple[Optional[str], int]:
+        """Fetch and format recent channel messages for context.
+
+        Returns a tuple ``(context_str, count)`` where ``context_str`` is the
+        formatted context or ``None`` if no context was added, and ``count`` is
+        the number of messages used.
+        """
         channel_id = str(channel.id)
         parsing_enabled, message_count = self.user_preferences_manager.get_channel_parsing_settings(channel_id)
 
         if not (parsing_enabled and message_count > 0):
-            return None
+            return None, 0
 
         logger.info(f"Channel parsing enabled for {channel_id}. Fetching last {message_count} messages.")
         try:
@@ -2050,7 +2055,7 @@ class DiscordBot(commands.Bot):
 
             if not channel_messages:
                 logger.info("No recent channel messages found or fetched to add to context.")
-                return None
+                return None, 0
 
             # Format the channel messages for the AI
             formatted_channel_context = "Recent messages from this channel (for general context):\n"
@@ -2065,6 +2070,7 @@ class DiscordBot(commands.Bot):
 
             logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
             return xml_wrap("channel_context", formatted_channel_context.strip())
+
 
         except Exception as fetch_err:
             logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
@@ -2622,8 +2628,9 @@ class DiscordBot(commands.Bot):
             messages.extend(conversation_messages)
 
             # --- Add Channel Parsing Context (if enabled) ---
+            channel_message_count = 0
             if message.guild:
-                channel_context = await self._get_channel_context(message.channel, original_question)
+                channel_context, channel_message_count = await self._get_channel_context(message.channel, original_question)
                 if channel_context:
                     messages.append({"role": "system", "content": channel_context})
             # --- End Channel Parsing Context ---
@@ -2890,6 +2897,16 @@ class DiscordBot(commands.Bot):
                     message.author.name, "assistant", response, channel_name
                 )
 
+                context_info = {
+                    "reply": referenced_message is not None,
+                    "direct_images": len(direct_image_attachments),
+                    "reply_images": len(referenced_image_attachments),
+                    "search_images": len(image_ids),
+                    "google_docs": len(google_doc_contents),
+                    "chunks": len(search_results),
+                    "channel_messages": channel_message_count,
+                }
+
                 log_qa_pair(
                     original_question,
                     response,
@@ -2897,6 +2914,7 @@ class DiscordBot(commands.Bot):
                     channel_name,
                     multi_turn=is_multiturn,
                     interaction_type="message",
+                    context=context_info,
                 )
 
                 # Send the response, replacing thinking message
