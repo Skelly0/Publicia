@@ -168,10 +168,16 @@ def register_commands(bot):
                 return
 
             full_message_content = header + "\n" + "\n".join(sorted_doc_display_strings)
-            
+
+            # Account for the continuation header added to later chunks so the
+            # final formatted message stays within Discord's 2000 character
+            # limit even after wrapping in a code block.
+            continuation_header = "Documents (continued):\n"
+            adjusted_max_len = 1980 - len(continuation_header)
+
             # Split the entire message into chunks that will fit in a code block
             # Max length for content inside code block: 1990 (2000 - ```\n - \n```)
-            message_chunks = split_message(full_message_content, max_length=1980)
+            message_chunks = split_message(full_message_content, max_length=adjusted_max_len)
 
             for i, chunk in enumerate(message_chunks):
                 # The first chunk already contains the main header.
