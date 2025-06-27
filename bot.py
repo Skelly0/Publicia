@@ -202,7 +202,7 @@ class DiscordBot(commands.Bot):
             # Prepare API call
             headers = {
                 "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-                "HTTP-Referer": "https://discord.gg/dpsrp",
+                "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp",
                 "X-Title": "Publicia for DPS Season 7",
                 "Content-Type": "application/json"
             }
@@ -1200,7 +1200,7 @@ class DiscordBot(commands.Bot):
         # Headers for API calls
         headers = {
             "Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}",
-            "HTTP-Referer": "https://discord.gg/dpsrp",
+            "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp",
             "X-Title": "Publicia for DPS Season 7",
             "Content-Type": "application/json"
         }

@@ -291,7 +291,7 @@ class DocumentManager:
             user_prompt = f"Please provide a short, one-sentence summary for the following document:\n\n<document>\n{document_content}\n</document>\n\nAnswer only with the summary and nothing else."
             
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             
             # Using a list of reliable and fast models for summarization
             fallback_models = ["google/gemini-2.5-flash-lite-preview-06-17", "google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
@@ -595,7 +595,7 @@ class DocumentManager:
             system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
             user_prompt = f"""<document> \n{document_content} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{chunk_content} \n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
-            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://discord.gg/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
+            headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             fallback_models = ["google/gemini-2.5-flash-lite-preview-06-17", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
