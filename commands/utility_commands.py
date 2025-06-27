@@ -116,7 +116,7 @@ def register_commands(bot):
             for chunk in split_message(response):
                 await interaction.followup.send(chunk)
         except Exception as e:
-            logger.error(f"Error listing commands: {e}")
+            logger.error("Error listing commands: %s", e)
             await interaction.followup.send("*my enhanced neurons misfired!* couldn't retrieve command list right now...")
 
     @bot.tree.command(name="set_model", description="Set your preferred AI model for responses")
@@ -242,7 +242,7 @@ def register_commands(bot):
                 await interaction.followup.send("*synaptic error detected!* Failed to set your preferred model. Please try again later.")
                 
         except Exception as e:
-            logger.error(f"Error setting preferred model: {e}")
+            logger.error("Error setting preferred model: %s", e)
             await interaction.followup.send("*neural circuit overload!* An error occurred while setting your preferred model.")
 
 
@@ -333,7 +333,7 @@ def register_commands(bot):
                 await interaction.followup.send(chunk)
                 
         except Exception as e:
-            logger.error(f"Error getting preferred model: {e}")
+            logger.error("Error getting preferred model: %s", e)
             await interaction.followup.send("*neural circuit overload!* An error occurred while retrieving your preferred model.")
 
     @bot.tree.command(name="toggle_debug", description="Toggle debug mode to show model information in responses")
@@ -349,7 +349,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural diagnostics deactivated!* Debug mode is now **OFF**. Responses will no longer show model information.")
                 
         except Exception as e:
-            logger.error(f"Error toggling debug mode: {e}")
+            logger.error("Error toggling debug mode: %s", e)
             await interaction.followup.send("*neural circuit overload!* An error occurred while toggling debug mode.")
 
     @bot.tree.command(name="toggle_prompt_mode", description="Toggle between standard (immersive) and informational (concise) system prompts")
@@ -366,7 +366,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural pathways restored!* Standard prompt mode is now **ON** (Informational mode is **OFF**). Responses will be immersive and in-character.")
 
         except Exception as e:
-            logger.error(f"Error toggling informational prompt mode: {e}")
+            logger.error("Error toggling informational prompt mode: %s", e)
             await interaction.followup.send("*neural circuit overload!* An error occurred while toggling the prompt mode.")
 
     @bot.tree.command(name="help", description="Learn how to use Publicia and understand her capabilities and limitations")
@@ -419,7 +419,7 @@ def register_commands(bot):
                 await interaction.followup.send(chunk)
 
         except Exception as e:
-            logger.error(f"Error displaying help: {e}")
+            logger.error("Error displaying help: %s", e)
             await interaction.followup.send("*neural circuit overload!* An error occurred while trying to display help information.")
 
     """@bot.tree.command(name="export_prompt", description="Export the full prompt that would be sent to the AI for your query")
@@ -638,7 +638,7 @@ def register_commands(bot):
             await status_message.edit(content="*prompt export complete!*")
             
         except Exception as e:
-            logger.error(f"Error exporting prompt: {e}")
+            logger.error("Error exporting prompt: %s", e)
             import traceback
             logger.error(traceback.format_exc())
             await interaction.followup.send("*neural circuit overload!* failed to export prompt due to an error.")
@@ -698,7 +698,7 @@ def register_commands(bot):
                         else:
                             added_dt = added_dt.astimezone(timezone.utc)
                     except ValueError:
-                        logger.warning(f"Could not parse 'added' timestamp '{added_ts_str}' for doc '{doc_name}'")
+                        logger.warning("Could not parse 'added' timestamp '%s' for doc '%s'", added_ts_str, doc_name)
 
                 updated_dt = None
                 if updated_ts_str:
@@ -713,7 +713,7 @@ def register_commands(bot):
                          else:
                              updated_dt = updated_dt.astimezone(timezone.utc)
                      except ValueError:
-                         logger.warning(f"Could not parse 'updated' timestamp '{updated_ts_str}' for doc '{doc_name}'")
+                         logger.warning("Could not parse 'updated' timestamp '%s' for doc '%s'", updated_ts_str, doc_name)
 
                 # Determine the most recent relevant timestamp and action
                 latest_dt = None
@@ -765,7 +765,7 @@ def register_commands(bot):
                                 })
 
         except Exception as e:
-            logger.error(f"Error processing document metadata for whats_new: {e}", exc_info=True)
+            logger.error("Error processing document metadata for whats_new: %s", e, exc_info=True)
             # Send error but continue to images
             await interaction.followup.send(f"*neural pathway disruption!* An error occurred while checking documents: {e}", ephemeral=True)
 
@@ -790,7 +790,7 @@ def register_commands(bot):
                         else:
                             added_dt = added_dt.astimezone(timezone.utc)
                     except ValueError:
-                        logger.warning(f"Could not parse 'added' timestamp '{added_ts_str}' for image '{image_id}'")
+                        logger.warning("Could not parse 'added' timestamp '%s' for image '%s'", added_ts_str, image_id)
 
                 if added_dt and added_dt >= cutoff_time:
                     # Check if already added via document update
@@ -811,7 +811,7 @@ def register_commands(bot):
                             'action': 'added'
                         })
         except Exception as e:
-            logger.error(f"Error processing image metadata for whats_new: {e}", exc_info=True)
+            logger.error("Error processing image metadata for whats_new: %s", e, exc_info=True)
             # Send error but continue to formatting
             await interaction.followup.send(f"*visual cortex error!* An error occurred while checking images: {e}", ephemeral=True)
 
@@ -888,13 +888,13 @@ def register_commands(bot):
 
             if success:
                 await interaction.followup.send(f"*preference updated!* Your pronouns have been set to **{pronouns_stripped}**.")
-                logger.info(f"User {interaction.user.name} ({user_id}) set pronouns to: {pronouns_stripped}")
+                logger.info("User %s (%s) set pronouns to: %s", interaction.user.name, user_id, pronouns_stripped)
             else:
                 await interaction.followup.send("*synaptic error detected!* Failed to set your pronouns. Please try again later.")
-                logger.error(f"Failed to set pronouns for user {interaction.user.name} ({user_id})")
+                logger.error("Failed to set pronouns for user %s (%s)", interaction.user.name, user_id)
 
         except Exception as e:
-            logger.error(f"Error in /pronouns command for user {interaction.user.name} ({interaction.user.id}): {e}", exc_info=True)
+            logger.error("Error in /pronouns command for user %s (%s): %s", interaction.user.name, interaction.user.id, e, exc_info=True)
             await interaction.followup.send("*neural circuit overload!* An error occurred while setting your pronouns.")
 
 
@@ -932,13 +932,13 @@ def register_commands(bot):
                     await interaction.followup.send(f"*channel analysis protocol activated!* I will now parse the last **{message_count}** messages in this channel for context when mentioned.")
                 else:
                     await interaction.followup.send("*channel analysis protocol deactivated!* I will no longer parse messages in this channel for context.")
-                logger.info(f"User {interaction.user.name} ({interaction.user.id}) set channel parsing for channel {channel_id} to {enable_bool} with count {message_count}")
+                logger.info("User %s (%s) set channel parsing for channel %s to %s with count %s", interaction.user.name, interaction.user.id, channel_id, enable_bool, message_count)
             else:
                 await interaction.followup.send("*synaptic error detected!* Failed to update channel parsing settings. Please try again later.")
-                logger.error(f"Failed to set channel parsing settings for channel {channel_id}")
+                logger.error("Failed to set channel parsing settings for channel %s", channel_id)
 
         except Exception as e:
-            logger.error(f"Error in /parse_channel command for channel {interaction.channel.id if interaction.channel else 'N/A'}: {e}", exc_info=True)
+            logger.error("Error in /parse_channel command for channel %s: %s", interaction.channel.id if interaction.channel else 'N/A', e, exc_info=True)
             await interaction.followup.send("*neural circuit overload!* An error occurred while updating channel parsing settings.")
 
     @parse_channel.error
@@ -946,5 +946,5 @@ def register_commands(bot):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message("*neural access denied!* You need the 'Manage Channels' permission to use this command.", ephemeral=True)
         else:
-            logger.error(f"Unhandled error in /parse_channel: {error}")
+            logger.error("Unhandled error in /parse_channel: %s", error)
             await interaction.response.send_message("*neural circuit overload!* An unexpected error occurred.", ephemeral=True)
