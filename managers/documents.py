@@ -668,92 +668,116 @@ class DocumentManager:
         logger.info(f"Successfully generated {len(successful_embeddings)} embeddings out of {len(texts)} texts")
         return np.array(successful_embeddings)
 
-    def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
-        """
-        Chunks text by word count, then further splits chunks if they exceed byte limits.
-        Validates that no content is lost during the chunking process.
+    def _chunk_text(self, text: str, chunk_size: int = None, overlap: int = None,
+                    message_segments: Optional[List[str]] = None) -> List[str]:
+        """Chunk text into roughly equal segments.
+
+        If ``message_segments`` is provided, chunks are formed from full message
+        strings without breaking them apart, approximating ``chunk_size`` words
+        per chunk. Otherwise a simple word-based chunking strategy is used. Any
+        chunks that exceed ``MAX_EMBEDDING_CHUNK_BYTES`` will be further split.
         """
         word_chunk_size = chunk_size or (self.config.CHUNK_SIZE if self.config else 750)
         word_overlap = overlap or (self.config.CHUNK_OVERLAP if self.config else 125)
-        max_bytes = (self.config.MAX_EMBEDDING_CHUNK_BYTES
-                     if self.config and hasattr(self.config, 'MAX_EMBEDDING_CHUNK_BYTES')
-                     else self.MAX_EMBEDDING_CHUNK_BYTES)
+        max_bytes = (
+            self.config.MAX_EMBEDDING_CHUNK_BYTES
+            if self.config and hasattr(self.config, "MAX_EMBEDDING_CHUNK_BYTES")
+            else self.MAX_EMBEDDING_CHUNK_BYTES
+        )
 
         if not text or not text.strip():
             return []
 
         original_text = text.strip()
-        words = original_text.split()
-        if not words:
-            return []
+        final_chunks: List[str] = []
 
-        # Initial chunking by word count
-        initial_word_chunks = []
-        if len(words) <= word_chunk_size:
-            initial_word_chunks.append(' '.join(words))
+        if message_segments:
+            segments = message_segments
+            seg_word_counts = [len(s.split()) for s in segments]
+            start = 0
+            n = len(segments)
+            while start < n:
+                end = start
+                words_in_chunk = 0
+                while end < n and (
+                    words_in_chunk + seg_word_counts[end] <= word_chunk_size or end == start
+                ):
+                    words_in_chunk += seg_word_counts[end]
+                    end += 1
+                chunk_text = "\n\n".join(segments[start:end])
+                if len(chunk_text.encode("utf-8")) > max_bytes:
+                    final_chunks.extend(
+                        self._chunk_text(
+                            chunk_text,
+                            chunk_size=word_chunk_size,
+                            overlap=word_overlap,
+                        )
+                    )
+                else:
+                    final_chunks.append(chunk_text)
+
+                overlap_words = 0
+                overlap_end = end
+                while overlap_end > start and overlap_words < word_overlap:
+                    overlap_end -= 1
+                    if overlap_end == 0:
+                        break
+                    overlap_words += seg_word_counts[overlap_end]
+                if overlap_end <= start:
+                    start = end
+                else:
+                    start = overlap_end
         else:
-            for i in range(0, len(words), word_chunk_size - word_overlap):
-                chunk_words = words[i:min(i + word_chunk_size, len(words))]
-                if chunk_words:  # Ensure we don't add empty chunks
-                    initial_word_chunks.append(' '.join(chunk_words))
+            words = original_text.split()
+            if not words:
+                return []
 
-        if not initial_word_chunks:
-            return []
+            index = 0
+            while index < len(words):
+                chunk_words = words[index : index + word_chunk_size]
+                chunk = " ".join(chunk_words)
+                if len(chunk.encode("utf-8")) > max_bytes:
+                    # fallback to smaller byte-based chunks
+                    sub_words = []
+                    sub_bytes = 0
+                    for w in chunk_words:
+                        b = len(w.encode("utf-8"))
+                        space = 1 if sub_words else 0
+                        if sub_bytes + b + space > max_bytes:
+                            final_chunks.append(" ".join(sub_words))
+                            sub_words = [w]
+                            sub_bytes = b
+                        else:
+                            sub_words.append(w)
+                            sub_bytes += b + space
+                    if sub_words:
+                        final_chunks.append(" ".join(sub_words))
+                else:
+                    final_chunks.append(chunk)
 
-        # Further split chunks if they exceed byte limit
-        final_chunks = []
-        for word_chunk in initial_word_chunks:
-            if not word_chunk.strip():
-                continue
-            
-            chunk_bytes = len(word_chunk.encode('utf-8'))
+                index += word_chunk_size - word_overlap
 
-            if chunk_bytes <= max_bytes:
-                final_chunks.append(word_chunk)
-            else:
-                # Byte-based splitting for oversized chunks
-                sub_words = word_chunk.split()
-                current_sub_chunk_words = []
-                current_sub_chunk_bytes = 0
-                
-                for sub_word in sub_words:
-                    sub_word_bytes = len(sub_word.encode('utf-8'))
-                    # Add 1 byte for space, unless it's the first word in the sub_chunk
-                    space_bytes = 1 if current_sub_chunk_words else 0
+        final_chunks = [c for c in final_chunks if c and c.strip()]
 
-                    if current_sub_chunk_bytes + sub_word_bytes + space_bytes > max_bytes:
-                        if current_sub_chunk_words: # Add the current sub-chunk if it's not empty
-                            final_chunks.append(' '.join(current_sub_chunk_words))
-                        # Start a new sub-chunk
-                        current_sub_chunk_words = [sub_word]
-                        current_sub_chunk_bytes = sub_word_bytes
-                    else:
-                        current_sub_chunk_words.append(sub_word)
-                        current_sub_chunk_bytes += sub_word_bytes + space_bytes
-                
-                # Add any remaining part of the sub-chunk
-                if current_sub_chunk_words:
-                    final_chunks.append(' '.join(current_sub_chunk_words))
-        
-        # Filter out any empty strings that might have been produced
-        final_chunks = [chunk for chunk in final_chunks if chunk and chunk.strip()]
-        
-        # Validate that no content was lost during chunking
-        reconstructed_text = ' '.join(final_chunks)
+        reconstructed_text = " ".join(final_chunks)
         original_words_set = set(original_text.split())
         reconstructed_words_set = set(reconstructed_text.split())
-        
         if original_words_set != reconstructed_words_set:
             missing_words = original_words_set - reconstructed_words_set
             extra_words = reconstructed_words_set - original_words_set
-            
             if missing_words:
-                logger.error(f"Content validation failed: {len(missing_words)} words lost during chunking: {list(missing_words)[:10]}...")
+                logger.error(
+                    f"Content validation failed: {len(missing_words)} words lost during chunking: {list(missing_words)[:10]}..."
+                )
             if extra_words:
-                logger.warning(f"Content validation warning: {len(extra_words)} extra words found during chunking: {list(extra_words)[:10]}...")
+                logger.warning(
+                    f"Content validation warning: {len(extra_words)} extra words found during chunking: {list(extra_words)[:10]}..."
+                )
         else:
-            logger.debug(f"Content validation passed: All {len(original_words_set)} unique words preserved in {len(final_chunks)} chunks")
-        
+            logger.debug(
+                f"Content validation passed: All {len(original_words_set)} unique words preserved in {len(final_chunks)} chunks"
+            )
+
         return final_chunks
 
     def cleanup_empty_documents(self):
@@ -766,7 +790,9 @@ class DocumentManager:
         if empty_docs_uuids: self._save_to_disk()
         return empty_docs_uuids
 
-    async def add_document(self, original_name: str, content: str, save_to_disk: bool = True, existing_uuid: Optional[str] = None, _internal_call: bool = False, contextualize: bool = True) -> Optional[str]:
+    async def add_document(self, original_name: str, content: str, save_to_disk: bool = True,
+                           existing_uuid: Optional[str] = None, _internal_call: bool = False,
+                           contextualize: bool = True, message_segments: Optional[List[str]] = None) -> Optional[str]:
         try:
             doc_uuid = existing_uuid or str(uuid.uuid4())
             is_update = bool(existing_uuid and doc_uuid in self.metadata)
@@ -782,7 +808,7 @@ class DocumentManager:
             doc_file_path = self.base_dir / f"{doc_uuid}.txt"
             word_count = len(content.split())
             max_words_ctx = self.config.MAX_WORDS_FOR_CONTEXT if self.config and hasattr(self.config, 'MAX_WORDS_FOR_CONTEXT') else 20000
-            chunks = self._chunk_text(content)
+            chunks = self._chunk_text(content, message_segments=message_segments)
             if not chunks: return doc_uuid if is_update else None
 
             current_hash = hashlib.md5(content.encode('utf-8')).hexdigest()

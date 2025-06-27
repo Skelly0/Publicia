@@ -9,6 +9,7 @@ import json
 import os
 
 import asyncio
+from typing import List
 from utils.helpers import check_permissions, sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,8 @@ def save_tracked_channels(data):
         json.dump(data, f, indent=4)
 
 # Helper to fetch a channel's entire history and return formatted text
-async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int]:
-    """Return formatted archive text and message count for the channel."""
+async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int, List[str]]:
+    """Return formatted archive text, message count, and message segments."""
     all_messages = [m async for m in channel.history(limit=None)]
 
     if not all_messages:
@@ -37,17 +38,16 @@ async def _build_channel_archive(channel: discord.TextChannel) -> tuple[str, int
             f"# Archive of channel: {channel.name}\n"
             "(Channel is empty)"
         )
-        return content, 0
+        return content, 0, []
 
     # sort oldest -> newest
     all_messages.sort(key=lambda m: m.created_at)
 
-    archive = f"# Archive of channel: {channel.name}\n"
-    for msg in all_messages:
-        author = msg.author.display_name
-        archive += f"\n{author}:\n    {msg.content}\n"
+    archive_header = f"# Archive of channel: {channel.name}"
+    segments = [f"{msg.author.display_name}:\n    {msg.content}" for msg in all_messages]
+    archive = archive_header + "\n\n" + "\n\n".join(segments) + "\n"
 
-    return archive, len(all_messages)
+    return archive, len(all_messages), segments
 
 # Background task for updating tracked channels (moved to module level)
 @tasks.loop(hours=6)
@@ -71,7 +71,7 @@ async def update_tracked_channels(bot_instance):
             logger.info(
                 f"Redownloading entire history for channel {channel.name} ({channel_id})..."
             )
-            archive_content, msg_count = await _build_channel_archive(channel)
+            archive_content, msg_count, segments = await _build_channel_archive(channel)
 
             meta_name = bot_instance.document_manager.metadata.get(
                 doc_uuid, {}
@@ -84,6 +84,7 @@ async def update_tracked_channels(bot_instance):
                 content=archive_content,
                 existing_uuid=doc_uuid,
                 contextualize=True,
+                message_segments=[f"# Archive of channel: {channel.name}"] + segments
             )
 
             if update_success:
@@ -125,10 +126,13 @@ def register_commands(bot):
             f"Performing initial archive of {channel.mention}..."
         )
 
-        initial_content, msg_count = await _build_channel_archive(channel)
+        initial_content, msg_count, segments = await _build_channel_archive(channel)
 
         doc_uuid = await bot.document_manager.add_document(
-            original_name=doc_name, content=initial_content, contextualize=True
+            original_name=doc_name,
+            content=initial_content,
+            contextualize=True,
+            message_segments=[f"# Archive of channel: {channel.name}"] + segments
         )
 
         if not doc_uuid:
