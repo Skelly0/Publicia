@@ -478,6 +478,7 @@ def register_commands(bot):
                         multi_turn=False,
                         interaction_type="slash_command",
                         context=context_info,
+                        model_used=actual_model,
                     )
                 else:
                     logger.error(f"Unexpected response structure: {completion}")
@@ -703,6 +704,7 @@ def register_commands(bot):
                         multi_turn=False,
                         interaction_type="slash_command",
                         context=context_info,
+                        model_used=actual_model or target_models[0],
                     )
                 else:
                     logger.error(f"Unexpected response structure from full context query: {completion}")

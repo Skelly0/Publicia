@@ -102,7 +102,8 @@ from typing import Optional, Dict, Any
 
 def log_qa_pair(question: str, response: str, username: str, channel: str = None,
                 multi_turn: bool = False, interaction_type: str = 'message',
-                context: Optional[Dict[str, Any]] = None):
+                context: Optional[Dict[str, Any]] = None,
+                model_used: Optional[str] = None):
     """Append a question/response pair to the QA log.
 
     Parameters
@@ -122,6 +123,8 @@ def log_qa_pair(question: str, response: str, username: str, channel: str = None
     context: dict, optional
         Additional context information about the request, such as number of
         chunks or whether images were included.
+    model_used: str, optional
+        The model that generated the response.
     """
     entry = {
         'timestamp': datetime.now().isoformat(),
@@ -132,6 +135,8 @@ def log_qa_pair(question: str, response: str, username: str, channel: str = None
         'question': sanitize_for_logging(question),
         'response': sanitize_for_logging(response)
     }
+    if model_used:
+        entry['model_used'] = sanitize_for_logging(model_used)
     if context:
         sanitized_context = {}
         for key, value in context.items():
