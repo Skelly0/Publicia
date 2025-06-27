@@ -50,6 +50,11 @@ def sanitize_filename(filename: str) -> str:
     return filename
 
 
+def xml_wrap(tag: str, content: str) -> str:
+    """Wrap content in simple XML tags for structured context."""
+    return f"<{tag}>{content}</{tag}>"
+
+
 async def check_permissions(ctx):
     """
     Check if a user has permissions for a command, compatible with both

@@ -13,7 +13,7 @@ import json
 import os
 import urllib.parse # Moved import to top level
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
-from utils.helpers import split_message, check_permissions # Added check_permissions import
+from utils.helpers import split_message, check_permissions, xml_wrap
 from utils.logging import log_qa_pair
 # Import both system prompts and the new functions
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
@@ -230,7 +230,10 @@ def register_commands(bot):
             raw_doc_context = "\n\n".join(raw_doc_contexts)
             messages.append({
                 "role": "system",
-                "content": f"Raw document context (with citation links):\n{raw_doc_context}"
+                "content": xml_wrap(
+                    "document_context",
+                    f"Raw document context (with citation links):\n{raw_doc_context}",
+                ),
             })
 
             # Add fetched Google Doc content if available
@@ -238,7 +241,10 @@ def register_commands(bot):
                 google_docs_content = "\n\n".join(google_doc_context)
                 messages.append({
                     "role": "system",
-                    "content": f"Content from Google Docs linked in the query:\n\n{google_docs_content}"
+                    "content": xml_wrap(
+                        "google_docs_context",
+                        f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
+                    ),
                 })
 
             # --- Add Keyword Context ---
@@ -283,7 +289,7 @@ def register_commands(bot):
 
                     messages.append({
                         "role": "system",
-                        "content": keyword_context_str
+                        "content": xml_wrap("keyword_context", keyword_context_str),
                     })
                     logger.debug(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords) to /query.")
             # --- End Keyword Context ---
@@ -291,7 +297,10 @@ def register_commands(bot):
             # Add the query itself
             messages.append({
                 "role": "user",
-                "content": f"You are responding to a message in the Discord channel: {channel_name}"
+                "content": xml_wrap(
+                    "channel_info",
+                    f"You are responding to a message in the Discord channel: {channel_name}",
+                ),
             })
             
             # --- Vision Fallback Handling ---
@@ -318,7 +327,10 @@ def register_commands(bot):
                 
                 messages.append({
                     "role": "system",
-                    "content": f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message."
+                    "content": xml_wrap(
+                        "image_summary",
+                        f"The query has {total_images} relevant images ({', '.join(img_source)}). If you are a vision-capable model, you will see these images in the user's message.",
+                    ),
                 })
 
             messages.append({
@@ -410,7 +422,7 @@ def register_commands(bot):
                     # Add to messages array
                     messages.append({
                         "role": "system",
-                        "content": channel_context
+                        "content": xml_wrap("channel_context", channel_context),
                     })
                     
                     logger.debug(f"Added {len(channel_messages)} channel messages to context")
@@ -580,7 +592,10 @@ def register_commands(bot):
             if pronouns:
                 pronoun_context_message = {
                     "role": "system",
-                    "content": f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user."
+                    "content": xml_wrap(
+                        "user_pronouns",
+                        f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user.",
+                    ),
                 }
 
             # Get document list content and use standard system prompt with documents
@@ -594,10 +609,19 @@ def register_commands(bot):
                 # Full document context
                 {
                     "role": "system",
-                    "content": f"Full document context follows {'(truncated)' if truncated else ''}:\n\n{full_context_str}"
+                    "content": xml_wrap(
+                        "document_context_full",
+                        f"Full document context follows {'(truncated)' if truncated else ''}:\n\n{full_context_str}",
+                    ),
                 },
                 # User query context
-                {"role": "user", "content": f"You are responding to a message in the Discord channel: {channel_name}"},
+                {
+                    "role": "user",
+                    "content": xml_wrap(
+                        "channel_info",
+                        f"You are responding to a message in the Discord channel: {channel_name}",
+                    ),
+                },
                 {"role": "user", "content": f"{nickname}: {question}"}
             ]
 

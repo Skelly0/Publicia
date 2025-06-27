@@ -28,7 +28,13 @@ import sys
 
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
 from prompts.image_prompt import IMAGE_DESCRIPTION_PROMPT
-from utils.helpers import check_permissions, is_image, split_message, sanitize_filename # Added sanitize_filename
+from utils.helpers import (
+    check_permissions,
+    is_image,
+    split_message,
+    sanitize_filename,
+    xml_wrap,
+)
 from utils.logging import sanitize_for_logging, log_qa_pair
 from managers.keywords import KeywordManager # Added import
 # Import the docx processing function and availability flag
@@ -954,10 +960,11 @@ class DiscordBot(commands.Bot):
         
         if descriptions:
             # Create a new system message with the descriptions
-            description_context = (
+            description_context = xml_wrap(
+                "image_description",
                 "The user provided one or more images that your current model cannot see. "
                 "A vision-capable model has generated the following descriptions for you to use as context:\n\n"
-                + "\n\n".join(descriptions)
+                + "\n\n".join(descriptions),
             )
             
             # Insert this context into the messages list
@@ -2057,7 +2064,7 @@ class DiscordBot(commands.Bot):
                 logger.warning(f"Channel context truncated to {max_channel_context_len} characters.")
 
             logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
-            return formatted_channel_context.strip()
+            return xml_wrap("channel_context", formatted_channel_context.strip())
 
         except Exception as fetch_err:
             logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
@@ -2578,20 +2585,21 @@ class DiscordBot(commands.Bot):
                 logger.debug(f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}")
                 pronoun_context_message = {
                     "role": "system",
-                    "content": f"""User Information: The users nickname is: {nickname}. 
-                    The user provided this pronoun string: "{pronouns}".
-
-                    Your job:
-                    1. split that string on “/” into segments.
-                        - subject = segment[0]
-                        - object  = segment[1] if it exists, else subject
-                        - possessive = segment[2] if it exists, else object
-                    2. whenever you talk *about* the player in third-person, use those pronouns.
-                    3. when you talk directly *to* the player, always say “you.”
-                    4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.
-                    5. do NOT reference the pronouns directly, work them in naturally
-                    if parsing fails, fall back to they/them/theirs.
-                    """
+                    "content": xml_wrap(
+                        "user_pronouns",
+                        f"""User Information: The users nickname is: {nickname}.\n"
+                        f"The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "Your job:\n"
+                        "1. split that string on “/” into segments.\n"
+                        "    - subject = segment[0]\n"
+                        "    - object  = segment[1] if it exists, else subject\n"
+                        "    - possessive = segment[2] if it exists, else object\n"
+                        "2. whenever you talk *about* the player in third-person, use those pronouns.\n"
+                        "3. when you talk directly *to* the player, always say “you.”\n"
+                        "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
+                        "5. do NOT reference the pronouns directly, work them in naturally\n"
+                        "if parsing fails, fall back to they/them/theirs.",
+                    ),
                 }
             else:
                  logger.debug(f"User {message.author.id} ({nickname}) has no pronouns set.")
@@ -2654,7 +2662,10 @@ class DiscordBot(commands.Bot):
                 role_context = "your previous message" if ref_author == self.user else f"a message from {reply_author_name}" # Use the determined name
                 messages.append({
                     "role": "system",
-                    "content": f"The user is replying to {role_context}: \"{ref_content}\"{attachment_info}"
+                    "content": xml_wrap(
+                        "reply_context",
+                        f"The user is replying to {role_context}: \"{ref_content}\"{attachment_info}",
+                    ),
                 })
                 
                 # Add the referenced message to the conversation history temporarily
@@ -2679,7 +2690,10 @@ class DiscordBot(commands.Bot):
                     logger.warning(f"Raw document context truncated to {max_raw_context_len} characters.")
                 messages.append({
                     "role": "system",
-                    "content": f"Raw document context (with citation links):\n{raw_doc_context_combined}"
+                    "content": xml_wrap(
+                        "document_context",
+                        f"Raw document context (with citation links):\n{raw_doc_context_combined}",
+                    ),
                 })
 
             # Add fetched Google Doc content if available
@@ -2687,7 +2701,10 @@ class DiscordBot(commands.Bot):
                 google_docs_content = "\n\n".join(google_doc_context_str)
                 messages.append({
                     "role": "system",
-                    "content": f"Content from Google Docs linked in the query:\n\n{google_docs_content}"
+                    "content": xml_wrap(
+                        "google_docs_context",
+                        f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
+                    ),
                 })
 
             # Add channel context
@@ -2698,7 +2715,10 @@ class DiscordBot(commands.Bot):
             )
             messages.append({
                 "role": "system",
-                "content": f"You are responding to a message in the Discord channel: {channel_name}{description_note}"
+                "content": xml_wrap(
+                    "channel_info",
+                    f"You are responding to a message in the Discord channel: {channel_name}{description_note}",
+                ),
             })
 
             # --- Add Keyword Context ---
@@ -2728,7 +2748,7 @@ class DiscordBot(commands.Bot):
 
                     messages.append({
                         "role": "system",
-                        "content": keyword_context_str
+                        "content": xml_wrap("keyword_context", keyword_context_str),
                     })
                     logger.debug(f"Added context for {definitions_count} keyword definitions (from {len(found_keywords_in_chunks)} unique keywords).")
             # --- End Keyword Context ---
@@ -2742,7 +2762,10 @@ class DiscordBot(commands.Bot):
                 if referenced_image_attachments: img_source_parts.append(f"{len(referenced_image_attachments)} from reply")
                 messages.append({
                     "role": "system",
-                    "content": f"The query context includes {total_api_images} image{'s' if total_api_images > 1 else ''} ({', '.join(img_source_parts)}). Vision models will see these in the user message."
+                    "content": xml_wrap(
+                        "image_summary",
+                        f"The query context includes {total_api_images} image{'s' if total_api_images > 1 else ''} ({', '.join(img_source_parts)}). Vision models will see these in the user message.",
+                    ),
                 })
 
             # Finally, add the user's actual message
