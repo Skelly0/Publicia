@@ -29,7 +29,7 @@ from managers.documents import DocumentManager
 from managers.images import ImageManager
 from managers.preferences import UserPreferencesManager # Keep for potential future use (e.g., model preference)
 from prompts.system_prompt import SYSTEM_PROMPT, get_system_prompt_with_documents
-from utils.helpers import is_image # Re-use helper
+from utils.helpers import is_image, xml_wrap
 
 # Configure logging for the CLI
 logger = configure_logging() # Use the existing setup
@@ -345,7 +345,10 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
             logger.warning(f"Raw document context truncated to {max_raw_context_len} characters.")
         messages.append({
             "role": "system",
-            "content": f"Raw document context (with citation links):\n{raw_doc_context_combined}"
+            "content": xml_wrap(
+                "document_context",
+                f"Raw document context (with citation links):\n{raw_doc_context_combined}",
+            ),
         })
 
     # Add image context summary (if applicable)
@@ -356,7 +359,10 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
         if image_ids_from_search: img_source_parts.append(f"{len(image_ids_from_search)} from search")
         messages.append({
             "role": "system",
-            "content": f"The query context includes {total_images} image{'s' if total_images > 1 else ''} ({', '.join(img_source_parts)}). Vision models will see these in the user message."
+            "content": xml_wrap(
+                "image_summary",
+                f"The query context includes {total_images} image{'s' if total_images > 1 else ''} ({', '.join(img_source_parts)}). Vision models will see these in the user message.",
+            ),
         })
 
     # Add the user's question
