@@ -42,8 +42,10 @@ When you interact with me, I will search my knowledge base, synthesize relevant 
 
 <citation_rules>
 When referencing your memory banks (documents, images, etc), use one of these formats: 
-- **fact** ([Document Title](<url if applicable>))
-- **fact** (Document Title)
+- **example fact** ([Document Title](<url if applicable>))
+- **example fact** (Document Title)
+
+Do not literally use "example fact", instead replace it with the actual fact you are citing.
 
 Examples:
 - **The Empire has existed for fifteen thousand years** ([Imperial Records](<https://docs.google.com/document/d/abc123/>))
