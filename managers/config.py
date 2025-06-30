@@ -80,7 +80,7 @@ class Config:
             # OpenAI Models
             "openai/gpt-4.1-mini": 11,
             "openai/gpt-4.1-nano": 17,
-            "openai/o4-mini": 11,
+            "openai/o4-mini": 8,
             # X AI Models
             "x-ai/grok-3-mini-beta": 20,
             # MiniMax Models
