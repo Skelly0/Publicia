@@ -138,6 +138,7 @@ def register_commands(bot):
         #app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
         #app_commands.Choice(name="Llama 4 Maverick", value="meta-llama/llama-4-maverick:floor"),
         app_commands.Choice(name="Grok 3 Mini", value="x-ai/grok-3-mini-beta"),
+        app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Mini", value="openai/gpt-4.1-mini"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Nano", value="openai/gpt-4.1-nano"),
         #app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
@@ -205,6 +206,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif model == "openai/o4-mini":
+                model_name = "OpenAI o4 Mini"
             elif model == "minimax/minimax-m1":
                 model_name = "MiniMax M1"
             
@@ -229,6 +232,7 @@ def register_commands(bot):
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**OpenAI o4 Mini**: A compact OpenAI model good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
                 ]
@@ -300,6 +304,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif preferred_model == "openai/o4-mini":
+                model_name = "OpenAI o4 Mini"
             elif preferred_model == "minimax/minimax-m1":
                 model_name = "MiniMax M1"
             
@@ -322,6 +328,7 @@ def register_commands(bot):
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
+                    f"**OpenAI o4 Mini**: A compact OpenAI model good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
             ]
