@@ -390,6 +390,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif preferred_model == "openai/o4-mini":
+                model_name = "OpenAI o4 Mini"
             elif preferred_model == "minimax/minimax-m1":
                 model_name = "MiniMax M1"
 
