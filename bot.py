@@ -1551,6 +1551,11 @@ class DiscordBot(commands.Bot):
         - Lower (TEMPERATURE_MIN-TEMPERATURE_BASE) for factual/information queries 
         - Higher (TEMPERATURE_BASE-TEMPERATURE_MAX) for creative/roleplay scenarios
         - Base of TEMPERATURE_BASE for balanced queries
+
+        Returns
+        -------
+        Tuple[float, float, float, float]
+            (temperature, min_temp, base_temp, max_temp)
         """
         # Get temperature constants from config
         BASE_TEMP = self.config.TEMPERATURE_BASE
@@ -1663,7 +1668,10 @@ class DiscordBot(commands.Bot):
         
         # If both scores are very low, use base temperature
         if roleplay_score < 0.5 and information_score < 0.5:
-            return BASE_TEMP
+            logger.debug(
+                f"Temperature settings - min: {MIN_TEMP}, base: {BASE_TEMP}, max: {MAX_TEMP}, used: {BASE_TEMP}"
+            )
+            return BASE_TEMP, MIN_TEMP, BASE_TEMP, MAX_TEMP
         
         # Calculate ratio of roleplay vs information
         total_score = roleplay_score + information_score
@@ -1680,9 +1688,14 @@ class DiscordBot(commands.Bot):
         temperature = max(MIN_TEMP, min(MAX_TEMP, temperature))
         
         # Log for debugging
-        logger.info(f"Query temp analysis: '{query[:30]}...' - Roleplay: {roleplay_score:.1f}, Info: {information_score:.1f}, Temp: {temperature:.2f} [Range: {MIN_TEMP}-{MAX_TEMP}]")        
-        
-        return temperature
+        logger.info(
+            f"Query temp analysis: '{query[:30]}...' - Roleplay: {roleplay_score:.1f}, Info: {information_score:.1f}, Temp: {temperature:.2f} [Range: {MIN_TEMP}-{BASE_TEMP}-{MAX_TEMP}]"
+        )
+        logger.debug(
+            f"Temperature settings - min: {MIN_TEMP}, base: {BASE_TEMP}, max: {MAX_TEMP}, used: {temperature}"
+        )
+
+        return temperature, MIN_TEMP, BASE_TEMP, MAX_TEMP
 
     def is_context_dependent_query(self, query: str) -> bool:
         """Determine if a query likely depends on conversation context."""
@@ -2859,7 +2872,7 @@ class DiscordBot(commands.Bot):
             await thinking_msg.edit(content=status_update)
 
             # Calculate dynamic temperature
-            temperature = self.calculate_dynamic_temperature(
+            temperature, t_min, t_base, t_max = self.calculate_dynamic_temperature(
                 original_question,  # Use original question for temperature calculation
                 conversation_messages,
                 user_id=str(message.author.id)
@@ -2941,6 +2954,10 @@ class DiscordBot(commands.Bot):
                         for _, name, _, _, _, idx, _ in search_results
                     ],
                     "channel_messages": channel_message_count,
+                    "temperature_min": t_min,
+                    "temperature_base": t_base,
+                    "temperature_max": t_max,
+                    "temperature_used": temperature,
                 }
 
                 log_qa_pair(
@@ -2952,6 +2969,10 @@ class DiscordBot(commands.Bot):
                     interaction_type="message",
                     context=context_info,
                     model_used=actual_model,
+                    temperature=temperature,
+                    temperature_min=t_min,
+                    temperature_base=t_base,
+                    temperature_max=t_max,
                 )
 
                 # Send the response, replacing thinking message

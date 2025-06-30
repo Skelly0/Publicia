@@ -100,10 +100,20 @@ QA_LOG_FILE = 'qa_log.jsonl'
 from typing import Optional, Dict, Any
 
 
-def log_qa_pair(question: str, response: str, username: str, channel: str = None,
-                multi_turn: bool = False, interaction_type: str = 'message',
-                context: Optional[Dict[str, Any]] = None,
-                model_used: Optional[str] = None):
+def log_qa_pair(
+    question: str,
+    response: str,
+    username: str,
+    channel: str = None,
+    multi_turn: bool = False,
+    interaction_type: str = 'message',
+    context: Optional[Dict[str, Any]] = None,
+    model_used: Optional[str] = None,
+    temperature: Optional[float] = None,
+    temperature_min: Optional[float] = None,
+    temperature_base: Optional[float] = None,
+    temperature_max: Optional[float] = None,
+):
     """Append a question/response pair to the QA log.
 
     Parameters
@@ -125,6 +135,14 @@ def log_qa_pair(question: str, response: str, username: str, channel: str = None
         chunks or whether images were included.
     model_used: str, optional
         The model that generated the response.
+    temperature: float, optional
+        The actual temperature used for the response.
+    temperature_min: float, optional
+        The minimum allowed temperature at the time of generation.
+    temperature_base: float, optional
+        The base (default) temperature.
+    temperature_max: float, optional
+        The maximum allowed temperature at the time of generation.
     """
     entry = {
         'timestamp': datetime.now().isoformat(),
@@ -137,6 +155,14 @@ def log_qa_pair(question: str, response: str, username: str, channel: str = None
     }
     if model_used:
         entry['model_used'] = sanitize_for_logging(model_used)
+    if temperature is not None:
+        entry['temperature'] = temperature
+    if temperature_min is not None:
+        entry['temperature_min'] = temperature_min
+    if temperature_base is not None:
+        entry['temperature_base'] = temperature_base
+    if temperature_max is not None:
+        entry['temperature_max'] = temperature_max
     if context:
         sanitized_context = {}
         for key, value in context.items():
