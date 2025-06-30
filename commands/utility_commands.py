@@ -32,7 +32,7 @@ def register_commands(bot):
                 "Lore Queries": ["query", "query_full_context"],
                 "Document Management": ["list_docs", "search_docs", "search_keyword", "search_keyword_bm25", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
-                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "help", "whats_new"],
+                "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "temperature", "help", "whats_new"],
                 "Context/Memory Management": ["parse_channel", "history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]
             }
 
@@ -400,7 +400,7 @@ def register_commands(bot):
             response += "I offer commands for:\n"
             response += "- **Document & Image Management:** Adding, listing, removing, searching, summarizing docs/images.\n"
             response += "- **Conversation Management:** Viewing, deleting, archiving, and swapping conversation history.\n"
-            response += "- **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting your preferred pronouns.\n\n"
+            response += "- **Customization:** Setting preferred AI models, toggling debug/prompt modes, setting your preferred pronouns, and customizing temperature ranges.\n\n"
             response += "**For a full list of all commands and their descriptions, please use the `/list_commands` command.**\n\n"
 
             # Tips
@@ -896,6 +896,73 @@ def register_commands(bot):
         except Exception as e:
             logger.error("Error in /pronouns command for user %s (%s): %s", interaction.user.name, interaction.user.id, e, exc_info=True)
             await interaction.followup.send("*neural circuit overload!* An error occurred while setting your pronouns.")
+
+
+    @bot.tree.command(name="temperature", description="Set your custom temperature range")
+    @app_commands.describe(
+        temp_min="Minimum temperature",
+        temp_base="Base temperature",
+        temp_max="Maximum temperature",
+    )
+    async def set_temperature_command(
+        interaction: discord.Interaction,
+        temp_min: float | None = None,
+        temp_base: float | None = None,
+        temp_max: float | None = None,
+    ):
+        """Sets or resets the user's temperature preferences."""
+        await interaction.response.defer()
+        try:
+            user_id = str(interaction.user.id)
+
+            if temp_min is None and temp_base is None and temp_max is None:
+                # Reset to defaults
+                success = bot.user_preferences_manager.clear_temperature_settings(user_id)
+                if success:
+                    await interaction.followup.send(
+                        "*preference updated!* Temperature settings reset to defaults."
+                    )
+                else:
+                    await interaction.followup.send(
+                        "*synaptic error detected!* Failed to reset your temperature preferences. Please try again later."
+                    )
+                return
+
+            if None in (temp_min, temp_base, temp_max):
+                await interaction.followup.send(
+                    "*invalid input!* Provide min, base, and max values or omit all to reset."
+                )
+                return
+
+            if not (0.0 <= temp_min <= temp_max <= 2.0) or not (temp_min <= temp_base <= temp_max):
+                await interaction.followup.send(
+                    "*invalid input!* Ensure 0.0 ≤ min ≤ base ≤ max ≤ 2.0."
+                )
+                return
+
+            success = bot.user_preferences_manager.set_temperature_settings(
+                user_id, temp_min, temp_base, temp_max
+            )
+
+            if success:
+                await interaction.followup.send(
+                    f"*preference updated!* Temperature range set to min **{temp_min}**, base **{temp_base}**, max **{temp_max}**."
+                )
+            else:
+                await interaction.followup.send(
+                    "*synaptic error detected!* Failed to set your temperature preferences. Please try again later."
+                )
+        except Exception as e:
+            logger.error(
+                "Error in /temperature command for user %s (%s): %s",
+                interaction.user.name,
+                interaction.user.id,
+                e,
+                exc_info=True,
+            )
+            await interaction.followup.send(
+                "*neural circuit overload!* An error occurred while setting your temperature preferences."
+            )
 
 
     @bot.tree.command(name="parse_channel", description="Toggle parsing of channel messages for context")

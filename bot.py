@@ -1539,7 +1539,7 @@ class DiscordBot(commands.Bot):
         )
         return None, None  # Return None for both completion and model used
 
-    def calculate_dynamic_temperature(self, query: str, conversation_history=None):
+    def calculate_dynamic_temperature(self, query: str, conversation_history=None, user_id: str | None = None):
         """
         Calculates appropriate temperature based on query type:
         - Lower (TEMPERATURE_MIN-TEMPERATURE_BASE) for factual/information queries 
@@ -1550,6 +1550,31 @@ class DiscordBot(commands.Bot):
         BASE_TEMP = self.config.TEMPERATURE_BASE
         MIN_TEMP = self.config.TEMPERATURE_MIN
         MAX_TEMP = self.config.TEMPERATURE_MAX
+
+        # Override with user-specific settings if available
+        if user_id and self.user_preferences_manager:
+            t_min, t_base, t_max = self.user_preferences_manager.get_temperature_settings(str(user_id))
+            if None not in (t_min, t_base, t_max):
+                if 0.0 <= t_min <= t_base <= t_max <= 2.0:
+                    MIN_TEMP = t_min
+                    BASE_TEMP = t_base
+                    MAX_TEMP = t_max
+                else:
+                    logger.warning(
+                        "Ignoring invalid stored temperature range for %s: %s/%s/%s",
+                        user_id,
+                        t_min,
+                        t_base,
+                        t_max,
+                    )
+            else:
+                # Update only values that are explicitly set
+                if t_min is not None:
+                    MIN_TEMP = t_min
+                if t_base is not None:
+                    BASE_TEMP = t_base
+                if t_max is not None:
+                    MAX_TEMP = t_max
         
         # Normalize query
         query = query.lower().strip()
@@ -2829,8 +2854,9 @@ class DiscordBot(commands.Bot):
 
             # Calculate dynamic temperature
             temperature = self.calculate_dynamic_temperature(
-                original_question, # Use original question for temperature calculation
-                conversation_messages
+                original_question,  # Use original question for temperature calculation
+                conversation_messages,
+                user_id=str(message.author.id)
             )
 
             # Check if the original message still exists before generating response

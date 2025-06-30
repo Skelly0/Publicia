@@ -200,6 +200,84 @@ class UserPreferencesManager:
             logger.error(f"Error setting pronouns preference for {user_id}: {e}")
             return False
 
+    def get_temperature_settings(self, user_id: str) -> Tuple[float | None, float | None, float | None]:
+        """Get the user's custom temperature settings."""
+        file_path = self.get_file_path(user_id)
+        if not os.path.exists(file_path):
+            return (None, None, None)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+                return (
+                    preferences.get("temperature_min"),
+                    preferences.get("temperature_base"),
+                    preferences.get("temperature_max"),
+                )
+        except Exception as e:
+            logger.error(f"Error reading temperature settings for {user_id}: {e}")
+            return (None, None, None)
+
+    def set_temperature_settings(self, user_id: str, temp_min: float, temp_base: float, temp_max: float) -> bool:
+        """Set the user's custom temperature settings."""
+        try:
+            if not (0.0 <= temp_min <= temp_max <= 2.0) or not (temp_min <= temp_base <= temp_max):
+                logger.warning(
+                    "Rejected invalid temperature range for %s: %s/%s/%s",
+                    user_id,
+                    temp_min,
+                    temp_base,
+                    temp_max,
+                )
+                return False
+
+            file_path = self.get_file_path(user_id)
+            preferences = {}
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as file:
+                        preferences = json.load(file)
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"Invalid JSON in {file_path} for user {user_id}. Overwriting."
+                    )
+                    preferences = {}
+
+            preferences["temperature_min"] = temp_min
+            preferences["temperature_base"] = temp_base
+            preferences["temperature_max"] = temp_max
+
+            with open(file_path, 'w', encoding='utf-8') as file:
+                json.dump(preferences, file, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error setting temperature settings for {user_id}: {e}")
+            return False
+
+    def clear_temperature_settings(self, user_id: str) -> bool:
+        """Remove temperature settings so defaults are used."""
+        try:
+            file_path = self.get_file_path(user_id)
+            if not os.path.exists(file_path):
+                return True  # Nothing to clear
+
+            with open(file_path, 'r', encoding='utf-8') as file:
+                preferences = json.load(file)
+
+            preferences.pop("temperature_min", None)
+            preferences.pop("temperature_base", None)
+            preferences.pop("temperature_max", None)
+
+            if preferences:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    json.dump(preferences, file, indent=2)
+            else:
+                os.remove(file_path)
+
+            return True
+        except Exception as e:
+            logger.error(f"Error clearing temperature settings for {user_id}: {e}")
+            return False
+
     def get_last_full_context_usage(self, user_id: str) -> str | None:
         """Get the timestamp of the last full context query usage."""
         file_path = self.get_file_path(user_id)

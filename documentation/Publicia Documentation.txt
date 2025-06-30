@@ -567,10 +567,11 @@ Configure the hybrid search system for optimal performance:
 
 The bot uses dynamic temperature control based on query type:
 
-- Edit TEMPERATURE_MIN (default: 0.0) for factual queries
-- Edit TEMPERATURE_BASE (default: 0.1) for balanced queries
-- Edit TEMPERATURE_MAX (default: 0.4) for creative roleplay
-- The bot automatically analyzes queries and conversation context to select appropriate temperature
+- Edit `TEMPERATURE_MIN` (default: 0.0) for factual queries
+- Edit `TEMPERATURE_BASE` (default: 0.1) for balanced queries
+- Edit `TEMPERATURE_MAX` (default: 0.4) for creative roleplay
+- You can override these values per user with the `/temperature` command (values must satisfy `0.0 ≤ min ≤ base ≤ max ≤ 2.0`; call with no values to reset to defaults)
+- The bot automatically analyzes queries and conversation context to select an appropriate temperature
 
 ### Reranking Configuration
 
