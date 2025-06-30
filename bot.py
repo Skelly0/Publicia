@@ -105,6 +105,7 @@ class DiscordBot(commands.Bot):
             "meta-llama/llama-4-maverick:floor",
             "openai/gpt-4.1-mini",
             "openai/gpt-4.1-nano",
+            "openai/o4-mini",
         ]
 
         # Log every command invocation to the console by overriding the
@@ -1157,6 +1158,11 @@ class DiscordBot(commands.Bot):
                 elif "4.1-nano" in model:
                     fallbacks = [
                         "openai/gpt-4.1-nano",
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                elif "o4-mini" in model:
+                    fallbacks = [
+                        "openai/o4-mini",
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 else:
