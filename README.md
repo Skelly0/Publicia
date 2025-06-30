@@ -161,6 +161,7 @@ The bot automatically adjusts response temperature based on query type:
 - Higher temperature for creative/roleplay scenarios
 - Base temperature for balanced queries
 - Detects context through analysis of roleplay elements, question markers, etc.
+- Customize your personal temperature range with the `/temperature` command. Values must satisfy `0.0 ≤ min ≤ base ≤ max ≤ 2.0`.
 
 ### Debugging and Logging
 Comprehensive tools to help troubleshoot issues:
@@ -234,6 +235,7 @@ Comprehensive tools to help troubleshoot issues:
 | `/help` | Display detailed help information |
 | `/toggle_prompt_mode` | Toggle between standard (immersive) and informational (concise) system prompts |
 | `/pronouns` | Set your preferred pronouns |
+| `/temperature` | Set your custom temperature range (0.0–2.0). Call with no values to reset to defaults |
 | `/whats_new` | Shows documents and images added or updated recently |
 
 #### Admin Commands

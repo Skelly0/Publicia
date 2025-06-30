@@ -441,7 +441,8 @@ def register_commands(bot):
                     await status_message.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
                     
             temperature = bot.calculate_dynamic_temperature(
-                question
+                question,
+                user_id=str(interaction.user.id)
             )
 
             completion, actual_model = await bot._try_ai_completion(
@@ -662,7 +663,10 @@ def register_commands(bot):
 
             await status_message.edit(content=f"*formulating response using {model_name_display}...*")
 
-            temperature = bot.calculate_dynamic_temperature(question) # Use dynamic temp
+            temperature = bot.calculate_dynamic_temperature(
+                question,
+                user_id=str(interaction.user.id)
+            )  # Use dynamic temp
 
             # Log the models being attempted
             logger.debug(f"Attempting full context query with models: {target_models}")
