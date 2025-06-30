@@ -440,7 +440,7 @@ def register_commands(bot):
                     logger.debug(f"Added {len(channel_messages)} channel messages to context")
                     await status_message.edit(content=f"*analyzing query, search results, and channel context ({len(channel_messages)} messages)...*")
                     
-            temperature = bot.calculate_dynamic_temperature(
+            temperature, t_min, t_base, t_max = bot.calculate_dynamic_temperature(
                 question,
                 user_id=str(interaction.user.id)
             )
@@ -478,6 +478,10 @@ def register_commands(bot):
                         "chunk_details": chunk_details,
                         "channel_messages": 0,
                         "doc_count": doc_count,
+                        "temperature_min": t_min,
+                        "temperature_base": t_base,
+                        "temperature_max": t_max,
+                        "temperature_used": temperature,
                     }
                     log_qa_pair(
                         question,
@@ -488,6 +492,10 @@ def register_commands(bot):
                         interaction_type="slash_command",
                         context=context_info,
                         model_used=actual_model,
+                        temperature=temperature,
+                        temperature_min=t_min,
+                        temperature_base=t_base,
+                        temperature_max=t_max,
                     )
                 else:
                     logger.error(f"Unexpected response structure: {completion}")
@@ -663,7 +671,7 @@ def register_commands(bot):
 
             await status_message.edit(content=f"*formulating response using {model_name_display}...*")
 
-            temperature = bot.calculate_dynamic_temperature(
+            temperature, t_min, t_base, t_max = bot.calculate_dynamic_temperature(
                 question,
                 user_id=str(interaction.user.id)
             )  # Use dynamic temp
@@ -710,6 +718,10 @@ def register_commands(bot):
                         "chunk_details": chunk_details,
                         "channel_messages": 0,
                         "doc_count": len(all_doc_contents),
+                        "temperature_min": t_min,
+                        "temperature_base": t_base,
+                        "temperature_max": t_max,
+                        "temperature_used": temperature,
                     }
                     log_qa_pair(
                         question,
@@ -720,6 +732,10 @@ def register_commands(bot):
                         interaction_type="slash_command",
                         context=context_info,
                         model_used=actual_model or target_models[0],
+                        temperature=temperature,
+                        temperature_min=t_min,
+                        temperature_base=t_base,
+                        temperature_max=t_max,
                     )
                 else:
                     logger.error(f"Unexpected response structure from full context query: {completion}")
