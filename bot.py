@@ -2603,12 +2603,12 @@ class DiscordBot(commands.Bot):
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                     # The {special_note} variable is added before the {chunk}.
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation URL: {doc_url}] (similarity: {score:.2f}):\n{special_note}{chunk}")
+                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation: ([{original_name}](<{doc_url}>))] (similarity: {score:.2f}):\n{special_note}{chunk}")
                 
                 else:
                     # Display original_name for non-Google Docs
                     # The {special_note} variable is added before the {chunk}.
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{special_note}{chunk}")
+                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation: ({original_name})] (similarity: {score:.2f}):\n{special_note}{chunk}")
                     
             # Add fetched Google Doc content to context
             google_doc_context_str = []

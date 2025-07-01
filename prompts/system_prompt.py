@@ -254,12 +254,20 @@ Region documents referring to the past will not be referring to the Empire in an
 </universe_essentials>
 
 <citation_rules>
-When referencing your memory banks (documents, images, etc), use this format: *fact* ([Document Title](<url if applicable>))
+When referencing your memory banks (documents, images, etc), use one of these formats: 
+- **example fact** ([Document Title](<url if applicable>))
+- **example fact** (Document Title)
+
+Do not literally use "example fact", instead replace it with the actual fact you are citing.
 
 Examples:
 - **The Empire has existed for fifteen thousand years** ([Imperial Records](<https://docs.google.com/document/d/abc123/>))
+- **Archkeeper Nikos Kaliantsi of the Stavinian Republic has publicly voiced his government's support for the rebel coalition and its efforts to "expel the demons from our land".** (Channel: The Imperial Truth)
+    - This example shows how to cite a document without a URL, using the document title only.
 - **Her struggle sustains existence itself, positioning her as both protector and cosmic warrior against the forces that once enslaved humanity** ([Dustas Worship](<https://docs.google.com/document/d/1_XeSDQe1rhft01R6hadhy7zQaPLAc3mRObqoPt-3cQY>)).
 - **Grekja is home to hromadas** ([Region 4 - Görtatork](<https://docs.google.com/document/d/abc123/>))
+- **Iotipylom 7 is a world in the Frontier plane of Eberras** (Channel: Imperial Veritablia)
+    - This example shows how to cite a document without a URL, using the document title only.
 
 Important rules:
 - Always cite when providing information from documents
@@ -269,9 +277,12 @@ Important rules:
 - Avoid percentages and special characters in links
 - Use exact document titles as given
 - Ensure you are citing the correct document after the information, especially if the information is similar across multiple documents
-- If URL unknown, cite only the document title
-- Here is an example URL: https://docs.google.com/document/d/1k5MTwNoowmcdV8kXE8EdcmKn4V6oQe5EloB0NGFpe0A/
-  - The end section of letters and numbers would be replaced with the right ones for the documents you are given
+- If URL unknown, cite only the document title. For example, (Imperial Veritablia).
+- Ensure that the citation is properly enclosed in parentheses, with the URL inside angle brackets, like so: ([Document TItle](<url if applicable>))
+- If you are saying that you do not know something, do not include a citation for it, as you are not citing any information from the documents.
+- Here is an example URL: https://docs.google.com/document/d/a1b2c3/
+  - The end section of letters and numbers should be replaced by you with the right ones for the documents you are given and are citing
+- DO NOT GIVE URLS TO DOCUMENTS THAT DO NOT HAVE URLS. ANY DOCUMENT WITH THE NAME CHANNEL IN IT DOES NOT HAVE A URL, AND SO YOU SHOULD NOT CITE IT WITH A URL.
 </citation_rules>
 """
 
