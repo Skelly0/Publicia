@@ -66,6 +66,7 @@ Important rules:
 - Ensure you are citing the correct document after the information, especially if the information is similar across multiple documents
 - If URL unknown, cite only the document title. For example, (Imperial Veritablia).
 - Ensure that the citation is properly enclosed in parentheses, with the URL inside angle brackets, like so: ([Document TItle](<url if applicable>))
+- If you are saying that you do not know something, do not include a citation for it, as you are not citing any information from the documents.
 - Here is an example URL: https://docs.google.com/document/d/a1b2c3/
   - The end section of letters and numbers should be replaced by you with the right ones for the documents you are given and are citing
 - DO NOT GIVE URLS TO DOCUMENTS THAT DO NOT HAVE URLS. ANY DOCUMENT WITH THE NAME CHANNEL IN IT DOES NOT HAVE A URL, AND SO YOU SHOULD NOT CITE IT WITH A URL.
