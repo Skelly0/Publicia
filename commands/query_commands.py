@@ -405,7 +405,7 @@ def register_commands(bot):
                     await status_message.edit(content=f"*formulating response with enhanced neural mechanisms using {model_name}...*")
 
             # Check if channel parsing is enabled for this user
-            channel_parsing_enabled, channel_parsing_count = bot.user_preferences_manager.get_channel_parsing(
+            channel_parsing_enabled, channel_parsing_count = bot.user_preferences_manager.get_channel_parsing_settings(
                 str(interaction.user.id)
             )
 
