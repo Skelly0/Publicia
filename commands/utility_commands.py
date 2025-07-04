@@ -123,6 +123,7 @@ def register_commands(bot):
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
         app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
+        app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
         app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
         #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro-preview-03-25"), # Added new model
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b"),
@@ -138,7 +139,6 @@ def register_commands(bot):
         #app_commands.Choice(name="Anubis Pro 105B", value="thedrummer/anubis-pro-105b-v1"),
         #app_commands.Choice(name="Llama 4 Maverick", value="meta-llama/llama-4-maverick:floor"),
         #app_commands.Choice(name="Grok 3 Mini", value="x-ai/grok-3-mini-beta"),
-        app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Mini", value="openai/gpt-4.1-mini"),
         #app_commands.Choice(name="OpenAI GPT-4.1 Nano", value="openai/gpt-4.1-nano"),
         #app_commands.Choice(name="Phi-4 Multimodal", value="microsoft/phi-4-multimodal-instruct"),
@@ -216,6 +216,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**MiniMax M1**: __RECOMMENDED__ - A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Best for avoiding hallucinations and finding accurate information. Good prompt adherence. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
+                    f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
@@ -232,7 +233,6 @@ def register_commands(bot):
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     #f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
-                    f"**OpenAI o4 Mini**: An OpenAI model good for factual accuracy and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
                 ]
@@ -312,6 +312,7 @@ def register_commands(bot):
             # Create a description of all model strengths
             model_descriptions = [
                     f"**MiniMax M1**: __RECOMMENDED__ - A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Best for avoiding hallucinations and finding accurate information. Good prompt adherence. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
+                    f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
@@ -328,7 +329,6 @@ def register_commands(bot):
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
                     #f"**Llama 4 Maverick**: Good for prompt adherence and factual responses. Pretty good at roleplaying, if a bit boring. Uses ({bot.config.get_top_k_for_model('meta-llama/llama-4-maverick:floor')}) search results.",
                     #f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
-                    f"**OpenAI o4 Mini**: An OpenAI model good for factual accuracy and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
             ]
