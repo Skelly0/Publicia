@@ -162,10 +162,9 @@ The bot automatically adjusts response temperature based on query type:
 - Base temperature for balanced queries
 - Detects context through analysis of roleplay elements, question markers, etc.
 - Customize your personal temperature range with the `/temperature` command. Values must satisfy `0.0 ≤ min ≤ base ≤ max ≤ 2.0`.
-
 ### Debugging and Logging
 Comprehensive tools to help troubleshoot issues:
-- Toggle debug mode to show which model generated responses
+- Debug mode is **ON** by default and shows which model generated responses. Use `/toggle_debug` to hide this information
 - Export prompts to see exactly what's being sent to the models
 - Detailed logs for tracking operations and errors
 - Performance monitoring and optimization

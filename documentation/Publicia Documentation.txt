@@ -559,7 +559,7 @@ Configure the hybrid search system for optimal performance:
 
 ### Debug Tools
 
--   **`/toggle_debug`**: Shows the specific AI model used for each response and potentially other metadata.
+-   **`/toggle_debug`**: Debug mode is ON by default and shows the specific AI model used for each response. Use this command to toggle the display.
 -   **Logs**: Check `bot_detailed.log` for detailed operational information, errors, and search process steps.
 -   **Admin Commands**: `/reload_docs`, `/regenerate_embeddings` are crucial for maintenance and applying configuration changes.
 
@@ -636,10 +636,10 @@ Customize search result reranking with these settings:
 
 ### Logging and Debugging
 
-The bot uses a comprehensive logging system:
+- The bot uses a comprehensive logging system:
 
 - Logs are stored in `bot_detailed.log`
-- Enable debug mode with `/toggle_debug` for model information
+- Debug mode is enabled by default and shows model information. Use `/toggle_debug` to disable it
 - Check console output for detailed errors
 - Image and document operations are logged extensively
 
