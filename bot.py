@@ -2861,6 +2861,8 @@ class DiscordBot(commands.Bot):
                 model_name = "4.1 Nano"
             elif preferred_model == "minimax/minimax-m1":
                 model_name = "MiniMax M1"
+            elif preferred_model == "openai/o4-mini":
+                model_name = "OpenAI o4 Mini"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call
