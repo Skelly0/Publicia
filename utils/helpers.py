@@ -7,6 +7,13 @@ import discord
 from discord import app_commands
 from managers.config import Config  # Import the Config class
 
+try:
+    from markdownify import markdownify as md  # type: ignore
+    from bs4 import BeautifulSoup  # type: ignore
+    MARKDOWNIFY_AVAILABLE = True
+except Exception:
+    MARKDOWNIFY_AVAILABLE = False
+
 # Instantiate Config to access settings
 config = Config()
 
@@ -193,6 +200,21 @@ def split_message(text, max_length=1750):
         chunks.append(current_chunk)
     
     return chunks
+
+
+def html_to_markdown_without_base64(html_content: str) -> str:
+    """Convert HTML to Markdown while stripping base64 images."""
+    if not MARKDOWNIFY_AVAILABLE:
+        return html_content
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    for img in soup.find_all("img"):
+        src = img.get("src", "")
+        if src.startswith("data:"):
+            alt_text = img.get("alt", "")
+            img.replace_with(alt_text)
+
+    return md(str(soup))
 
 
 # --- End of module ---
