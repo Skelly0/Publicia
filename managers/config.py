@@ -151,6 +151,7 @@ class Config:
         self.CONTEXTUALIZATION_ENABLED = bool(os.getenv('CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
         self.MAX_WORDS_FOR_CONTEXT = int(os.getenv('MAX_WORDS_FOR_CONTEXT', '20000'))
         self.USE_CONTEXTUALISED_CHUNKS = bool(os.getenv('USE_CONTEXTUALISED_CHUNKS', 'True').lower() in ('true', '1', 'yes'))
+        self.CHANNEL_CONTEXTUALIZATION_ENABLED = bool(os.getenv('CHANNEL_CONTEXTUALIZATION_ENABLED', 'True').lower() in ('true', '1', 'yes'))
 
     def get_reranking_settings_for_query(self, query: str):
         """Get adaptive reranking settings based on query complexity."""

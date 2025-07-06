@@ -41,5 +41,5 @@ Two new slash commands have been introduced for managing channel tracking:
 3.  **Tracking Storage**: The channel's ID, the associated document UUID, and the last message ID are stored in a `tracked_channels.json` file.
 4.  **Periodic Updates**: The background task reads `tracked_channels.json` and, for each entry, fetches new messages from the channel using the last saved message ID as a starting point.
 5.  **Appending Content**: New messages are appended to the document file identified by the stored UUID.
-6.  **Embedding Update**: The entire document is re-processed to update its search embeddings. As of the latest update, channel archives are contextualized during this process so that each chunk is summarized before embedding, improving accuracy when querying these logs.
+6.  **Embedding Update**: The entire document is re-processed to update its search embeddings. If `CHANNEL_CONTEXTUALIZATION_ENABLED` is `true`, channel archives are contextualized during this process so each chunk is summarized before embedding. Disable this environment variable to skip contextualization for channel logs.
 7.  **Untracking**: Using `/untrack_channel` removes the corresponding entry from `tracked_channels.json`, effectively stopping the update cycle for that channel.
