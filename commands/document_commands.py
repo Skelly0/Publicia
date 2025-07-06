@@ -958,7 +958,11 @@ def register_commands(bot):
             for original_doc_name, doc_content_to_save in documents:
                 # Add to document manager, which returns the UUID
                 # The original_doc_name here will be like "channel_archive_general_20230101_1200_part1.txt"
-                doc_uuid_assigned = await bot.document_manager.add_document(original_name=original_doc_name, content=doc_content_to_save)
+                doc_uuid_assigned = await bot.document_manager.add_document(
+                    original_name=original_doc_name,
+                    content=doc_content_to_save,
+                    contextualize=getattr(bot.config, 'CHANNEL_CONTEXTUALIZATION_ENABLED', True)
+                )
                 
                 if not doc_uuid_assigned:
                     logger.error(f"Failed to add archived document part '{original_doc_name}' to DocumentManager.")

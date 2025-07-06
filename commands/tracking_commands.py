@@ -83,7 +83,7 @@ async def update_tracked_channels(bot_instance):
                 original_name=original_name,
                 content=archive_content,
                 existing_uuid=doc_uuid,
-                contextualize=True,
+                contextualize=getattr(bot_instance.config, 'CHANNEL_CONTEXTUALIZATION_ENABLED', True),
             )
 
             if update_success:
@@ -128,7 +128,9 @@ def register_commands(bot):
         initial_content, msg_count = await _build_channel_archive(channel)
 
         doc_uuid = await bot.document_manager.add_document(
-            original_name=doc_name, content=initial_content, contextualize=True
+            original_name=doc_name,
+            content=initial_content,
+            contextualize=getattr(bot.config, 'CHANNEL_CONTEXTUALIZATION_ENABLED', True)
         )
 
         if not doc_uuid:

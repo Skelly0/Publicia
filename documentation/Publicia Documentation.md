@@ -289,6 +289,7 @@ RERANKING_FILTER_MODE=strict # Options: strict, dynamic, topk
 CONTEXTUALIZATION_ENABLED=true # Enable AI-generated context for chunks
 MAX_WORDS_FOR_CONTEXT=20000 # Maximum words to consider for context generation
 USE_CONTEXTUALISED_CHUNKS=true # Use contextualized chunks in prompts
+CHANNEL_CONTEXTUALIZATION_ENABLED=true # Contextualize channel archives
 
 # Feature toggles
 KEYWORD_DATABASE_ENABLED=true # Enable keyword database system
