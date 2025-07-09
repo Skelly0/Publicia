@@ -2299,11 +2299,13 @@ class DiscordBot(commands.Bot):
         try:
             # --- Document Tracking Channel Logic ---
             # Check if this message is in the designated document tracking channel
-            doc_tracking_channel_id = getattr(self.config, 'DOC_TRACKING_CHANNEL_ID', None)
-            if doc_tracking_channel_id and message.channel.id == doc_tracking_channel_id:
+            doc_tracking_channel_ids = getattr(self.config, 'DOC_TRACKING_CHANNEL_IDS', [])
+            if doc_tracking_channel_ids and message.channel.id in doc_tracking_channel_ids:
                 # Ignore messages from the bot itself in this channel
                 if message.author != self.user:
-                    logger.info(f"Checking message in doc tracking channel ({doc_tracking_channel_id}) for Google Docs links.")
+                    logger.info(
+                        f"Checking message in doc tracking channel ({message.channel.id}) for Google Docs links."
+                    )
                     google_doc_ids = await self._extract_google_doc_ids(message.content)
                     if google_doc_ids:
                         logger.info(f"Found {len(google_doc_ids)} Google Doc link(s) in message.")

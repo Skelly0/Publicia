@@ -140,7 +140,7 @@ Unique capability to work with Google Docs:
 - Track Google Docs with custom names. These are linked internally to a unique document UUID within Publicia.
 - Automatically refresh content on a schedule.
 - **Efficient Change Detection**: Uses content hashing to compare the current document content with the stored version, only processing and re-indexing if actual changes are detected.
-- **Automatic Tracking Channel**: Designate a specific channel (`/set_doc_channel`) where any Google Doc links posted will be automatically added to the bot's tracked documents. The bot will react to indicate success (✅), partial success (⚠️), or failure (❌).
+- **Automatic Tracking Channels**: Use `/set_doc_channel` to add one or more channels where any Google Doc links posted will be automatically tracked. The bot will react to indicate success (✅), partial success (⚠️), or failure (❌).
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
@@ -299,8 +299,8 @@ DOCUMENT_LIST_ENABLED=true # Include internal document list in LLM prompts
 # Optional: Auto-process Google Docs with lore tagging
 AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
 
-# Optional: Channel ID for automatic Google Doc tracking
-# DOC_TRACKING_CHANNEL_ID=your_channel_id_here
+# Automatic Google Doc tracking channels are stored in
+# `documents/doc_tracking_channels.json`
 
 # Optional: Permission settings (comma-separated user/role IDs)
 # ALLOWED_USER_IDS=123456789,987654321
@@ -397,7 +397,7 @@ The bot will display a startup banner and initialize all components.
     - `docx_file`: The `.docx` file to process (as a Discord attachment).
     - `output_filename`: (Optional) Custom name for the output `.txt` file. If not provided, defaults to `[input_filename_stem]_processed.txt`.
 
-- `/set_doc_channel`: Set the channel for automatic Google Doc tracking. **Requires bot restart.** **(Admin Only)**
+- `/set_doc_channel`: Add a channel for automatic Google Doc tracking. **(Admin Only)**
   - **Parameters**: `channel` (The text channel to monitor).
 
 - `/reload_docs`: Reload all documents from disk, re-processing them. **(Admin Only)**

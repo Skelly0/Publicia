@@ -4,6 +4,7 @@ Configuration management for Publicia
 import os
 import logging
 from dotenv import load_dotenv
+from .doc_tracking_channels import DocTrackingChannelManager
 
 logger = logging.getLogger(__name__)
 
@@ -130,13 +131,24 @@ class Config:
         self.ALLOWED_USER_IDS = [int(uid.strip()) for uid in os.getenv('ALLOWED_USER_IDS', '').split(',') if uid.strip().isdigit()]
         self.ALLOWED_ROLE_IDS = [int(rid.strip()) for rid in os.getenv('ALLOWED_ROLE_IDS', '').split(',') if rid.strip().isdigit()]
 
-        # Document tracking channel ID
+        # Google Doc tracking channels handled via JSON file
+        self.doc_channel_manager = DocTrackingChannelManager()
+        self.DOC_TRACKING_CHANNEL_IDS = self.doc_channel_manager.get_channels()
+
+        # Migrate legacy .env setting if present
         doc_tracking_channel_id_str = os.getenv('DOC_TRACKING_CHANNEL_ID')
-        self.DOC_TRACKING_CHANNEL_ID = None
         if doc_tracking_channel_id_str and doc_tracking_channel_id_str.isdigit():
-            self.DOC_TRACKING_CHANNEL_ID = int(doc_tracking_channel_id_str)
+            channel_id = int(doc_tracking_channel_id_str)
+            if self.doc_channel_manager.add_channel(channel_id):
+                logger.info(
+                    "Migrated DOC_TRACKING_CHANNEL_ID from .env to doc_tracking_channels.json"
+                )
+            if channel_id not in self.DOC_TRACKING_CHANNEL_IDS:
+                self.DOC_TRACKING_CHANNEL_IDS.append(channel_id)
         elif doc_tracking_channel_id_str:
-            logger.warning(f"Invalid DOC_TRACKING_CHANNEL_ID: '{doc_tracking_channel_id_str}'. Must be an integer. Disabling feature.")
+            logger.warning(
+                f"Invalid DOC_TRACKING_CHANNEL_ID: '{doc_tracking_channel_id_str}'. Must be an integer."
+            )
 
         # Auto-processing setting for Google Docs
         self.AUTO_PROCESS_GOOGLE_DOCS = bool(os.getenv('AUTO_PROCESS_GOOGLE_DOCS', 'False').lower() in ('true', '1', 'yes'))
