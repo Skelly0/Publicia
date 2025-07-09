@@ -101,8 +101,8 @@ DOCUMENT_LIST_ENABLED=true # Include internal document list in LLM prompts
 # Optional: Auto-process Google Docs with lore tagging
 AUTO_PROCESS_GOOGLE_DOCS=false # Set to true to enable automatic .docx download and processing
 
-# Optional: Channel ID for automatic Google Doc tracking
-# DOC_TRACKING_CHANNEL_ID=your_channel_id_here
+# Automatic Google Doc tracking channels are now stored in
+# `documents/doc_tracking_channels.json`
 
 # Optional: Permission settings (comma-separated user/role IDs)
 # ALLOWED_USER_IDS=123456789,987654321
