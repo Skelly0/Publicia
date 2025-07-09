@@ -16,6 +16,7 @@ import time
 import aiohttp
 import discord
 import html # Added for HTML entity decoding
+import urllib.parse
 import numpy as np
 from datetime import datetime
 from textwrap import shorten
@@ -86,7 +87,8 @@ class DiscordBot(commands.Bot):
 
         self.scheduler = AsyncIOScheduler()
         # Schedule the async function directly
-        self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6) 
+        self.scheduler.add_job(self.refresh_google_docs, 'interval', hours=6)
+        self.scheduler.add_job(self.refresh_google_sheets, 'interval', hours=6)
         self.scheduler.start()
 
         # List of models that support vision capabilities
@@ -666,6 +668,7 @@ class DiscordBot(commands.Bot):
         final_original_name = None
         existing_internal_uuid = None
         name_from_tracking_file = None
+        tracked_header_row = header_row
 
         tracked_gdocs_file = self.document_manager.base_dir / "tracked_google_docs.json"
         if tracked_gdocs_file.exists():
@@ -786,8 +789,245 @@ class DiscordBot(commands.Bot):
         # Track the document using final_original_name
         self.document_manager.track_google_doc(doc_id, internal_doc_uuid, final_original_name)
         logger.info(f"Successfully processed and tracked GDoc ID {doc_id} ('{final_original_name}') with internal UUID {internal_doc_uuid}.")
-        
+
         return True, internal_doc_uuid
+
+    async def _fetch_google_sheet_title(self, sheet_id: str) -> Optional[str]:
+        """Fetch the title of a Google Sheet."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(f"Failed to get metadata for sheet {sheet_id}: {response.status}")
+                        return None
+                    html_content = await response.text()
+                    match = re.search(r'<title>(.*?)</title>', html_content)
+                    if match:
+                        title = match.group(1)
+                        title = re.sub(r'\s*-\s*Google\s*Sheets$', '', title)
+                        title = html.unescape(title)
+                        return title
+            return None
+        except Exception as e:
+            logger.error(f"Error getting title for sheet {sheet_id}: {e}")
+            return None
+
+    async def _fetch_google_sheet_tab(
+        self, sheet_id: str, tab_name: str, display_name: str, header_row: int = 1
+    ) -> Optional[str]:
+        """Download and format a specific tab from a Google Sheet.
+
+        Parameters
+        ----------
+        sheet_id: str
+            The ID of the Google Sheet.
+        tab_name: str
+            The tab within the sheet to fetch.
+        display_name: str
+            Name used in the header line for the returned text.
+        header_row: int, optional
+            1-indexed row number that contains the column headers. Defaults to
+            ``1``.
+        """
+        try:
+            url = (
+                f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet="
+                f"{urllib.parse.quote(tab_name)}"
+            )
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.error(
+                            f"Failed to download sheet {sheet_id} tab '{tab_name}': {response.status}"
+                        )
+                        return None
+                    csv_text = await response.text()
+
+            import csv
+            reader = csv.reader(csv_text.splitlines())
+            rows = list(reader)
+            if not rows:
+                logger.warning(f"Sheet {sheet_id} tab '{tab_name}' returned no rows")
+                return None
+
+            idx = max(0, header_row - 1)
+            if idx >= len(rows):
+                logger.warning(
+                    f"Header row {header_row} out of range for sheet {sheet_id} tab '{tab_name}'"
+                )
+                idx = 0
+            headers = rows[idx]
+            data_rows = rows[idx + 1 :]
+            row_count = len(data_rows)
+            header_line = json.dumps(
+                {"sheet": display_name, "rowCount": row_count, "headers": headers}, ensure_ascii=False
+            )
+            lines = [header_line]
+            for row in data_rows:
+                pairs = [f"{h}: {v}" for h, v in zip(headers, row)]
+                lines.append(", ".join(pairs))
+
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Error processing sheet {sheet_id} tab '{tab_name}': {e}")
+            return None
+
+    async def _has_google_sheet_changed(self, sheet_id: str, tab_name: str, internal_doc_uuid: str) -> bool:
+        """Check if a Google Sheet tab has changed using stored hash."""
+        try:
+            stored_hash = self.document_manager.metadata.get(internal_doc_uuid, {}).get("content_hash")
+            url = (
+                f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet="
+                f"{urllib.parse.quote(tab_name)}"
+            )
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status != 200:
+                        logger.warning(
+                            f"Failed to download sheet {sheet_id} for change check (Status: {response.status}). Assuming changed."
+                        )
+                        return True
+                    new_content = await response.text()
+            import hashlib
+            new_hash = hashlib.md5(new_content.encode("utf-8")).hexdigest()
+            if stored_hash and stored_hash == new_hash:
+                return False
+            return True
+        except Exception as e:
+            logger.error(f"Error checking if sheet {sheet_id} tab '{tab_name}' changed: {e}")
+            return True
+
+    async def refresh_single_google_sheet(
+        self,
+        sheet_id: str,
+        tab_name: str,
+        custom_name: Optional[str] = None,
+        force_process: bool = False,
+        interaction_for_feedback: Optional[discord.Interaction] = None,
+        delay_internal_list_update: bool = False,
+        header_row: int = 1,
+    ) -> Tuple[bool, Optional[str]]:
+        """Refresh a single Google Sheet tab and track it."""
+        log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]"
+
+        final_original_name = None
+        existing_internal_uuid = None
+        name_from_tracking_file = None
+
+        tracked_file = self.document_manager.base_dir / "tracked_google_sheets.json"
+        if tracked_file.exists():
+            try:
+                with open(tracked_file, 'r', encoding='utf-8') as f:
+                    tracked_list = json.load(f)
+                for entry in tracked_list:
+                    if entry.get('google_sheet_id') == sheet_id and entry.get('tab_name') == tab_name:
+                        existing_internal_uuid = entry.get('internal_doc_uuid')
+                        name_from_tracking_file = entry.get('original_name_at_import')
+                        tracked_header_row = entry.get('header_row', header_row)
+                        break
+            except Exception as e:
+                logger.error(f"Error reading tracked_google_sheets.json for sheet {sheet_id}: {e}")
+
+        if name_from_tracking_file:
+            final_original_name = name_from_tracking_file
+        elif custom_name:
+            final_original_name = custom_name
+        else:
+            sheet_title = await self._fetch_google_sheet_title(sheet_id)
+            base_name = sheet_title or f"googlesheet_{sheet_id}"
+            final_original_name = f"{base_name} - {tab_name}"
+
+        if final_original_name.endswith(".txt"):
+            final_original_name = final_original_name[:-4]
+
+        changed = True
+        if not force_process and existing_internal_uuid:
+            changed = await self._has_google_sheet_changed(sheet_id, tab_name, existing_internal_uuid)
+
+        if not changed:
+            if interaction_for_feedback:
+                try:
+                    await interaction_for_feedback.followup.send(
+                        f"Google Sheet '{final_original_name}' already up-to-date.",
+                        ephemeral=True,
+                    )
+                except:
+                    pass
+            return True, existing_internal_uuid
+
+        content = await self._fetch_google_sheet_tab(
+            sheet_id, tab_name, final_original_name, tracked_header_row
+        )
+        if content is None:
+            if interaction_for_feedback:
+                try:
+                    await interaction_for_feedback.followup.send(
+                        f"Failed to download Google Sheet tab '{tab_name}'.",
+                        ephemeral=True,
+                    )
+                except:
+                    pass
+            return False, None
+
+        internal_doc_uuid = await self.document_manager.add_document(
+            original_name=final_original_name,
+            content=content,
+            existing_uuid=existing_internal_uuid,
+            save_to_disk=not delay_internal_list_update,
+            _internal_call=delay_internal_list_update,
+        )
+
+        if not internal_doc_uuid:
+            return False, None
+
+        self.document_manager.track_google_sheet(
+            sheet_id, tab_name, internal_doc_uuid, final_original_name, tracked_header_row
+        )
+        return True, internal_doc_uuid
+
+    async def refresh_google_sheets(self, force_process: bool = False):
+        """Refresh all tracked Google Sheets."""
+        log_prefix = "[FORCE REFRESH]" if force_process else "[Refresh]"
+        tracked_file = Path(self.document_manager.base_dir) / "tracked_google_sheets.json"
+        if not tracked_file.exists():
+            return
+
+        try:
+            with open(tracked_file, 'r', encoding='utf-8') as f:
+                tracked_list = json.load(f)
+
+            updated = False
+            for entry in tracked_list:
+                sheet_id = entry.get('google_sheet_id')
+                tab_name = entry.get('tab_name')
+                name_at_import = entry.get('original_name_at_import')
+                internal_uuid = entry.get('internal_doc_uuid')
+                header_row = entry.get('header_row', 1)
+
+                changed = True
+                if not force_process and internal_uuid:
+                    changed = await self._has_google_sheet_changed(sheet_id, tab_name, internal_uuid)
+
+                if changed:
+                    success, _ = await self.refresh_single_google_sheet(
+                        sheet_id,
+                        tab_name,
+                        custom_name=name_at_import,
+                        force_process=force_process,
+                        delay_internal_list_update=True,
+                        header_row=header_row,
+                    )
+                    if success:
+                        updated = True
+                else:
+                    logger.info(f"{log_prefix} Google Sheet {sheet_id} tab '{tab_name}' has not changed.")
+
+            if updated:
+                await self.document_manager._update_document_list_file()
+                self.document_manager._save_to_disk()
+        except Exception as e:
+            logger.error(f"Error refreshing Google Sheets: {e}")
                 
         """except Exception as e: # This except block seems to be part of a commented out section
             logger.error(f"Error processing single Google Doc {doc_id}: {e}", exc_info=True)

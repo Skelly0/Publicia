@@ -1583,6 +1583,7 @@ class DocumentManager:
             if entry.get('google_doc_id') == google_doc_id:
                 entry['internal_doc_uuid'] = internal_doc_uuid
                 entry['original_name_at_import'] = original_name_at_import
+                entry['header_row'] = header_row
                 entry['updated_at'] = datetime.now().isoformat()
                 entry_found = True
                 logger.info(f"Updated tracking for Google Doc ID {google_doc_id} to internal UUID {internal_doc_uuid}.")
@@ -1604,6 +1605,60 @@ class DocumentManager:
         except Exception as e:
             logger.error(f"Error writing {tracked_file} for GDoc tracking: {e}")
             return f"Error saving GDoc tracking for {google_doc_id}."
+
+    def track_google_sheet(
+        self,
+        google_sheet_id: str,
+        tab_name: str,
+        internal_doc_uuid: str,
+        original_name_at_import: str,
+        header_row: int = 1,
+    ):
+        """Track a specific tab in a Google Sheet."""
+        tracked_file = self.base_dir / "tracked_google_sheets.json"
+        tracked_sheets = []
+        if tracked_file.exists():
+            try:
+                with open(tracked_file, 'r', encoding='utf-8') as f:
+                    tracked_sheets = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading {tracked_file} for GSheet tracking: {e}")
+
+        entry_found = False
+        for entry in tracked_sheets:
+            if entry.get('google_sheet_id') == google_sheet_id and entry.get('tab_name') == tab_name:
+                entry['internal_doc_uuid'] = internal_doc_uuid
+                entry['original_name_at_import'] = original_name_at_import
+                entry['header_row'] = header_row
+                entry['updated_at'] = datetime.now().isoformat()
+                entry_found = True
+                logger.info(
+                    f"Updated tracking for Google Sheet {google_sheet_id} tab '{tab_name}' to internal UUID {internal_doc_uuid}."
+                )
+                break
+
+        if not entry_found:
+            tracked_sheets.append({
+                'google_sheet_id': google_sheet_id,
+                'tab_name': tab_name,
+                'internal_doc_uuid': internal_doc_uuid,
+                'original_name_at_import': original_name_at_import,
+                'header_row': header_row,
+                'added_at': datetime.now().isoformat()
+            })
+            logger.info(
+                f"Added tracking for Google Sheet {google_sheet_id} tab '{tab_name}' with internal UUID {internal_doc_uuid}."
+            )
+
+        try:
+            with open(tracked_file, 'w', encoding='utf-8') as f:
+                json.dump(tracked_sheets, f, indent=2)
+            return (
+                f"Google Sheet {google_sheet_id} tab '{tab_name}' tracking updated/added with internal UUID {internal_doc_uuid}."
+            )
+        except Exception as e:
+            logger.error(f"Error writing {tracked_file} for GSheet tracking: {e}")
+            return f"Error saving GSheet tracking for {google_sheet_id} ({tab_name})."
 
 
     async def rename_document(self, doc_uuid: str, new_original_name: str) -> str:
@@ -1690,7 +1745,23 @@ class DocumentManager:
                     logger.info(f"Removed GDoc tracking for internal UUID {doc_uuid}")
             except Exception as e: logger.error(f"Error updating tracked_google_docs.json for deletion of UUID {doc_uuid}: {e}")
 
-        if deleted_in_memory or file_deleted_from_disk or gdoc_tracking_removed:
+        gsheet_tracking_removed = False
+        tracked_sheets_file = Path(self.base_dir) / "tracked_google_sheets.json"
+        if tracked_sheets_file.exists():
+            try:
+                with open(tracked_sheets_file, 'r', encoding='utf-8') as f:
+                    tracked_sheets_list = json.load(f)
+                initial_len_s = len(tracked_sheets_list)
+                tracked_sheets_list = [s for s in tracked_sheets_list if s.get('internal_doc_uuid') != doc_uuid]
+                if len(tracked_sheets_list) < initial_len_s:
+                    with open(tracked_sheets_file, 'w', encoding='utf-8') as f:
+                        json.dump(tracked_sheets_list, f, indent=2)
+                    gsheet_tracking_removed = True
+                    logger.info(f"Removed GSheet tracking for internal UUID {doc_uuid}")
+            except Exception as e:
+                logger.error(f"Error updating tracked_google_sheets.json for deletion of UUID {doc_uuid}: {e}")
+
+        if deleted_in_memory or file_deleted_from_disk or gdoc_tracking_removed or gsheet_tracking_removed:
             try:
                 self._save_to_disk()
                 await self._update_document_list_file()

@@ -664,6 +664,175 @@ def register_commands(bot):
             logger.error(f"Error during manual Google Docs force refresh: {e}")
             await interaction.followup.send(f"*neural circuit overload!* An error occurred during force refresh: {str(e)}")
 
+    @bot.tree.command(name="add_googlesheet", description="Add a Google Sheet tab to the tracked list (admin only)")
+    @app_commands.describe(
+        sheet_url="Google Sheet URL or ID",
+        tab="Tab name",
+        name="Custom name for the sheet (optional)",
+        header_row="Row number containing headers (default: 1)"
+    )
+    @app_commands.check(check_permissions)
+    async def add_google_sheet(
+        interaction: discord.Interaction,
+        sheet_url: str,
+        tab: str,
+        name: str = None,
+        header_row: int = 1,
+    ):
+        await interaction.response.defer()
+        try:
+            if not sheet_url:
+                await interaction.followup.send("*neural error detected!* Please provide a Google Sheet URL or ID.")
+                return
+
+            if "docs.google.com" in sheet_url:
+                if "/d/" in sheet_url:
+                    sheet_id = sheet_url.split("/d/")[1].split("/")[0].split("?")[0]
+                elif "id=" in sheet_url:
+                    sheet_id = sheet_url.split("id=")[1].split("&")[0]
+                else:
+                    await interaction.followup.send("*could not extract sheet id from url... is this a valid google sheets link?*")
+                    return
+            else:
+                sheet_id = sheet_url
+
+            if name is None:
+                await interaction.followup.send("*scanning sheet metadata...*")
+                title = await bot._fetch_google_sheet_title(sheet_id)
+                if title:
+                    name = f"{title} - {tab}"
+                    await interaction.followup.send(f"*sheet identified as: '{title}'*")
+
+            name_for_mgr = name or f"googlesheet_{sheet_id} - {tab}"
+
+            if header_row < 1:
+                header_row = 1
+
+            success, returned_uuid = await bot.refresh_single_google_sheet(
+                sheet_id,
+                tab,
+                custom_name=name_for_mgr,
+                interaction_for_feedback=interaction,
+                header_row=header_row,
+            )
+
+            if success and returned_uuid:
+                await interaction.followup.send(
+                    f"Google Sheet '{name_for_mgr}' (ID: {sheet_id}, Tab: {tab}) processed with internal UUID: `{returned_uuid}`."
+                )
+            else:
+                await interaction.followup.send(
+                    f"*neural connection established but sheet download or processing failed for '{name_for_mgr}'.*"
+                )
+        except Exception as e:
+            logger.error(f"Error adding Google Sheet: {e}", exc_info=True)
+            await interaction.followup.send(f"*error!* couldn't add sheet: {str(e)}")
+
+    @bot.tree.command(name="list_googlesheets", description="List all tracked Google Sheets")
+    async def list_google_sheets(interaction: discord.Interaction):
+        await interaction.response.defer()
+        tracked_file = Path(bot.document_manager.base_dir) / "tracked_google_sheets.json"
+        if not tracked_file.exists():
+            await interaction.followup.send("*no google sheets detected in my neural network...*")
+            return
+
+        try:
+            with open(tracked_file, 'r', encoding='utf-8') as f:
+                sheets = json.load(f)
+
+            if not sheets:
+                await interaction.followup.send("*my neural pathways show no connected google sheets*")
+                return
+
+            items = []
+            for entry in sheets:
+                sheet_id = entry.get('google_sheet_id')
+                tab_name = entry.get('tab_name')
+                uuid_val = entry.get('internal_doc_uuid')
+                header_row = entry.get('header_row', 1)
+                orig_name = entry.get('original_name_at_import', f"googlesheet_{sheet_id} - {tab_name}")
+                url = f"<https://docs.google.com/spreadsheets/d/{sheet_id}>"
+                items.append(
+                    (
+                        orig_name.lower(),
+                        f"**{orig_name}**\n  Sheet ID: `{sheet_id}`\n  Tab: {tab_name}\n  Header Row: {header_row}\n  UUID: `{uuid_val}`\n  URL: {url}"
+                    )
+                )
+
+            items.sort(key=lambda x: x[0])
+            response = "\n".join([it[1] for it in items])
+            for chunk in split_message(response, max_length=1900):
+                await interaction.followup.send(chunk)
+        except Exception as e:
+            logger.error(f"Error listing Google Sheets: {e}", exc_info=True)
+            await interaction.followup.send("*error listing sheets.*")
+
+    @bot.tree.command(name="remove_googlesheet", description="Remove a tracked Google Sheet (admin only)")
+    @app_commands.describe(identifier="Google Sheet ID or custom name to remove", tab="Tab name")
+    @app_commands.check(check_permissions)
+    async def remove_google_sheet(interaction: discord.Interaction, identifier: str, tab: str):
+        await interaction.response.defer()
+        tracked_file = Path(bot.document_manager.base_dir) / "tracked_google_sheets.json"
+        if not tracked_file.exists():
+            await interaction.followup.send("*no tracked google sheets found in my memory banks!*")
+            return
+
+        try:
+            with open(tracked_file, 'r', encoding='utf-8') as f:
+                sheets = json.load(f)
+
+            removed = False
+            for i, entry in enumerate(sheets):
+                sheet_id = entry.get('google_sheet_id')
+                tab_name = entry.get('tab_name')
+                name_at_import = entry.get('original_name_at_import')
+                if (
+                    (sheet_id == identifier or name_at_import == identifier) and tab_name == tab
+                ):
+                    internal_uuid = entry.get('internal_doc_uuid')
+                    sheets.pop(i)
+                    removed = True
+                    break
+
+            if not removed:
+                await interaction.followup.send("*sheet not found in tracking list.*")
+                return
+
+            with open(tracked_file, 'w', encoding='utf-8') as f:
+                json.dump(sheets, f, indent=2)
+
+            if internal_uuid:
+                await bot.document_manager.delete_document(internal_uuid)
+
+            await interaction.followup.send(f"Removed Google Sheet '{identifier}' tab '{tab}' from tracking.")
+        except Exception as e:
+            logger.error(f"Error removing Google Sheet: {e}", exc_info=True)
+            await interaction.followup.send("*error removing sheet.*")
+
+    @bot.tree.command(name="refresh_sheets", description="Refresh all tracked Google Sheets (admin only)")
+    @app_commands.check(check_permissions)
+    async def refresh_sheets(interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            await interaction.followup.send("*initiating Google Sheets refresh...*")
+            await bot.refresh_google_sheets()
+            await interaction.followup.send("*Google Sheets refresh complete.*")
+        except Exception as e:
+            logger.error(f"Error refreshing Google Sheets: {e}")
+            await interaction.followup.send("*error during sheet refresh.*")
+
+    @bot.tree.command(name="force_refresh_googlesheets", description="Force refresh/process all tracked Google Sheets (admin only)")
+    @app_commands.check(check_permissions)
+    async def force_refresh_googlesheets(interaction: discord.Interaction):
+        await interaction.response.defer()
+        try:
+            await interaction.followup.send("*FORCING refresh and processing for ALL Google Sheets...*")
+            await bot.refresh_google_sheets(force_process=True)
+            await interaction.followup.send("*Google Sheets force refresh complete.*")
+        except Exception as e:
+            logger.error(f"Error during manual Google Sheets force refresh: {e}")
+            await interaction.followup.send("*error during force refresh.*")
+
     @bot.tree.command(name="archive_channel", description="Archive messages from a Discord channel as a document (admin only)")
     @app_commands.describe(
         channel="The channel to archive messages from",

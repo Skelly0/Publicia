@@ -24,6 +24,7 @@ Publicia is a Discord bot designed to serve as an interactive lore repository fo
 - **Channel Context Parsing**: Optionally includes recent messages from the current channel as general context in the AI prompt, configurable via the `/parse_channel` command.
 - **Multiple AI Models**: Supports various AI models with automatic fallback and retry mechanisms.
 - **Google Doc Integration**: Can fetch and index content from Google Docs (linking them to internal document UUIDs), automatically detecting changes using content hashing. Also supports designating a specific channel where posted Google Doc links will be automatically added/refreshed.
+- **Google Sheets Integration**: Supports tracking specific tabs from Google Sheets, converting rows to readable text and refreshing them automatically.
 - **Role-Playing**: Maintains character as Publicia while providing information.
 - **File Management**: Allows listing and retrieving stored documents (identified by UUIDs).
 - **DOCX Processing**: Can process `.docx` files to automatically tag specific colored text (e.g., #980000) with XML tags like `<post-invasion_lore>` for specialized lore integration.
@@ -145,6 +146,14 @@ Unique capability to work with Google Docs:
 - Create citations linking back to source documents
 - Automatically decodes HTML entities (like `&`) found in Google Doc titles for cleaner display.
 - Support renaming and removing tracked documents (which updates the link to the internal UUID).
+
+### Google Sheets Integration
+
+Similar support exists for Google Sheets:
+
+- Track specific tabs from a sheet using the URL and tab name.
+- Rows are converted to `Header: value` lines for easy reading.
+- Sheets refresh on the same schedule as Google Docs.
 
 ### AI Model Selection
 
@@ -367,6 +376,11 @@ The bot will display a startup banner and initialize all components.
 
 - `/remove_googledoc`: Remove a tracked Google Doc. This removes the tracking entry and the associated local document (by its internal UUID). **(Admin Only)**
   - **Parameters**: `identifier` (The Google Doc ID, URL, or its custom original name in Publicia).
+- `/add_googlesheet`: Track a specific tab from a Google Sheet. **(Admin Only)**
+  - **Parameters**: `sheet_url` (URL or ID of the sheet), `tab` (Tab name), `name` (Optional custom name), `header_row` (Row number containing headers, default: 1).
+- `/list_googlesheets`: List all tracked Google Sheets.
+- `/remove_googlesheet`: Remove a tracked Google Sheet. **(Admin Only)**
+  - **Parameters**: `identifier` (Sheet ID or custom name), `tab` (Tab name).
 
 - `/rename_document`: Rename the user-facing original name of a document. The document is identified by its UUID or current original name. **(Admin Only)**
   - **Parameters**: `current_name` (The document's current UUID or original name), `new_name` (The new original name for the document).
@@ -407,6 +421,8 @@ The bot will display a startup banner and initialize all components.
 - `/refresh_docs`: Manually refresh all tracked Google Docs (checks for changes based on content hashes). **(Admin Only)**
 
 - `/force_refresh_googledocs`: Force refresh and re-process ALL tracked Google Docs (bypasses change detection). **(Admin Only)**
+- `/refresh_sheets`: Manually refresh all tracked Google Sheets. **(Admin Only)**
+- `/force_refresh_googlesheets`: Force refresh and re-process ALL tracked Google Sheets. **(Admin Only)**
 
 - `/track_channel`: Start tracking a Discord channel and archive it periodically. The bot will create an archive document and update it every 6 hours (configurable) with new messages. **(Admin Only)**
   - **Parameters**:
