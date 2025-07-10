@@ -13,7 +13,7 @@ import json
 import os
 import urllib.parse # Moved import to top level
 from datetime import datetime, timedelta, timezone # Added timedelta, timezone
-from utils.helpers import split_message, check_permissions, xml_wrap
+from utils.helpers import split_message, check_permissions, xml_wrap, wrap_document
 from utils.logging import log_qa_pair
 # Import both system prompts and the new functions
 from prompts.system_prompt import SYSTEM_PROMPT, INFORMATIONAL_SYSTEM_PROMPT, get_system_prompt_with_documents, get_informational_system_prompt_with_documents
@@ -150,42 +150,49 @@ def register_commands(bot):
                         if "region" in original_name.lower() else ""
 
                 if image_id:
-                    # This is an image description
-                    image_name = (bot.image_manager.metadata[image_id]['name']
-                                if image_id in bot.image_manager.metadata else "Unknown Image")
+                    image_name = (
+                        bot.image_manager.metadata[image_id]["name"]
+                        if image_id in bot.image_manager.metadata
+                        else "Unknown Image"
+                    )
                     raw_doc_contexts.append(
-                        f"{preamble}"
-                        f"Image: {image_name} (ID: {image_id})\n"
-                        f"Description: {chunk}\n"
-                        f"Relevance: {score:.2f}"
+                        wrap_document(
+                            f"{preamble}{chunk}",
+                            f"Image: {image_name} (ID: {image_id})",
+                            metadata=f"similarity: {score:.2f}"
+                        )
                     )
 
                 elif original_name in googledoc_mapping:
-                    # Create citation link for Google Doc
                     doc_id = googledoc_mapping[original_name]
                     words = chunk.split()
-                    search_text = ' '.join(words[:min(10, len(words))])
+                    search_text = " ".join(words[: min(10, len(words))])
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                     raw_doc_contexts.append(
-                        f"{preamble}"
-                        f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) "
-                        f"[Citation URL: {doc_url}] (similarity: {score:.2f}):\n{chunk}"
+                        wrap_document(
+                            f"{preamble}{chunk}",
+                            f"{original_name} (Chunk {chunk_index}/{total_chunks})",
+                            metadata=f"url: {doc_url}; similarity: {score:.2f}"
+                        )
                     )
 
                 else:
-                    # Display original_name for non-Google Docs
                     raw_doc_contexts.append(
-                        f"{preamble}"
-                        f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) (similarity: {score:.2f}):\n{chunk}"
+                        wrap_document(
+                            f"{preamble}{chunk}",
+                            f"{original_name} (Chunk {chunk_index}/{total_chunks})",
+                            metadata=f"similarity: {score:.2f}"
+                        )
                     )
 
             # Add fetched Google Doc content to context
             google_doc_context = []
             for doc_id, doc_url, content in google_doc_contents:
-                # Truncate content if it's too long (first 2000 chars)
                 truncated_content = content[:2000] + ("..." if len(content) > 2000 else "")
-                google_doc_context.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
+                google_doc_context.append(
+                    wrap_document(truncated_content, doc_url)
+                )
 
             # Fetch user pronouns
             pronouns = bot.user_preferences_manager.get_pronouns(str(interaction.user.id))
@@ -223,39 +230,41 @@ def register_commands(bot):
                 selected_system_prompt = get_system_prompt_with_documents(document_list_content)
             logger.debug(f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {interaction.user.id} in /query command")
 
-            # Prepare messages for model using the selected prompt
-            messages = [
-                {
-                    "role": "system",
-                    "content": selected_system_prompt # Use the selected prompt
-                }
-                # Pronoun context will be inserted here if available
-            ]
+            messages = []
 
-            # Insert pronoun context if it exists
-            if pronoun_context_message:
-                messages.insert(1, pronoun_context_message)
-
-            # Add raw document context as additional reference
             raw_doc_context = "\n\n".join(raw_doc_contexts)
-            messages.append({
-                "role": "system",
-                "content": xml_wrap(
-                    "document_context",
-                    f"Raw document context (with citation links):\n{raw_doc_context}",
-                ),
-            })
+            if raw_doc_context:
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": xml_wrap(
+                            "document_context",
+                            f"Raw document context (with citation links):\n{raw_doc_context}",
+                        ),
+                    }
+                )
 
-            # Add fetched Google Doc content if available
             if google_doc_context:
                 google_docs_content = "\n\n".join(google_doc_context)
-                messages.append({
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": xml_wrap(
+                            "google_docs_context",
+                            f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
+                        ),
+                    }
+                )
+
+            messages.append(
+                {
                     "role": "system",
-                    "content": xml_wrap(
-                        "google_docs_context",
-                        f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
-                    ),
-                })
+                    "content": selected_system_prompt,
+                }
+            )
+
+            if pronoun_context_message:
+                messages.append(pronoun_context_message)
 
             # --- Add Keyword Context ---
             found_keywords_in_chunks = set()
@@ -597,7 +606,7 @@ def register_commands(bot):
             full_context_str = ""
             total_chars = 0
             for name, content in all_doc_contents.items():
-                full_context_str += f"<document name=\"{name}\">\n{content}\n</document>\n\n"
+                full_context_str += wrap_document(content, name) + "\n\n"
                 total_chars += len(content)
 
             chunk_details = [f"{name}:ALL" for name in all_doc_contents.keys()]
@@ -641,28 +650,34 @@ def register_commands(bot):
             document_list_content = bot.document_manager.get_document_list_content()
             selected_system_prompt = get_system_prompt_with_documents(document_list_content)
 
-            messages = [
-                {"role": "system", "content": selected_system_prompt},
-                # Pronoun context
-                *([pronoun_context_message] if pronoun_context_message else []),
-                # Full document context
+            messages = []
+
+            messages.append(
                 {
                     "role": "system",
                     "content": xml_wrap(
                         "document_context_full",
                         f"Full document context follows {'(truncated)' if truncated else ''}:\n\n{full_context_str}",
                     ),
-                },
-                # User query context
+                }
+            )
+
+            messages.append({"role": "system", "content": selected_system_prompt})
+
+            if pronoun_context_message:
+                messages.append(pronoun_context_message)
+
+            messages.append(
                 {
                     "role": "user",
                     "content": xml_wrap(
                         "channel_info",
                         f"You are responding to a message in the Discord channel: {channel_name}",
                     ),
-                },
-                {"role": "user", "content": f"{nickname}: {question}"}
-            ]
+                }
+            )
+
+            messages.append({"role": "user", "content": f"{nickname}: {question}"})
 
             # --- Model Selection and Execution ---
             # Specify the exact models to use
