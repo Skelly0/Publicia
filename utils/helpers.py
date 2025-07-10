@@ -55,6 +55,15 @@ def xml_wrap(tag: str, content: str) -> str:
     return f"<{tag}>{content}</{tag}>"
 
 
+def wrap_document(content: str, source: str, metadata: str = "") -> str:
+    """Wrap a document's content and source in structured XML tags."""
+    meta_section = f"\n<metadata>{metadata}</metadata>" if metadata else ""
+    return (
+        f"<document>\n<source>{source}</source>{meta_section}\n"
+        f"<document_content>\n{content}\n</document_content>\n</document>"
+    )
+
+
 async def check_permissions(ctx):
     """
     Check if a user has permissions for a command, compatible with both

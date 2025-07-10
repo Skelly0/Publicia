@@ -17,6 +17,15 @@ from typing import List, Dict, Tuple, Optional, Any
 from pathlib import Path
 from textwrap import shorten
 from rank_bm25 import BM25Okapi
+try:
+    from utils.helpers import wrap_document
+except Exception:  # Fallback for test environments without full package
+    def wrap_document(content: str, source: str, metadata: str = "") -> str:
+        meta_section = f"\n<metadata>{metadata}</metadata>" if metadata else ""
+        return (
+            f"<document>\n<source>{source}</source>{meta_section}\n"
+            f"<document_content>\n{content}\n</document_content>\n</document>"
+        )
 
 # Import docx components
 try:
@@ -288,7 +297,11 @@ class DocumentManager:
         """Generates a concise summary for a given document's content."""
         try:
             system_prompt = "You are a helpful AI assistant that creates concise, comprehensive, descriptive summaries of documents. Your task is to provide a summary that captures the main topics and purpose of the document. Mention every major entity and topic in the document in your summary."
-            user_prompt = f"Please provide a short, one-sentence summary for the following document:\n\n<document>\n{document_content}\n</document>\n\nAnswer only with the summary and nothing else."
+            wrapped_doc = wrap_document(document_content, "user_document")
+            user_prompt = (
+                "Please provide a short, one-sentence summary for the following document:\n\n"
+                f"{wrapped_doc}\n\nAnswer only with the summary and nothing else."
+            )
             
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
@@ -592,8 +605,16 @@ class DocumentManager:
 
     async def generate_chunk_context(self, document_content: str, chunk_content: str) -> str:
         try:
-            system_prompt = """You are a helpful AI assistant that creates concise contextual descriptions for document chunks. Your task is to provide a short, succinct context that situates a specific chunk within the overall document to improve search retrieval. Answer only with the succinct context and nothing else."""
-            user_prompt = f"""<document> \n{document_content} \n</document> \nHere is the chunk we want to situate within the whole document \n<chunk> \n{chunk_content} \n</chunk> \nPlease give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."""
+            system_prompt = (
+                "You are a helpful AI assistant that creates concise contextual descriptions for document chunks. "
+                "Your task is to provide a short, succinct context that situates a specific chunk within the overall document "
+                "to improve search retrieval. Answer only with the succinct context and nothing else."
+            )
+            wrapped_doc = wrap_document(document_content, "full_document")
+            user_prompt = (
+                f"{wrapped_doc}\n<chunk>\n{chunk_content}\n</chunk>\n"
+                "Please give a short succinct context to situate this chunk within the overall document for the purposes of improving search retrieval of the chunk. Answer only with the succinct context and nothing else."
+            )
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             fallback_models = ["google/gemini-2.5-flash-lite-preview-06-17", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
