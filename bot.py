@@ -668,7 +668,6 @@ class DiscordBot(commands.Bot):
         final_original_name = None
         existing_internal_uuid = None
         name_from_tracking_file = None
-        tracked_header_row = header_row
 
         tracked_gdocs_file = self.document_manager.base_dir / "tracked_google_docs.json"
         if tracked_gdocs_file.exists():

@@ -424,6 +424,7 @@ def register_commands(bot):
             response = "# **PUBLICIA HELP GUIDE**\n\n"
             response += "Greetings! I am a Discord bot that roleplays as the abhuman Publicia. I act as a lore repository for our world and setting that can be queried.\n"
             response += "My purpose is primarily to answer questions about the lore of Ledus Banum 77 and the Infinite Empire (the setting of Season 7/this Discord roleplay server). I am helpful for trying to find information about the various natives of the planet or about the Empire. I can also engage in roleplay!\n"
+            response += "DISCLAIMER: I can sometimes hallucinate false information or get confabulated, so for anything important, double check the original documents or ask someone to help!\n"
             response += "\nHere's a quick overview of my functionality, limitations, and commands:\n\n"
 
             # Core functionality
