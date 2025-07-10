@@ -13,6 +13,8 @@
     "uuid": "^1.30",
     "deque": "^1.0",
     "google-generativeai": "^0.3.0"
+    ,"markdownify": "^0.11.6"
+    ,"beautifulsoup4": "^4.9.0"
   },
   "python_version": ">=3.8",
   "description": "Dependencies for the Publicia Discord Bot"

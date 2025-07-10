@@ -35,6 +35,7 @@ from utils.helpers import (
     split_message,
     sanitize_filename,
     xml_wrap,
+    html_to_markdown_without_base64,
 )
 from utils.logging import sanitize_for_logging, log_qa_pair
 from managers.keywords import KeywordManager # Added import
@@ -618,12 +619,14 @@ class DiscordBot(commands.Bot):
 
             # Download the latest version from Google
             async with aiohttp.ClientSession() as session:
-                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
                 async with session.get(url) as response:
                     if response.status != 200:
                         logger.warning(f"Failed to download {doc_id} for change check (Status: {response.status}). Assuming changed.")
-                        return True # Assume changed if download fails
-                    new_content = await response.text()
+                        return True  # Assume changed if download fails
+                    html_content = await response.text()
+
+            new_content = html_to_markdown_without_base64(html_content)
 
             # Compute hash of the newly downloaded content
             import hashlib
@@ -723,20 +726,24 @@ class DiscordBot(commands.Bot):
             logger.warning(f"{log_prefix} Logic error: process_this_doc is false for GDoc ID {doc_id} ('{final_original_name}'), skipping.")
             return True, existing_internal_uuid 
 
-        # Download the document as TXT
         async with aiohttp.ClientSession() as session:
-            url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+            url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
             async with session.get(url) as response:
                     if response.status != 200:
-                        logger.error(f"Failed to download GDoc ID {doc_id} ('{final_original_name}') as TXT: {response.status}")
+                        logger.error(f"Failed to download GDoc ID {doc_id} ('{final_original_name}') as HTML: {response.status}")
                         if interaction_for_feedback:
-                            try: await interaction_for_feedback.followup.send(f"Failed to download Google Doc ID {doc_id} ('{final_original_name}'). Status: {response.status}", ephemeral=True)
-                            except: pass
+                            try:
+                                await interaction_for_feedback.followup.send(
+                                    f"Failed to download Google Doc ID {doc_id} ('{final_original_name}'). Status: {response.status}",
+                                    ephemeral=True,
+                                )
+                            except:
+                                pass
                         return False, None
-                    txt_content = await response.text()
+                    html_content = await response.text()
 
-        final_content = txt_content 
-        content_source_log = "original TXT"
+        final_content = html_to_markdown_without_base64(html_content)
+        content_source_log = "converted HTML"
 
         # Optional DOCX Processing
         if self.config.AUTO_PROCESS_GOOGLE_DOCS and "region" in final_original_name.lower(): # Use final_original_name
@@ -756,7 +763,7 @@ class DiscordBot(commands.Bot):
                                         f_docx.write(chunk)
                                 processed_docx_content = tag_lore_in_docx(str(docx_temp_path))
                                 if processed_docx_content:
-                                    final_content = processed_docx_content
+                                    final_content = html_to_markdown_without_base64(processed_docx_content)
                                     content_source_log = "processed DOCX"
                                 else: logger.warning(f"DOCX processing failed for {doc_id}, using TXT.")
                             else: logger.error(f"Failed to download DOCX for {doc_id}: {response_docx.status}")
@@ -1103,16 +1110,16 @@ class DiscordBot(commands.Bot):
     async def _fetch_google_doc_content(self, doc_id: str) -> Optional[str]:
         """Fetch the content of a Google Doc without tracking it."""
         try:
-            # Download the document
             async with aiohttp.ClientSession() as session:
-                url = f"https://docs.google.com/document/d/{doc_id}/export?format=txt"
+                url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
                 async with session.get(url) as response:
                     if response.status != 200:
                         logger.error(f"Failed to download {doc_id}: {response.status}")
                         return None
-                    content = await response.text()
-            
-            return content
+                    html_content = await response.text()
+
+            markdown_content = html_to_markdown_without_base64(html_content)
+            return markdown_content
                 
         except Exception as e:
             logger.error(f"Error downloading doc {doc_id}: {e}")
