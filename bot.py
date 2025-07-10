@@ -35,6 +35,7 @@ from utils.helpers import (
     split_message,
     sanitize_filename,
     xml_wrap,
+    wrap_document,
 )
 from utils.logging import sanitize_for_logging, log_qa_pair
 from managers.keywords import KeywordManager # Added import
@@ -2835,7 +2836,13 @@ class DiscordBot(commands.Bot):
                 
                 if image_id:
                     image_name = self.image_manager.metadata.get(image_id, {}).get('name', "Unknown Image")
-                    raw_doc_contexts.append(f"Image: {image_name} (ID: {image_id})\nDescription: {chunk}\nRelevance: {score:.2f}")
+                    raw_doc_contexts.append(
+                        wrap_document(
+                            special_note + chunk,
+                            f"Image: {image_name} (ID: {image_id})",
+                            metadata=f"similarity: {score:.2f}"
+                        )
+                    )
 
                 elif original_name in googledoc_mapping:
                     # Assuming googledoc_mapping keys are original_names that map to Google Doc IDs
@@ -2845,19 +2852,30 @@ class DiscordBot(commands.Bot):
                     encoded_search = urllib.parse.quote(search_text)
                     doc_url = f"https://docs.google.com/document/d/{doc_id}/"
                     # The {special_note} variable is added before the {chunk}.
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation: ([{original_name}](<{doc_url}>))] (similarity: {score:.2f}):\n{special_note}{chunk}")
+                    raw_doc_contexts.append(
+                        wrap_document(
+                            special_note + chunk,
+                            f"{original_name} (Chunk {chunk_index}/{total_chunks})",
+                            metadata=f"url: {doc_url}; similarity: {score:.2f}"
+                        )
+                    )
                 
                 else:
                     # Display original_name for non-Google Docs
                     # The {special_note} variable is added before the {chunk}.
-                    raw_doc_contexts.append(f"From document '{original_name}' (Chunk {chunk_index}/{total_chunks}) [Citation: ({original_name})] (similarity: {score:.2f}):\n{special_note}{chunk}")
+                    raw_doc_contexts.append(
+                        wrap_document(
+                            special_note + chunk,
+                            f"{original_name} (Chunk {chunk_index}/{total_chunks})",
+                            metadata=f"similarity: {score:.2f}"
+                        )
+                    )
                     
             # Add fetched Google Doc content to context
             google_doc_context_str = []
             for doc_id, doc_url, content in google_doc_contents:
-                # Truncate content if it's too long (e.g., first 10000 chars)
                 truncated_content = content[:10000] + ("..." if len(content) > 10000 else "")
-                google_doc_context_str.append(f"From Google Doc URL: {doc_url}:\n{truncated_content}")
+                google_doc_context_str.append(wrap_document(truncated_content, doc_url))
 
             # Get document list content
             document_list_content = self.document_manager.get_document_list_content()
@@ -2976,29 +2994,34 @@ class DiscordBot(commands.Bot):
             # Add raw document context from search results
             if raw_doc_contexts:
                 raw_doc_context_combined = "\n\n".join(raw_doc_contexts)
-                # Truncate if excessively long to avoid huge prompts
-                max_raw_context_len = 52000 # Adjust as needed
+                max_raw_context_len = 52000
                 if len(raw_doc_context_combined) > max_raw_context_len:
                     raw_doc_context_combined = raw_doc_context_combined[:max_raw_context_len] + "\n... [Context Truncated]"
                     logger.warning(f"Raw document context truncated to {max_raw_context_len} characters.")
-                messages.append({
-                    "role": "system",
-                    "content": xml_wrap(
-                        "document_context",
-                        f"Raw document context (with citation links):\n{raw_doc_context_combined}",
-                    ),
-                })
+                messages.insert(
+                    0,
+                    {
+                        "role": "system",
+                        "content": xml_wrap(
+                            "document_context",
+                            f"Raw document context (with citation links):\n{raw_doc_context_combined}",
+                        ),
+                    },
+                )
 
             # Add fetched Google Doc content if available
             if google_doc_context_str:
                 google_docs_content = "\n\n".join(google_doc_context_str)
-                messages.append({
-                    "role": "system",
-                    "content": xml_wrap(
-                        "google_docs_context",
-                        f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
-                    ),
-                })
+                messages.insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": xml_wrap(
+                            "google_docs_context",
+                            f"Content from Google Docs linked in the query:\n\n{google_docs_content}",
+                        ),
+                    },
+                )
 
             # Add channel context
             description_note = (
