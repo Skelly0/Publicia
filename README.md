@@ -156,6 +156,12 @@ Automatically fetch and update content from Google Docs to keep your lore fresh 
 - Extract content from Google Doc links in messages
 - Create citations linking back to source documents
 
+### Google Sheets Integration
+- Track individual tabs in Google Sheets and automatically import them as formatted text:
+- Specify the sheet URL, tab name, and which row contains the headers
+- Data is converted to readable lines rather than raw CSV
+- Sheets refresh on the same schedule as Google Docs
+
 ### Dynamic Temperature Control
 The bot automatically adjusts response temperature based on query type:
 - Lower temperature for factual/information queries
@@ -209,6 +215,9 @@ Comprehensive tools to help troubleshoot issues:
 | `/add_googledoc` | Track a Google Doc |
 | `/list_googledocs` | List all tracked Google Docs |
 | `/remove_googledoc` | Remove a tracked Google Doc |
+| `/add_googlesheet` | Track a Google Sheet tab (optionally specify header row) |
+| `/list_googlesheets` | List all tracked Google Sheets |
+| `/remove_googlesheet` | Remove a tracked Google Sheet |
 | `/rename_document` | Rename a document (identified by current UUID or original name) |
 | `/retrieve_file` | Retrieve a specific file by its UUID (`doc_uuid`) |
 | `/archive_channel` | Archive messages from a Discord channel as a document (admin only). Params: `channel`, `message_limit`, `document_name`, `include_bots`, `include_attachments`. |
@@ -247,6 +256,9 @@ Comprehensive tools to help troubleshoot issues:
 | `/reload_docs` | Reload all documents from disk |
 | `/regenerate_embeddings` | Regenerate all document embeddings |
 | `/refresh_docs` | Manually refresh all tracked Google Docs |
+| `/refresh_sheets` | Manually refresh all tracked Google Sheets |
+| `/force_refresh_googledocs` | Force refresh all Google Docs |
+| `/force_refresh_googlesheets` | Force refresh all Google Sheets |
 | `/compare_models` | Compare responses from multiple AI models |
 
 ## Documentation

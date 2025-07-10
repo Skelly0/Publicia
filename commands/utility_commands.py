@@ -30,7 +30,7 @@ def register_commands(bot):
             # Define standard command categories
             standard_categories = {
                 "Lore Queries": ["query", "query_full_context"],
-                "Document Management": ["list_docs", "search_docs", "search_keyword", "search_keyword_bm25", "list_googledocs", "retrieve_file", "summarize_doc", "view_chunk"],
+                "Document Management": ["list_docs", "search_docs", "search_keyword", "search_keyword_bm25", "list_googledocs", "list_googlesheets", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "temperature", "help", "whats_new"],
                 "Context/Memory Management": ["parse_channel", "history", "manage_history", "delete_history_messages", "swap_conversation", "list_archives", "archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages"]
@@ -38,17 +38,58 @@ def register_commands(bot):
 
             # Define admin-only command categories
             admin_categories = {
-                "Document Management": ["add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel", "track_channel", "untrack_channel", "reload_docs", "regenerate_embeddings", "refresh_docs"],
+                "Document Management": [
+                    "add_info",
+                    "remove_doc",
+                    "add_googledoc",
+                    "remove_googledoc",
+                    "rename_document",
+                    "archive_channel",
+                    "set_doc_channel",
+                    "track_channel",
+                    "untrack_channel",
+                    "reload_docs",
+                    "regenerate_embeddings",
+                    "refresh_docs",
+                    "add_googlesheet",
+                    "remove_googlesheet",
+                    "refresh_sheets",
+                    "force_refresh_googlesheets",
+                ],
                 "Image Management": ["edit_image", "remove_image", "update_image_description"],
                 "Utility": ["ban_user", "unban_user", "compare_models"],
             }
 
             # Define a set of admin command names for easy checking (not strictly needed for the new output structure, but fixing syntax)
             admin_command_names = {
-                "add_info", "remove_doc", "add_googledoc", "remove_googledoc", "rename_document", "archive_channel", "set_doc_channel",
-                "edit_image", "remove_image", "update_image_description",
-                "ban_user", "unban_user",
-                "archive_conversation", "delete_archive", "lobotomise", "memory_clear", "delete_history_messages", "parse_channel", "compare_models", "reload_docs", "regenerate_embeddings", "refresh_docs"
+                "add_info",
+                "remove_doc",
+                "add_googledoc",
+                "remove_googledoc",
+                "rename_document",
+                "archive_channel",
+                "set_doc_channel",
+                "track_channel",
+                "untrack_channel",
+                "reload_docs",
+                "regenerate_embeddings",
+                "refresh_docs",
+                "add_googlesheet",
+                "remove_googlesheet",
+                "refresh_sheets",
+                "force_refresh_googlesheets",
+                "edit_image",
+                "remove_image",
+                "update_image_description",
+                "ban_user",
+                "unban_user",
+                "archive_conversation",
+                "delete_archive",
+                "lobotomise",
+                "memory_clear",
+                "delete_history_messages",
+                "parse_channel",
+                "compare_models"
             }
 
             # List standard commands first
