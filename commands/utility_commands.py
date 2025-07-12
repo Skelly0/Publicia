@@ -174,6 +174,7 @@ def register_commands(bot):
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku"),
         app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
+        app_commands.Choice(name="Kimi K2", value="moonshotai/kimi-k2"),
         #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
         #app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
@@ -229,6 +230,8 @@ def register_commands(bot):
                 model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b" in model:
                 model_name = "Qwen 3 235B A22B"
+            elif "moonshotai/kimi-k2" in model:
+                model_name = "Kimi K2"
             elif "unslopnemo" in model or "eva-unit-01/eva-qwen-2.5-72b" in model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in model:
@@ -269,6 +272,7 @@ def register_commands(bot):
                     f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
+                    f"**Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet). Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
@@ -327,6 +331,8 @@ def register_commands(bot):
                 model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b" in preferred_model:
                 model_name = "Qwen 3 235B A22B"
+            elif "moonshotai/kimi-k2" in preferred_model:
+                model_name = "Kimi K2"
             elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in preferred_model:
@@ -365,6 +371,7 @@ def register_commands(bot):
                     f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
+                    f"**Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet). Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",

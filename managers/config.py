@@ -86,6 +86,8 @@ class Config:
             "x-ai/grok-3-mini-beta": 20,
             # MiniMax Models
             "minimax/minimax-m1": 20,
+            # Moonshot AI Models
+            "moonshotai/kimi-k2": 20,
         }
         
         # Validate required environment variables
