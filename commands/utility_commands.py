@@ -163,8 +163,9 @@ def register_commands(bot):
     @bot.tree.command(name="set_model", description="Set your preferred AI model for responses")
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
-        app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
         app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
+        app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
+        app_commands.Choice(name="Kimi K2", value="moonshotai/kimi-k2"),
         app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
         #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro-preview-03-25"), # Added new model
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b"),
@@ -174,7 +175,6 @@ def register_commands(bot):
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku"),
         app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
-        app_commands.Choice(name="Kimi K2", value="moonshotai/kimi-k2"),
         #app_commands.Choice(name="Claude 3.7 Sonnet", value="anthropic/claude-3.7-sonnet"),
         #app_commands.Choice(name="Testing Model", value="eva-unit-01/eva-qwen-2.5-72b"),
         #app_commands.Choice(name="Wayfarer 70B", value="latitudegames/wayfarer-large-70b-llama-3.3"),
@@ -259,8 +259,9 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 # Create a description of all model strengths
                 model_descriptions = [
-                    f"**MiniMax M1**: __RECOMMENDED__ - A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
+                    f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
+                    f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
@@ -272,7 +273,6 @@ def register_commands(bot):
                     f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
-                    f"**Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet). Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
@@ -358,8 +358,9 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
-                    f"**MiniMax M1**: __RECOMMENDED__ - A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
+                    f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
+                    f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
@@ -371,7 +372,6 @@ def register_commands(bot):
                     f"**Claude 4 Sonnet**: Advanced model similar to Claude 3.5 Haiku, the best model (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-sonnet-4')}).",
                     #f"**Claude 3.7 Sonnet**: Most advanced model, combines creative and analytical strengths (admin only). Uses fewer search results ({bot.config.get_top_k_for_model('anthropic/claude-3.7-sonnet')}) to save money.",
                     f"**Nous: Hermes 405B**: Great for roleplaying. Balanced between creativity and accuracy. Uses a moderate number of search results ({bot.config.get_top_k_for_model('nousresearch/hermes-3-llama-3.1-405b')}).",
-                    f"**Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet). Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     #f"**Testing Model**: Currently using EVA Qwen2.5 72B, a narrative-focused model. Uses ({bot.config.get_top_k_for_model('eva-unit-01/eva-qwen-2.5-72b')}) search results. This model can be easily swapped to test different OpenRouter models.",
                     #f"**Wayfarer 70B**: A model finetuned for narrative-driven roleplay with realistic stakes and conflicts. Good for immersive storytelling and character portrayal. Uses ({bot.config.get_top_k_for_model('latitudegames/wayfarer-large-70b-llama-3.3')}) search results.",
                     #f"**Anubis Pro 105B**: 105B parameter model with enhanced emotional intelligence and creativity. Supposedly excels at nuanced character portrayal and superior prompt adherence as compared to smaller models. Uses ({bot.config.get_top_k_for_model('thedrummer/anubis-pro-105b-v1')}) search results.",
@@ -379,7 +379,7 @@ def register_commands(bot):
                     #f"**Grok 3 Mini**: __RECOMMENDED__ - An intelligent small model, good for factual responses, prompt adherence, character acting, and interesting speaking style. Uses ({bot.config.get_top_k_for_model('x-ai/grok-3-mini-beta')}) search results.",
                     #f"**OpenAI GPT-4.1 Mini**: A compact and efficient model from OpenAI, good for general tasks. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-mini')}) search results.",
                     #f"**OpenAI GPT-4.1 Nano**: An even smaller OpenAI model, optimized for speed and efficiency. Uses ({bot.config.get_top_k_for_model('openai/gpt-4.1-nano')}) search results.",
-            ]
+                ]
             
             response = f"*neural architecture scan complete!* Your currently selected model is **{model_name}**.\n\n**Model strengths:**\n"
             response += "\n".join(model_descriptions)
@@ -431,7 +431,7 @@ def register_commands(bot):
             response = "# **PUBLICIA HELP GUIDE**\n\n"
             response += "Greetings! I am a Discord bot that roleplays as the abhuman Publicia. I act as a lore repository for our world and setting that can be queried.\n"
             response += "My purpose is primarily to answer questions about the lore of Ledus Banum 77 and the Infinite Empire (the setting of Season 7/this Discord roleplay server). I am helpful for trying to find information about the various natives of the planet or about the Empire. I can also engage in roleplay!\n"
-            response += "DISCLAIMER: I can sometimes hallucinate false information or get confabulated, so for anything important, double check the original documents or ask someone to help!\n"
+            response += "\n**DISCLAIMER: I can sometimes hallucinate false information or get confabulated, so for anything important, double check the original documents or ask someone to help!**\n"
             response += "\nHere's a quick overview of my functionality, limitations, and commands:\n\n"
 
             # Core functionality
