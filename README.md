@@ -133,6 +133,7 @@ Users can select their preferred AI model for responses:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 4 Sonnet**: Premium capabilities (admin restricted)
 - **Nous: Hermes 405B**: Balanced between creativity and precision
+- **Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet)
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
 
 Additional admin-only models include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.

@@ -3116,6 +3116,7 @@ class DiscordBot(commands.Bot):
             elif "maverick" in preferred_model: model_name = "Llama 4 Maverick"
             elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b" in preferred_model: model_name = "Qwen 3 235B A22B"
+            elif "moonshotai/kimi-k2" in preferred_model: model_name = "Kimi K2"
             elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"
             elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model: model_name = "Anubis Pro 105B"

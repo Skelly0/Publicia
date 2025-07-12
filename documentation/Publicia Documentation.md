@@ -167,6 +167,7 @@ Users can choose their preferred AI model:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities
 - **Claude 4 Sonnet**: Premium capabilities (admin restricted)
 - **Nous: Hermes 405B**: Balanced between creativity and precision
+- **Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet)
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
 
@@ -516,6 +517,7 @@ Choose models based on your needs:
 - **Claude 3.5 Haiku**: Fast responses with image capabilities and good efficiency
 - **Claude 4 Sonnet**: Advanced capabilities with enhanced creativity (admin-only)
 - **Nous: Hermes 405B**: Good middle-ground between creativity and precision
+- **Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet)
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay with realistic stakes and conflicts
 - **Grok 3 Mini**: X.AI's efficient model for quick, conversational responses
 
