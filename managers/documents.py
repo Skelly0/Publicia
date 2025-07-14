@@ -1604,7 +1604,6 @@ class DocumentManager:
             if entry.get('google_doc_id') == google_doc_id:
                 entry['internal_doc_uuid'] = internal_doc_uuid
                 entry['original_name_at_import'] = original_name_at_import
-                entry['header_row'] = header_row
                 entry['updated_at'] = datetime.now().isoformat()
                 entry_found = True
                 logger.info(f"Updated tracking for Google Doc ID {google_doc_id} to internal UUID {internal_doc_uuid}.")
