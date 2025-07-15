@@ -88,6 +88,7 @@ class Config:
             "minimax/minimax-m1": 20,
             # Moonshot AI Models
             "moonshotai/kimi-k2": 20,
+            "switchpoint/router": 12,
         }
         
         # Validate required environment variables
