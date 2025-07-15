@@ -383,6 +383,8 @@ def register_commands(bot):
                 model_name = "Qwen 3 235B A22B"
             elif "moonshotai/kimi-k2" in preferred_model:
                 model_name = "Kimi K2"
+            elif "switchpoint/router" in preferred_model:
+                model_name = "Switchpoint Router"
             elif "unslopnemo" in preferred_model or "eva-unit-01/eva-qwen-2.5-72b" in preferred_model:
                 model_name = "Testing Model"
             elif "latitudegames/wayfarer" in preferred_model:

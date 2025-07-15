@@ -3117,6 +3117,7 @@ class DiscordBot(commands.Bot):
             elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b" in preferred_model: model_name = "Qwen 3 235B A22B"
             elif "moonshotai/kimi-k2" in preferred_model: model_name = "Kimi K2"
+            elif "switchpoint/router" in preferred_model: model_name = "Switchpoint Router"
             elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"
             elif "latitudegames/wayfarer" in preferred_model: model_name = "Wayfarer 70B"
             elif "thedrummer/anubis-pro" in preferred_model: model_name = "Anubis Pro 105B"
@@ -3131,6 +3132,8 @@ class DiscordBot(commands.Bot):
                 model_name = "OpenAI o4 Mini"
             elif preferred_model == "moonshot/kimi-k2":
                 model_name = "Kimi K2"
+            elif preferred_model == "switchpoint/router":
+                model_name = "Switchpoint Router"
             # Note: "Testing Model" name is less clear, using specific names if possible.
 
             # Update thinking message before API call

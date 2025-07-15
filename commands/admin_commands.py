@@ -110,6 +110,9 @@ def register_commands(bot):
                     "eva-unit-01/eva-qwen-2.5-72b",
                     "thedrummer/unslopnemo-12b",
                 ],
+                "switchpoint": [
+                    "switchpoint/router",
+                ],
                 "storytelling": [
                     "latitudegames/wayfarer-large-70b-llama-3.3",
                     "thedrummer/anubis-pro-105b-v1"
