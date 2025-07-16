@@ -367,7 +367,7 @@ def register_commands(bot):
                 model_name = "DeepSeek V3 0324"
             elif "gemini-2.5-flash" in preferred_model:
                 model_name = "Gemini 2.5 Flash"
-            elif "google/gemini-2.5-pro-preview-03-25" in preferred_model:
+            elif "google/gemini-2.5-pro" in preferred_model:
                 model_name = "Gemini 2.5 Pro"
             elif preferred_model.startswith("nousresearch/"):
                 model_name = "Nous: Hermes 405B Instruct"
@@ -685,8 +685,8 @@ def register_commands(bot):
 
             # --- Model Selection and Execution ---
             # Specify the exact models to use
-            target_models = ["google/gemini-2.5-flash-preview:thinking", "google/gemini-2.5-flash-preview", "cohere/command-r7b-12-2024"]#, "google/gemini-2.5-pro-preview-03-25"]
-            model_name_display = "google/gemini-2.5-flash-preview:thinking" # Friendly name
+            target_models = ["google/gemini-2.5-flash:thinking", "google/gemini-2.5-flash", "cohere/command-r7b-12-2024"]#, "google/gemini-2.5-pro"]
+            model_name_display = "google/gemini-2.5-flash:thinking" # Friendly name
 
             await status_message.edit(content=f"*formulating response using {model_name_display}...*")
 

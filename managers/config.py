@@ -18,9 +18,9 @@ class Config:
         self.GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
         
         # Configure models with defaults
-        self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.5-flash-preview')
+        self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.5-flash')
         self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'qwen/qwq-32b')
-        self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.5-flash-preview')
+        self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.5-flash')
         
         # New embedding configuration
         self.EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'models/text-embedding-004')
@@ -48,10 +48,10 @@ class Config:
             "deepseek/deepseek-r1-0528": 15,
             "deepseek/deepseek-r1-0528:floor": 1150,
             # Gemini models 
-            "google/gemini-2.5-flash-preview": 18,
-            "google/gemini-2.5-flash-preview:thinking": 16,
+            "google/gemini-2.5-flash": 18,
+            "google/gemini-2.5-flash:thinking": 16,
             "google/gemini-2.0-pro-exp-02-05": 20,
-            "google/gemini-2.5-pro-preview-03-25": 10, # Added new model
+            "google/gemini-2.5-pro": 10, # Added new model
             # Nous Hermes models
             "nousresearch/hermes-3-llama-3.1-405b": 9,
             # Claude models

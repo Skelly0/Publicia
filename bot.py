@@ -94,8 +94,8 @@ class DiscordBot(commands.Bot):
 
         # List of models that support vision capabilities
         self.vision_capable_models = [
-            "google/gemini-2.5-flash-preview:thinking",
-            "google/gemini-2.5-flash-preview",
+            "google/gemini-2.5-flash:thinking",
+            "google/gemini-2.5-flash",
             "google/gemini-2.0-flash-001",
             "microsoft/phi-4-multimodal-instruct",
             "anthropic/claude-3.7-sonnet",
@@ -232,7 +232,7 @@ class DiscordBot(commands.Bot):
             ]
             
             payload = {
-                "model": "google/gemini-2.5-flash-preview:thinking",  # Use a vision-capable model
+                "model": "google/gemini-2.5-flash:thinking",  # Use a vision-capable model
                 "messages": messages,
                 "temperature": 0.1
             }
@@ -1310,9 +1310,9 @@ class DiscordBot(commands.Bot):
             # Google models
             elif model_family == "google":
                 fallbacks = [
-                    "google/gemini-2.5-flash-preview:thinking",
-                    "google/gemini-2.5-flash-preview",
-                    "google/gemini-2.5-pro-exp-03-25", # Add new model as a primary fallback
+                    "google/gemini-2.5-flash:thinking",
+                    "google/gemini-2.5-flash",
+                    "google/google/gemini-2.5-pro", # Add new model as a primary fallback
                     "google/gemini-2.0-flash-thinking-exp",
                     "google/gemini-2.0-pro-exp-02-05",
                     "google/gemini-2.0-flash-001"
@@ -1424,8 +1424,8 @@ class DiscordBot(commands.Bot):
             general_fallbacks = [
                 #"qwen/qwq-32b",
                 "qwen/qwq-32b:floor",
-                "google/gemini-2.5-flash-preview:thinking",
-                "google/gemini-2.5-flash-preview",
+                "google/gemini-2.5-flash:thinking",
+                "google/gemini-2.5-flash",
                 "google/gemini-2.0-flash-thinking-exp",
                 "deepseek/deepseek-r1",
                 "deepseek/deepseek-r1",
@@ -3107,7 +3107,7 @@ class DiscordBot(commands.Bot):
             if "deepseek/deepseek-r1" in preferred_model: model_name = "DeepSeek-R1"
             elif "deepseek/deepseek-chat" in preferred_model: model_name = "DeepSeek V3 0324"
             elif "google/gemini-2.5-flash" in preferred_model: model_name = "Gemini 2.5 Flash" # Specific check
-            elif "google/gemini-2.5-pro-preview-03-25" in preferred_model: model_name = "Gemini 2.5 Pro"
+            elif "google/gemini-2.5-pro" in preferred_model: model_name = "Gemini 2.5 Pro"
             elif preferred_model.startswith("google/"): model_name = "Gemini 2.0 Flash" # Fallback for other google models
             elif preferred_model.startswith("nousresearch/"): model_name = "Nous: Hermes 405B"
             elif "claude-3.5-haiku" in preferred_model: model_name = "Claude 3.5 Haiku"

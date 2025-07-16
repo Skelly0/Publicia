@@ -167,8 +167,8 @@ def register_commands(bot):
         app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
         app_commands.Choice(name="Kimi K2", value="moonshotai/kimi-k2"),
         app_commands.Choice(name="Switchpoint Router", value="switchpoint/router"),
-        app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash-preview:thinking"),
-        #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro-preview-03-25"), # Added new model
+        app_commands.Choice(name="Gemini 2.5 Flash", value="google/gemini-2.5-flash:thinking"),
+        #app_commands.Choice(name="Gemini 2.5 Pro", value="google/gemini-2.5-pro"), # Added new model
         app_commands.Choice(name="Qwen QwQ 32B", value="qwen/qwq-32b"),
         app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b"),
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
@@ -198,7 +198,7 @@ def register_commands(bot):
                 await interaction.followup.send("*neural access denied!* Claude 3.7 Sonnet is restricted to administrators only.")
                 return
             
-            if model == "google/gemini-2.5-pro-preview-03-25" and str(interaction.user.id) != "203229662967627777":
+            if model == "google/gemini-2.5-pro" and str(interaction.user.id) != "203229662967627777":
                 await interaction.followup.send("*neural access denied!* Gemini 2.5 Pro is restricted to administrators only.")
                 return
                 
@@ -213,7 +213,7 @@ def register_commands(bot):
                 model_name = "DeepSeek-R1"
             elif "meta-llama/llama-4-maverick" in model:
                 model_name = "Llama 4 Maverick"
-            elif "google/gemini-2.5-pro-preview-03-25" in model:
+            elif "google/gemini-2.5-pro" in model:
                 model_name = "Gemini 2.5 Pro"
             elif "google/gemini-2.5-flash" in model:
                 model_name = "Gemini 2.5 Flash"
@@ -266,11 +266,11 @@ def register_commands(bot):
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
-                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
-                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
+                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash:thinking')}).",
+                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
-                    #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25')}) search results.", # Added new model description
+                    #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/google/gemini-2.5-pro')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Uses the 0528 version. Similar to V3 0324 but with reasoning. Great at creative writing, roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity. Often factually inaccurate. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1-0528')}) search results.", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",
@@ -317,7 +317,7 @@ def register_commands(bot):
                 model_name = "DeepSeek-R1"
             elif "meta-llama/llama-4-maverick" in preferred_model:
                 model_name = "Llama 4 Maverick"
-            elif "google/gemini-2.5-pro-preview-03-25" in preferred_model:
+            elif "google/gemini-2.5-pro" in preferred_model:
                 model_name = "Gemini 2.5 Pro"
             elif "google/gemini-2.5-flash" in preferred_model:
                 model_name = "Gemini 2.5 Flash"
@@ -368,11 +368,11 @@ def register_commands(bot):
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
-                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash-preview:thinking')}).",
-                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-preview-03-25')}) search results.",
+                    f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash:thinking')}).",
+                    #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
                     f"**Qwen 3 235B A22B**: Uses ({bot.config.get_top_k_for_model('qwen/qwen3-235b-a22b')}) search results.",
-                    #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro-exp-03-25')}) search results.", # Added new model description
+                    #f"**Gemini 2.5 Pro Exp**: Experimental Pro model, potentially stronger reasoning and generation than Flash, includes vision. Uses ({bot.config.get_top_k_for_model('google/google/gemini-2.5-pro')}) search results.", # Added new model description
                     f"**DeepSeek V3 0324**: Great for roleplaying, creative responses, and in-character immersion, but often makes things up due to its creativity. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-chat-v3-0324')}) search results.", # Added as per request
                     f"**DeepSeek-R1**: Uses the 0528 version. Similar to V3 0324 but with reasoning. Great at creative writing, roleplaying, more creative responses, and in-character immersion, but sometimes may make things up due to its creativity. Often factually inaccurate. Uses ({bot.config.get_top_k_for_model('deepseek/deepseek-r1-0528')}) search results.", # Updated description slightly for clarity
                     f"**Claude 3.5 Haiku**: __RECOMMENDED__ - A good balance between creativity and accuracy, and has image viewing capabilities. One of the best for longer roleplays. Uses a moderate number of search results ({bot.config.get_top_k_for_model('anthropic/claude-3.5-haiku')}).",

@@ -265,9 +265,9 @@ OPENROUTER_API_KEY=your_openrouter_api_key
 GOOGLE_API_KEY=your_google_api_key
 
 # Optional (defaults shown)
-LLM_MODEL=google/gemini-2.5-flash-preview # Default model for text generation
+LLM_MODEL=google/gemini-2.5-flash # Default model for text generation
 DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
-CLASSIFIER_MODEL=google/gemini-2.5-flash-preview # Model for classification tasks
+CLASSIFIER_MODEL=google/gemini-2.5-flash # Model for classification tasks
 EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
 EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
 

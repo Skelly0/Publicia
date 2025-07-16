@@ -93,7 +93,7 @@ def register_commands(bot):
                     "deepseek/deepseek-r1",
                 ],
                 "google": [
-                    "google/gemini-2.5-flash-preview",
+                    "google/gemini-2.5-flash",
                 ],
                 "claude": [
                     "anthropic/claude-3.5-haiku",

@@ -76,7 +76,7 @@ async def _cli_try_ai_completion(
     # Define fallback models
     fallback_models = [
         "qwen/qwq-32b",
-        "google/gemini-2.5-flash-preview",
+        "google/gemini-2.5-flash",
         "mistralai/mistral-large"
         # Add more paid/reliable models here if needed
     ]
@@ -88,8 +88,8 @@ async def _cli_try_ai_completion(
     # Vision capable models list (copied from bot.py for now)
     # TODO: Consider centralizing this list
     vision_capable_models = [
-        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
-        "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
+        "google/gemini-2.5-flash", "google/gemini-2.0-pro-exp-02-05",
+        "google/google/gemini-2.5-pro", "microsoft/phi-4-multimodal-instruct",
         "anthropic/claude-3.7-sonnet", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-sonnet-4", "anthropic/claude-sonnet-4",
         "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-haiku",
@@ -275,8 +275,8 @@ async def process_cli_query(args: argparse.Namespace, config: Config, doc_manage
     # Define vision models list here for use in this function
     # TODO: Consider centralizing this list
     vision_capable_models = [
-        "google/gemini-2.5-flash-preview", "google/gemini-2.0-pro-exp-02-05",
-        "google/gemini-2.5-pro-exp-03-25", "microsoft/phi-4-multimodal-instruct",
+        "google/gemini-2.5-flash", "google/gemini-2.0-pro-exp-02-05",
+        "google/google/gemini-2.5-pro", "microsoft/phi-4-multimodal-instruct",
         "anthropic/claude-3.7-sonnet", "anthropic/claude-3.7-sonnet",
         "anthropic/claude-sonnet-4", "anthropic/claude-sonnet-4",
         "anthropic/claude-3.5-haiku", "anthropic/claude-3.5-haiku",
@@ -419,7 +419,7 @@ async def run_cli():
     parser = argparse.ArgumentParser(description="Query the Publicia bot from the command line.")
     parser.add_argument("question", help="The question to ask Publicia.")
     parser.add_argument("--image-url", help="Optional URL to an image to analyze.", default=None)
-    parser.add_argument("--model", help="Optional specific model to use (e.g., 'google/gemini-2.5-flash-preview').", default=None)
+    parser.add_argument("--model", help="Optional specific model to use (e.g., 'google/gemini-2.5-flash').", default=None)
     # Add a debug flag?
     # parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
 
