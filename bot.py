@@ -2354,12 +2354,13 @@ class DiscordBot(commands.Bot):
                 logger.warning(f"Channel context truncated to {max_channel_context_len} characters.")
 
             logger.info(f"Added {len(channel_messages)} recent channel messages to context.")
-            return xml_wrap("channel_context", formatted_channel_context.strip())
+            formatted_context = xml_wrap("channel_context", formatted_channel_context.strip())
+            return formatted_context, len(channel_messages)
 
 
         except Exception as fetch_err:
             logger.error(f"Error fetching or formatting channel messages for context: {fetch_err}")
-            return None
+            return None, 0
 
     async def process_hybrid_query(self, question: str, username: str, max_results: int = 5, use_context: bool = True): # Make async
         """Process queries using a hybrid of caching and context-aware embeddings with re-ranking."""
