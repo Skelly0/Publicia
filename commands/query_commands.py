@@ -645,10 +645,23 @@ def register_commands(bot):
                 pronoun_context_message = {
                     "role": "system",
                     "content": xml_wrap(
-                        "user_pronouns",
-                        f"User Information: The user you are interacting with ({nickname}) uses the pronouns '{pronouns}'. Please use these pronouns when referring to the user.",
+                        "user_information",
+                         f"""User Information: The users character name/nickname is: {nickname}.\n"""
+                        f"The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "Your job:\n"
+                        "1. split that string on “/” into segments.\n"
+                        "    - subject = segment[0]\n"
+                        "    - object  = segment[1] if it exists, else subject\n"
+                        "    - possessive = segment[2] if it exists, else object\n"
+                        "2. whenever you talk *about* the player in third-person, use those pronouns.\n"
+                        "3. when you talk directly *to* the player, always say “you.”\n"
+                        "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
+                        "5. do NOT reference the pronouns directly, work them in naturally\n"
+                        "if parsing fails, fall back to they/them/theirs.",
                     ),
                 }
+            else:
+                 logger.debug(f"User {nickname} has no pronouns set.")
 
             # Get document list content and use standard system prompt with documents
             document_list_content = bot.document_manager.get_document_list_content()
