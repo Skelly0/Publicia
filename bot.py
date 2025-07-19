@@ -2891,15 +2891,25 @@ class DiscordBot(commands.Bot):
 
             # Fetch user pronouns
             pronouns = self.user_preferences_manager.get_pronouns(str(message.author.id))
+
+            user_info_message = {
+                "role": "system",
+                "content": xml_wrap(
+                    "user_information",
+                    f"User Information: The users character name/nickname is: {nickname}."
+                ),
+            }
+
             pronoun_context_message = None
             if pronouns:
-                logger.debug(f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}")
+                logger.debug(
+                    f"User {message.author.id} ({nickname}) has pronouns set: {pronouns}"
+                )
                 pronoun_context_message = {
                     "role": "system",
                     "content": xml_wrap(
-                        "user_information",
-                         f"""User Information: The users character name/nickname is: {nickname}.\n"""
-                        f"The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "user_pronouns",
+                        f"""The user provided this pronoun string: \"{pronouns}\".\n\n"
                         "Your job:\n"
                         "1. split that string on “/” into segments.\n"
                         "    - subject = segment[0]\n"
@@ -2909,11 +2919,13 @@ class DiscordBot(commands.Bot):
                         "3. when you talk directly *to* the player, always say “you.”\n"
                         "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
                         "5. do NOT reference the pronouns directly, work them in naturally\n"
-                        "if parsing fails, fall back to they/them/theirs.",
+                        "if parsing fails, fall back to they/them/theirs."
                     ),
                 }
             else:
-                 logger.debug(f"User {message.author.id} ({nickname}) has no pronouns set.")
+                logger.debug(
+                    f"User {message.author.id} ({nickname}) has no pronouns set."
+                )
 
 
             # --- Prepare messages for AI Model ---
@@ -2922,12 +2934,13 @@ class DiscordBot(commands.Bot):
                     "role": "system",
                     "content": selected_system_prompt # Use the selected prompt
                 }
-                # Pronoun context will be inserted here if available
+                # Additional context will be inserted below
             ]
 
-            # Insert pronoun context if it exists
+            # Insert user info and pronoun context if they exist
+            messages.insert(1, user_info_message)
             if pronoun_context_message:
-                messages.insert(1, pronoun_context_message)
+                messages.insert(2, pronoun_context_message)
 
             # Add conversation history *after* potential pronoun context
             messages.extend(conversation_messages)
