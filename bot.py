@@ -3088,7 +3088,7 @@ class DiscordBot(commands.Bot):
             # Finally, add the user's actual message
             messages.append({
                 "role": "user",
-                "content": f"{nickname}: {original_question}" # Use original question here for clarity
+                "content": f"{original_question}" # Use original question here for clarity
             })
             # --- End Preparing Messages ---
 

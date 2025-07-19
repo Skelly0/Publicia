@@ -354,7 +354,7 @@ def register_commands(bot):
 
             messages.append({
                 "role": "user",
-                "content": f"{nickname}: {question}"
+                "content": f"{question}"
             })
 
             # Get friendly model name based on the model value
