@@ -196,28 +196,41 @@ def register_commands(bot):
 
             # Fetch user pronouns
             pronouns = bot.user_preferences_manager.get_pronouns(str(interaction.user.id))
+
+            user_info_message = {
+                "role": "system",
+                "content": xml_wrap(
+                    "user_information",
+                    f"User Information: The users nickname is: {nickname}."
+                ),
+            }
+
             pronoun_context_message = None
             if pronouns:
-                logger.debug(f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}")
+                logger.debug(
+                    f"User {interaction.user.id} ({nickname}) has pronouns set: {pronouns}"
+                )
                 pronoun_context_message = {
                     "role": "system",
-                    "content": f"""User Information: The users nickname is: {nickname}. 
-                    The user provided this pronoun string: "{pronouns}".
-
-                    Your job:
-                    1. split that string on “/” into segments.
-                        - subject = segment[0]
-                        - object  = segment[1] if it exists, else subject
-                        - possessive = segment[2] if it exists, else object
-                    2. whenever you talk *about* the player in third-person, use those pronouns.
-                    3. when you talk directly *to* the player, always say “you.”
-                    4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.
-                    5. do NOT reference the pronouns directly, work them in naturally
-                    if parsing fails, fall back to they/them/theirs.
-                    """
-                    }
+                    "content": xml_wrap(
+                        "user_pronouns",
+                        f"""The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "Your job:\n"
+                        "1. split that string on “/” into segments.\n"
+                        "    - subject = segment[0]\n"
+                        "    - object  = segment[1] if it exists, else subject\n"
+                        "    - possessive = segment[2] if it exists, else object\n"
+                        "2. whenever you talk *about* the player in third-person, use those pronouns.\n"
+                        "3. when you talk directly *to* the player, always say “you.”\n"
+                        "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
+                        "5. do NOT reference the pronouns directly, work them in naturally\n"
+                        "if parsing fails, fall back to they/them/theirs."
+                    ),
+                }
             else:
-                 logger.debug(f"User {interaction.user.id} ({nickname}) has no pronouns set.")
+                logger.debug(
+                    f"User {interaction.user.id} ({nickname}) has no pronouns set."
+                )
 
             # Get document list content
             document_list_content = bot.document_manager.get_document_list_content()
@@ -262,6 +275,8 @@ def register_commands(bot):
                     "content": selected_system_prompt,
                 }
             )
+
+            messages.append(user_info_message)
 
             if pronoun_context_message:
                 messages.append(pronoun_context_message)
@@ -640,14 +655,22 @@ def register_commands(bot):
 
             # Fetch user pronouns
             pronouns = bot.user_preferences_manager.get_pronouns(user_id_str)
+
+            user_info_message = {
+                "role": "system",
+                "content": xml_wrap(
+                    "user_information",
+                    f"User Information: The users character name/nickname is: {nickname}."
+                ),
+            }
+
             pronoun_context_message = None
             if pronouns:
                 pronoun_context_message = {
                     "role": "system",
                     "content": xml_wrap(
-                        "user_information",
-                         f"""User Information: The users character name/nickname is: {nickname}.\n"""
-                        f"The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "user_pronouns",
+                        f"""The user provided this pronoun string: \"{pronouns}\".\n\n"
                         "Your job:\n"
                         "1. split that string on “/” into segments.\n"
                         "    - subject = segment[0]\n"
@@ -657,11 +680,11 @@ def register_commands(bot):
                         "3. when you talk directly *to* the player, always say “you.”\n"
                         "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
                         "5. do NOT reference the pronouns directly, work them in naturally\n"
-                        "if parsing fails, fall back to they/them/theirs.",
+                        "if parsing fails, fall back to they/them/theirs."
                     ),
                 }
             else:
-                 logger.debug(f"User {nickname} has no pronouns set.")
+                logger.debug(f"User {nickname} has no pronouns set.")
 
             # Get document list content and use standard system prompt with documents
             document_list_content = bot.document_manager.get_document_list_content()
@@ -680,6 +703,8 @@ def register_commands(bot):
             )
 
             messages.append({"role": "system", "content": selected_system_prompt})
+
+            messages.append(user_info_message)
 
             if pronoun_context_message:
                 messages.append(pronoun_context_message)
