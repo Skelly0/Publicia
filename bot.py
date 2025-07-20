@@ -2920,6 +2920,7 @@ class DiscordBot(commands.Bot):
                         "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
                         "5. do NOT reference the pronouns directly, work them in naturally\n"
                         "if parsing fails, fall back to they/them/theirs."
+                        """
                     ),
                 }
             else:
