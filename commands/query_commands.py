@@ -395,7 +395,7 @@ def register_commands(bot):
                 model_name = "Claude 3.7 Sonnet"
             elif "qwen/qwq-32b" in preferred_model:
                 model_name = "Qwen QwQ 32B"
-            elif "qwen/qwen3-235b-a22b" in preferred_model:
+            elif "qwen/qwen3-235b-a22b-07-25" in preferred_model:
                 model_name = "Qwen 3 235B A22B"
             elif "moonshotai/kimi-k2" in preferred_model:
                 model_name = "Kimi K2"
