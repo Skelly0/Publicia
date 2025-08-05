@@ -2627,6 +2627,76 @@ class DiscordBot(commands.Bot):
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in results
         ]
 
+    async def _tool_view_chunks(
+        self,
+        doc_uuid: str,
+        chunk_indices: List[int],
+        contextualized: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """Tool: Retrieve specific chunks from a document by UUID."""
+        if not chunk_indices:
+            return []
+
+        if len(chunk_indices) > 5:
+            logger.debug(
+                "view_chunks requested %s indices; clamped to 5", len(chunk_indices)
+            )
+        indices = [int(i) for i in chunk_indices[:5]]
+        logger.info(
+            "view_chunks tool invoked for %s with indices %s (contextualized=%s)",
+            doc_uuid,
+            indices,
+            contextualized,
+        )
+
+        use_contextualised = getattr(self.config, "USE_CONTEXTUALISED_CHUNKS", True)
+        if contextualized and not use_contextualised:
+            logger.warning(
+                "view_chunks requested contextualized chunks but feature disabled; using original"
+            )
+            contextualized = False
+
+        chunk_dict = (
+            self.document_manager.contextualized_chunks
+            if contextualized
+            else self.document_manager.chunks
+        )
+
+        chunks = chunk_dict.get(doc_uuid)
+        if chunks is None:
+            logger.warning("view_chunks document %s not found", doc_uuid)
+            return [
+                {
+                    "chunk_index": int(idx),
+                    "total_chunks": 0,
+                    "content": "Document not found",
+                }
+                for idx in indices
+            ]
+
+        total_chunks = len(chunks)
+        results: List[Dict[str, Any]] = []
+        for idx in indices:
+            if 1 <= idx <= total_chunks:
+                content = chunks[idx - 1]
+            else:
+                logger.warning(
+                    "view_chunks index %s out of range for %s (total %s)",
+                    idx,
+                    doc_uuid,
+                    total_chunks,
+                )
+                content = "Chunk not found"
+            results.append(
+                {
+                    "chunk_index": int(idx),
+                    "total_chunks": int(total_chunks),
+                    "content": content,
+                }
+            )
+        logger.debug("view_chunks returned %s chunks", len(results))
+        return results
+
     async def agentic_query(self, question: str, model: str) -> str:
         """Answer a question by letting the model call search tools agentically."""
         logger.info("Starting agentic query with model '%s' for question: %s", model, question)
@@ -2690,12 +2760,36 @@ class DiscordBot(commands.Bot):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "view_chunks",
+                    "description": "Retrieve specific chunks from a document by UUID.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "doc_uuid": {"type": "string"},
+                            "chunk_indices": {
+                                "type": "array",
+                                "items": {"type": "integer"},
+                                "description": "1-based chunk indices to retrieve",
+                            },
+                            "contextualized": {
+                                "type": "boolean",
+                                "default": False,
+                            },
+                        },
+                        "required": ["doc_uuid", "chunk_indices"],
+                    },
+                },
+            },
         ]
 
         tool_mapping = {
             "search_keyword": self._tool_search_keyword,
             "search_keyword_bm25": self._tool_search_keyword_bm25,
             "search_documents": self._tool_search_documents,
+            "view_chunks": self._tool_view_chunks,
         }
 
         messages = [
@@ -2722,7 +2816,7 @@ class DiscordBot(commands.Bot):
                 "content": (
                     "Only the above 5 chunks were retrieved initially. "
                     "If you need more information, use the available search tools "
-                    "(search_keyword, search_keyword_bm25, search_documents). "
+                    "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Each tool returns at most 5 chunks."
                 ),
             }
