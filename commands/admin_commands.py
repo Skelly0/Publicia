@@ -106,6 +106,10 @@ def register_commands(bot):
                 "nous": [
                     "nousresearch/hermes-3-llama-3.1-405b",
                 ],
+                "openai": [
+                    "openai/o4-mini",
+                    "openai/gpt-oss-120b",
+                ],
                 "testing": [
                     "eva-unit-01/eva-qwen-2.5-72b",
                     "thedrummer/unslopnemo-12b",
