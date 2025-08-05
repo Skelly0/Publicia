@@ -547,6 +547,78 @@ def register_commands(bot):
                 logger.error(f"Failed to send error message to user: {send_error}")
 
 
+    @bot.tree.command(name="agentic_query", description="Ask Publicia a question using tool-powered search")
+    @app_commands.describe(
+        question="Your question about the lore",
+    )
+    async def agentic_query(interaction: discord.Interaction, question: str):
+        try:
+            try:
+                await interaction.response.defer()
+            except discord.errors.NotFound:
+                logger.warning("Interaction expired before we could defer")
+                return
+            except Exception as e:
+                logger.error(f"Error deferring interaction: {e}")
+                return
+
+            if not question:
+                await interaction.followup.send("*neural error detected!* Please provide a question.")
+                return
+
+            channel_name = interaction.channel.name if interaction.guild else "DM"
+            logger.info(
+                "Agentic query received from %s (ID: %s) in %s: %s",
+                interaction.user.name,
+                interaction.user.id,
+                channel_name,
+                question,
+            )
+
+            preferred_model = bot.user_preferences_manager.get_preferred_model(
+                str(interaction.user.id), default_model=bot.config.LLM_MODEL
+            )
+            logger.debug(
+                "Using model '%s' for agentic query from user %s",
+                preferred_model,
+                interaction.user.id,
+            )
+
+            status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
+
+            response = await bot.agentic_query(question, preferred_model)
+            logger.debug(
+                "Agentic query response length: %s characters",
+                len(response) if response else 0,
+            )
+
+            await bot.send_split_message(
+                interaction.channel,
+                response,
+                model_used=preferred_model,
+                user_id=str(interaction.user.id),
+                existing_message=status_message,
+            )
+
+            context_info = {"channel_messages": 0, "doc_count": 0}
+            log_qa_pair(
+                question,
+                response,
+                interaction.user.name,
+                channel_name,
+                multi_turn=False,
+                interaction_type="slash_command",
+                context=context_info,
+                model_used=preferred_model,
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing agentic query: {e}", exc_info=True)
+            try:
+                await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to user: {send_error}")
+
     @bot.tree.command(name="query_full_context", description="Ask Publicia a question using ALL documents as context (1/day limit)")
     @app_commands.describe(
         question="Your question using the full document context"
