@@ -29,7 +29,7 @@ def register_commands(bot):
 
             # Define standard command categories
             standard_categories = {
-                "Lore Queries": ["query", "query_full_context"],
+                "Lore Queries": ["query", "query_full_context", "agentic_query"],
                 "Document Management": ["list_docs", "search_docs", "search_keyword", "search_keyword_bm25", "list_googledocs", "list_googlesheets", "retrieve_file", "summarize_doc", "view_chunk"],
                 "Image Management": ["list_images", "view_image"],
                 "Utility": ["list_commands", "set_model", "get_model", "toggle_debug", "toggle_prompt_mode", "pronouns", "temperature", "help", "whats_new"],
