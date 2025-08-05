@@ -1423,17 +1423,10 @@ class DiscordBot(commands.Bot):
             # Add general fallbacks (cleaned up)
             general_fallbacks = [
                 #"qwen/qwq-32b",
+                "openai/gpt-oss-120b"
+                "openai/o4-mini"
                 "qwen/qwq-32b:floor",
-                "google/gemini-2.5-flash:thinking",
                 "google/gemini-2.5-flash",
-                "google/gemini-2.0-flash-thinking-exp",
-                "deepseek/deepseek-r1",
-                "deepseek/deepseek-r1",
-                "deepseek/deepseek-chat",
-                "google/gemini-2.0-pro-exp-02-05",
-                "nousresearch/hermes-3-llama-3.1-405b",
-                "anthropic/claude-3.5-haiku",
-                "anthropic/claude-3.5-haiku"
             ]
             models_to_try.extend([fb for fb in general_fallbacks if fb not in models_to_try])
             logger.info(f"Final fallback list: {models_to_try}")
@@ -2824,7 +2817,7 @@ class DiscordBot(commands.Bot):
 
         messages.append({"role": "user", "content": question})
 
-        max_iterations = 10
+        max_iterations = 20
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
             completion, _ = await self._try_ai_completion(
