@@ -3145,6 +3145,8 @@ class DiscordBot(commands.Bot):
                 model_name = "MiniMax M1"
             elif preferred_model == "openai/o4-mini":
                 model_name = "OpenAI o4 Mini"
+            elif preferred_model == "openai/gpt-oss-120b":
+                model_name = "OpenAI GPT-OSS 120B"
             elif preferred_model == "moonshot/kimi-k2":
                 model_name = "Kimi K2"
             elif preferred_model == "switchpoint/router":

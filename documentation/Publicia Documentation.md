@@ -171,6 +171,7 @@ Users can choose their preferred AI model:
 - **Switchpoint Router**: Instantly routes your request to the optimal AI from an ever-evolving library
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
+- **OpenAI GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Functions as an open-source alternative to o4-mini, activating 5.1B parameters per pass, running on a single H100 with native MXFP4 quantization, and supporting configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output generation)
 
 Additional models available to administrators include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
 
