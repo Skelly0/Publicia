@@ -1716,12 +1716,24 @@ class DiscordBot(commands.Bot):
                                 raise
                     
                     if completion and completion.get('choices') and len(completion['choices']) > 0:
-                        if 'message' in completion['choices'][0] and 'content' in completion['choices'][0]['message']:
-                            response_content = completion['choices'][0]['message']['content']
-                            
+                        if 'message' in completion['choices'][0]:
+                            message_data = completion['choices'][0]['message']
+                            response_content = message_data.get('content', '') or ''
+
+                            # If the model returned tool calls (common for agentic loops), skip the
+                            # minimum length check even if content is empty. Empty content is normal
+                            # when the model is delegating work to tools.
+                            if message_data.get('tool_calls') or message_data.get('function_call'):
+                                logger.info(
+                                    f"Model {current_model} returned tool calls; bypassing length check"
+                                )
+                                return completion, current_model
+
                             # Check if response is too short (implement retry logic)
                             if len(response_content.strip()) < min_response_length:
-                                logger.warning(f"Response from {current_model} is too short ({len(response_content.strip())} chars): '{response_content}'")
+                                logger.warning(
+                                    f"Response from {current_model} is too short ({len(response_content.strip())} chars): '{response_content}'"
+                                )
                                 
                                 # If we have retries left, try again with the same model (possibly with higher temperature)
                                 if kwargs.get('_retry_count', 0) < max_retries:
