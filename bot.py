@@ -2550,8 +2550,22 @@ class DiscordBot(commands.Bot):
         # #     )
         # #     return search_results # Part of old logic
 
-    async def _tool_search_keyword(self, keyword: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Tool: simple keyword search across documents."""
+    async def _tool_search_keyword(
+        self,
+        keyword: Optional[str] = None,
+        top_k: int = 5,
+        query: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Tool: simple keyword search across documents.
+
+        Accepts ``keyword`` or ``query`` as the search term to be more
+        forgiving when the model misnames the argument.
+        """
+        if keyword is None:
+            keyword = query
+        if keyword is None:
+            raise TypeError("keyword (or query) must be provided")
+
         requested_k = top_k
         top_k = min(top_k, 5)
         if requested_k > 5:
@@ -2572,8 +2586,22 @@ class DiscordBot(commands.Bot):
             for doc_uuid, original_name, chunk, chunk_index, total_chunks in results
         ]
 
-    async def _tool_search_keyword_bm25(self, keyword: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Tool: BM25 keyword search across documents."""
+    async def _tool_search_keyword_bm25(
+        self,
+        keyword: Optional[str] = None,
+        top_k: int = 5,
+        query: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Tool: BM25 keyword search across documents.
+
+        Accepts ``keyword`` or ``query`` for robustness against argument
+        naming mistakes.
+        """
+        if keyword is None:
+            keyword = query
+        if keyword is None:
+            raise TypeError("keyword (or query) must be provided")
+
         requested_k = top_k
         top_k = min(top_k, 5)
         if requested_k > 5:
