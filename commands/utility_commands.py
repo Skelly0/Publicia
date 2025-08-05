@@ -164,7 +164,7 @@ def register_commands(bot):
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
         app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
-        app_commands.Choice(name="OpenAI GPT-OSS 120B", value="openai/gpt-oss-120b"),
+        app_commands.Choice(name="GPT-OSS 120B", value="openai/gpt-oss-120b"),
         app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
         app_commands.Choice(name="Kimi K2", value="moonshotai/kimi-k2"),
         app_commands.Choice(name="Switchpoint Router", value="switchpoint/router"),
@@ -255,7 +255,7 @@ def register_commands(bot):
             elif model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
             elif model == "openai/gpt-oss-120b":
-                model_name = "OpenAI GPT-OSS 120B"
+                model_name = "GPT-OSS 120B"
             elif model == "openai/o4-mini":
                 model_name = "OpenAI o4 Mini"
             elif model == "minimax/minimax-m1":
@@ -266,7 +266,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
-                    f"**OpenAI GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Activates 5.1B parameters per pass, optimized for a single H100 with MXFP4 quantization, and supports configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output). Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
+                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
@@ -362,7 +362,7 @@ def register_commands(bot):
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
             elif preferred_model == "openai/gpt-oss-120b":
-                model_name = "OpenAI GPT-OSS 120B"
+                model_name = "GPT-OSS 120B"
             elif preferred_model == "openai/o4-mini":
                 model_name = "OpenAI o4 Mini"
             elif preferred_model == "minimax/minimax-m1":
@@ -371,7 +371,7 @@ def register_commands(bot):
             # Create a description of all model strengths
             model_descriptions = [
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
-                    f"**OpenAI GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Activates 5.1B parameters per pass, optimized for a single H100 with MXFP4 quantization, and supports configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output). Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
+                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
