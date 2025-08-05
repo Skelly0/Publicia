@@ -1422,9 +1422,9 @@ class DiscordBot(commands.Bot):
 
             # Add general fallbacks (cleaned up)
             general_fallbacks = [
-                #"qwen/qwq-32b",
-                "openai/gpt-oss-120b"
-                "openai/o4-mini"
+                # "qwen/qwq-32b",
+                "openai/gpt-oss-120b",
+                "openai/o4-mini",
                 "qwen/qwq-32b:floor",
                 "google/gemini-2.5-flash",
             ]
@@ -1713,10 +1713,18 @@ class DiscordBot(commands.Bot):
                             message_data = completion['choices'][0]['message']
                             response_content = message_data.get('content', '') or ''
 
+                            # Some providers may indicate tool usage via the finish_reason field
+                            # without actually including a `tool_calls` or `function_call` payload.
+                            finish_reason = completion['choices'][0].get('finish_reason')
+
                             # If the model returned tool calls (common for agentic loops), skip the
                             # minimum length check even if content is empty. Empty content is normal
                             # when the model is delegating work to tools.
-                            if message_data.get('tool_calls') or message_data.get('function_call'):
+                            if (
+                                message_data.get('tool_calls')
+                                or message_data.get('function_call')
+                                or finish_reason == 'tool_calls'
+                            ):
                                 logger.info(
                                     f"Model {current_model} returned tool calls; bypassing length check"
                                 )
