@@ -2536,6 +2536,150 @@ class DiscordBot(commands.Bot):
         # #     )
         # #     return search_results # Part of old logic
 
+    async def _tool_search_keyword(self, keyword: str, top_k: int = 5):
+        """Tool: simple keyword search across documents."""
+        results = self.document_manager.search_keyword(keyword, top_k=top_k)
+        return [
+            {
+                "doc_uuid": doc_uuid,
+                "title": original_name,
+                "content": chunk,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+            }
+            for doc_uuid, original_name, chunk, chunk_index, total_chunks in results
+        ]
+
+    async def _tool_search_keyword_bm25(self, keyword: str, top_k: int = 5):
+        """Tool: BM25 keyword search across documents."""
+        results = self.document_manager.search_keyword_bm25(keyword, top_k=top_k)
+        return [
+            {
+                "doc_uuid": doc_uuid,
+                "title": original_name,
+                "content": chunk,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+            }
+            for doc_uuid, original_name, chunk, chunk_index, total_chunks in results
+        ]
+
+    async def _tool_search_documents(self, query: str, top_k: int = 5):
+        """Tool: Hybrid embedding/BM25 search across documents."""
+        results = await self.document_manager.search(query, top_k=top_k)
+        return [
+            {
+                "doc_uuid": doc_uuid,
+                "title": original_name,
+                "content": chunk,
+                "score": score,
+                "image_id": image_id,
+                "chunk_index": chunk_index,
+                "total_chunks": total_chunks,
+            }
+            for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in results
+        ]
+
+    async def agentic_query(self, question: str, model: str) -> str:
+        """Answer a question by letting the model call search tools agentically."""
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_keyword",
+                    "description": "Search documents for a specific keyword using simple matching.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "keyword": {"type": "string"},
+                            "top_k": {"type": "integer", "default": 5},
+                        },
+                        "required": ["keyword"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_keyword_bm25",
+                    "description": "Search documents for a keyword using BM25 ranking.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "keyword": {"type": "string"},
+                            "top_k": {"type": "integer", "default": 5},
+                        },
+                        "required": ["keyword"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_documents",
+                    "description": "Hybrid search across documents using embeddings and BM25.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                            "top_k": {"type": "integer", "default": 5},
+                        },
+                        "required": ["query"],
+                    },
+                },
+            },
+        ]
+
+        tool_mapping = {
+            "search_keyword": self._tool_search_keyword,
+            "search_keyword_bm25": self._tool_search_keyword_bm25,
+            "search_documents": self._tool_search_documents,
+        }
+
+        messages = [
+            {
+                "role": "system",
+                "content": INFORMATIONAL_SYSTEM_PROMPT
+                + "\nUse the available search tools to answer the user question.",
+            },
+            {"role": "user", "content": question},
+        ]
+
+        max_iterations = 10
+        for _ in range(max_iterations):
+            completion, _ = await self._try_ai_completion(
+                model, messages, tools=tools
+            )
+            if not completion or not completion.get("choices"):
+                return "*neural error detected!*"
+
+            message = completion["choices"][0]["message"]
+            messages.append(message)
+
+            tool_calls = message.get("tool_calls")
+            if tool_calls:
+                for call in tool_calls:
+                    name = call["function"]["name"]
+                    args = json.loads(call["function"].get("arguments", "{}"))
+                    func = tool_mapping.get(name)
+                    if func:
+                        result = await func(**args)
+                    else:
+                        result = {"error": f"Unknown tool {name}"}
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call["id"],
+                            "name": name,
+                            "content": json.dumps(result),
+                        }
+                    )
+                continue
+
+            return message.get("content", "")
+
+        return "*neural error detected!*"
+
     async def on_message(self, message: discord.Message):
         """Handle incoming messages, processing commands, checking for tracked docs, and responding to mentions."""
         try:
