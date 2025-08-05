@@ -265,8 +265,8 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 # Create a description of all model strengths
                 model_descriptions = [
+                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Great for factual accuracy, avoiding hallucinations, understanding, and speed of response. Not great at formatting its responses. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
-                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
@@ -370,8 +370,8 @@ def register_commands(bot):
             
             # Create a description of all model strengths
             model_descriptions = [
+                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Great for factual accuracy, avoiding hallucinations, understanding, and speed of response. Not great at formatting its responses. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
-                    f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI and open-source alternative to o4-mini. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
