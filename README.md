@@ -195,6 +195,7 @@ Comprehensive tools to help troubleshoot issues:
 | Command | Description |
 |---------|-------------|
 | `/query` | Ask a question with optional image URL |
+| `/agentic_query` | Ask a question using agentic tool-powered search |
 | `/history` | View your conversation history |
 | `/manage_history` | View and manage history with indices |
 | `/delete_history_messages` | Delete specific messages |

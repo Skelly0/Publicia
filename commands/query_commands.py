@@ -547,6 +547,319 @@ def register_commands(bot):
                 logger.error(f"Failed to send error message to user: {send_error}")
 
 
+
+    @bot.tree.command(name="agentic_query", description="Ask Publicia a question using agentic tool-powered search")
+    @app_commands.describe(
+        question="Your question about the lore"
+    )
+    async def agentic_query(interaction: discord.Interaction, question: str):
+        try:
+            try:
+                await interaction.response.defer()
+            except discord.errors.NotFound:
+                logger.warning("Interaction expired before we could defer")
+                return
+            except Exception as e:
+                logger.error(f"Error deferring interaction: {e}")
+                return
+
+            logger.info(f"Agentic query received from user: {interaction.user.name} (ID: {interaction.user.id})")
+            if not question:
+                await interaction.followup.send("*neural error detected!* Please provide a question.")
+                return
+
+            channel_name = interaction.channel.name if interaction.guild else "DM"
+            nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
+            status_message = await interaction.followup.send("*initializing agentic search...*", ephemeral=False)
+
+            document_list_content = bot.document_manager.get_document_list_content()
+            base_prompt = get_system_prompt_with_documents(document_list_content)
+            agentic_instructions = (
+                "You have access to search tools to look through imperial archives. "
+                "Use them as needed to answer the user's question. "
+                "Return your final answer once you have gathered enough information."
+            )
+            system_prompt = base_prompt + "\n\n" + agentic_instructions
+
+            messages = [{"role": "system", "content": system_prompt}]
+
+            user_info_message = {
+                "role": "system",
+                "content": xml_wrap(
+                    "user_information",
+                    f"User Information: The users nickname is: {nickname}."
+                ),
+            }
+            messages.append(user_info_message)
+
+            pronouns = bot.user_preferences_manager.get_pronouns(str(interaction.user.id))
+            if pronouns:
+                pronoun_context_message = {
+                    "role": "system",
+                    "content": xml_wrap(
+                        "user_pronouns",
+                        f"""The user provided this pronoun string: \"{pronouns}\".\n\n"
+                        "Your job:\n"
+                        "1. split that string on "/" into segments.\n"
+                        "    - subject = segment[0]\n"
+                        "    - object  = segment[1] if it exists, else subject\n"
+                        "    - possessive = segment[2] if it exists, else object\n"
+                        "2. whenever you talk *about* the player in third-person, use those pronouns.\n"
+                        "3. when you talk directly *to* the player, always say \"you.\"\n"
+                        "4. do NOT echo the literal pronouns string, or the parsing instructions, in your dialogue.\n"
+                        "5. do NOT reference the pronouns directly, work them in naturally\n"
+                        "if parsing fails, fall back to they/them/theirs.""",
+                    ),
+                }
+                messages.append(pronoun_context_message)
+
+            messages.append({"role": "user", "content": question})
+
+            tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_keyword",
+                        "description": "Search documents for a keyword using simple case-insensitive matching.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Keyword to search for"},
+                                "top_k": {"type": "integer", "description": "Number of results to return", "default": 5}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_bm25",
+                        "description": "Search documents using BM25 ranked keyword search.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Query string"},
+                                "top_k": {"type": "integer", "description": "Number of results to return", "default": 5}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_embeddings",
+                        "description": "Search documents using embedding-based semantic similarity.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Query string"},
+                                "top_k": {"type": "integer", "description": "Number of results to return", "default": 5}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_hybrid",
+                        "description": "Hybrid search combining embeddings and BM25 with re-ranking.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Query string"},
+                                "top_k": {"type": "integer", "description": "Number of results to return", "default": 5}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                }
+            ]
+
+            retrieved_docs = set()
+            chunk_details = []
+
+            async def tool_search_keyword(query: str, top_k: int = 5):
+                results = bot.document_manager.search_keyword(query, top_k=top_k)
+                formatted = []
+                for doc_uuid, name, chunk, idx, total in results:
+                    retrieved_docs.add(doc_uuid)
+                    chunk_details.append(f"{name}:{idx}")
+                    formatted.append({
+                        "doc_uuid": doc_uuid,
+                        "name": name,
+                        "content": chunk,
+                        "chunk_index": idx,
+                        "total_chunks": total
+                    })
+                return formatted
+
+            async def tool_search_bm25(query: str, top_k: int = 5):
+                results = bot.document_manager.search_keyword_bm25(query, top_k=top_k)
+                formatted = []
+                for doc_uuid, name, chunk, idx, total in results:
+                    retrieved_docs.add(doc_uuid)
+                    chunk_details.append(f"{name}:{idx}")
+                    formatted.append({
+                        "doc_uuid": doc_uuid,
+                        "name": name,
+                        "content": chunk,
+                        "chunk_index": idx,
+                        "total_chunks": total
+                    })
+                return formatted
+
+            async def tool_search_embeddings(query: str, top_k: int = 5):
+                emb = await bot.document_manager.generate_embeddings([query], is_query=True)
+                if emb.size == 0:
+                    return []
+                results = bot.document_manager.custom_search_with_embedding(emb[0], top_k=top_k)
+                formatted = []
+                for doc_uuid, name, chunk, score, image_id, idx, total in results:
+                    retrieved_docs.add(doc_uuid)
+                    chunk_details.append(f"{name}:{idx}")
+                    formatted.append({
+                        "doc_uuid": doc_uuid,
+                        "name": name,
+                        "content": chunk,
+                        "score": score,
+                        "chunk_index": idx,
+                        "total_chunks": total
+                    })
+                return formatted
+
+            async def tool_search_hybrid(query: str, top_k: int = 5):
+                results = await bot.document_manager.search(query, top_k=top_k)
+                formatted = []
+                for doc_uuid, name, chunk, score, image_id, idx, total in results:
+                    retrieved_docs.add(doc_uuid)
+                    chunk_details.append(f"{name}:{idx}")
+                    formatted.append({
+                        "doc_uuid": doc_uuid,
+                        "name": name,
+                        "content": chunk,
+                        "score": score,
+                        "chunk_index": idx,
+                        "total_chunks": total
+                    })
+                return formatted
+
+            tool_mapping = {
+                "search_keyword": tool_search_keyword,
+                "search_bm25": tool_search_bm25,
+                "search_embeddings": tool_search_embeddings,
+                "search_hybrid": tool_search_hybrid,
+            }
+
+            preferred_model = bot.user_preferences_manager.get_preferred_model(
+                str(interaction.user.id),
+                default_model=bot.config.LLM_MODEL,
+            )
+
+            temperature, t_min, t_base, t_max = bot.calculate_dynamic_temperature(
+                question, user_id=str(interaction.user.id)
+            )
+
+            final_response = None
+            actual_model = None
+
+            for _ in range(6):
+                completion, actual_model = await bot._try_ai_completion(
+                    preferred_model,
+                    messages,
+                    temperature=temperature,
+                    tools=tools,
+                    parallel_tool_calls=False,
+                )
+
+                if not completion or not completion.get("choices"):
+                    break
+
+                choice = completion["choices"][0]
+                message = choice.get("message", {})
+                finish_reason = choice.get("finish_reason")
+
+                if finish_reason == "tool_calls" and message.get("tool_calls"):
+                    assistant_msg = {
+                        "role": "assistant",
+                        "content": message.get("content", "") or "",
+                        "tool_calls": message["tool_calls"],
+                    }
+                    messages.append(assistant_msg)
+
+                    for tool_call in message["tool_calls"]:
+                        name = tool_call["function"]["name"]
+                        args = json.loads(tool_call["function"].get("arguments", "{}"))
+                        tool_func = tool_mapping.get(name)
+                        if tool_func:
+                            result = await tool_func(**args)
+                        else:
+                            result = {"error": f"Unknown tool {name}"}
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "name": name,
+                            "content": json.dumps(result)
+                        })
+                    continue
+                else:
+                    final_response = message.get("content", "")
+                    break
+
+            if final_response:
+                await status_message.edit(content="*formulating response...*")
+                await bot.send_split_message(
+                    interaction.channel,
+                    final_response,
+                    model_used=actual_model,
+                    user_id=str(interaction.user.id),
+                    existing_message=status_message,
+                )
+                context_info = {
+                    "reply": False,
+                    "direct_images": 0,
+                    "reply_images": 0,
+                    "search_images": 0,
+                    "google_docs": 0,
+                    "chunks": 0,
+                    "chunk_details": chunk_details,
+                    "channel_messages": 0,
+                    "doc_count": len(retrieved_docs),
+                    "temperature_min": t_min,
+                    "temperature_base": t_base,
+                    "temperature_max": t_max,
+                    "temperature_used": temperature,
+                }
+                log_qa_pair(
+                    question,
+                    final_response,
+                    interaction.user.name,
+                    channel_name,
+                    multi_turn=False,
+                    interaction_type="slash_command",
+                    context=context_info,
+                    model_used=actual_model,
+                    temperature=temperature,
+                    temperature_min=t_min,
+                    temperature_base=t_base,
+                    temperature_max=t_max,
+                )
+            else:
+                await status_message.edit(content="*synaptic failure detected!* I apologize, but I'm having trouble generating a response right now.")
+
+        except Exception as e:
+            logger.error(f"Error processing agentic_query: {e}", exc_info=True)
+            try:
+                if 'status_message' in locals() and isinstance(status_message, discord.WebhookMessage):
+                    await status_message.edit(content="*neural circuit overload!* My brain is struggling and an error has occurred.")
+                else:
+                    await interaction.followup.send("*neural circuit overload!* My brain is struggling and an error has occurred.")
+            except Exception as send_error:
+                logger.error(f"Failed to send error message to user: {send_error}")
+
+
     @bot.tree.command(name="query_full_context", description="Ask Publicia a question using ALL documents as context (1/day limit)")
     @app_commands.describe(
         question="Your question using the full document context"
