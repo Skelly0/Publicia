@@ -2519,6 +2519,15 @@ class DiscordBot(commands.Bot):
         # #     )
         # #     return search_results
         #
+    @staticmethod
+    def _json_default(obj: Any):
+        """JSON serializer for non-standard types."""
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        return str(obj)
+
         #     # Search with this embedding and apply re-ranking
         #     # apply_reranking = self.config.RERANKING_ENABLED # Part of old logic
         #     #
@@ -2548,7 +2557,7 @@ class DiscordBot(commands.Bot):
         # #     )
         # #     return search_results # Part of old logic
 
-    async def _tool_search_keyword(self, keyword: str, top_k: int = 5):
+    async def _tool_search_keyword(self, keyword: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Tool: simple keyword search across documents."""
         requested_k = top_k
         top_k = min(top_k, 5)
@@ -2564,13 +2573,13 @@ class DiscordBot(commands.Bot):
                 "doc_uuid": doc_uuid,
                 "title": original_name,
                 "content": chunk,
-                "chunk_index": chunk_index,
-                "total_chunks": total_chunks,
+                "chunk_index": int(chunk_index),
+                "total_chunks": int(total_chunks),
             }
             for doc_uuid, original_name, chunk, chunk_index, total_chunks in results
         ]
 
-    async def _tool_search_keyword_bm25(self, keyword: str, top_k: int = 5):
+    async def _tool_search_keyword_bm25(self, keyword: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Tool: BM25 keyword search across documents."""
         requested_k = top_k
         top_k = min(top_k, 5)
@@ -2588,13 +2597,13 @@ class DiscordBot(commands.Bot):
                 "doc_uuid": doc_uuid,
                 "title": original_name,
                 "content": chunk,
-                "chunk_index": chunk_index,
-                "total_chunks": total_chunks,
+                "chunk_index": int(chunk_index),
+                "total_chunks": int(total_chunks),
             }
             for doc_uuid, original_name, chunk, chunk_index, total_chunks in results
         ]
 
-    async def _tool_search_documents(self, query: str, top_k: int = 5):
+    async def _tool_search_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Tool: Hybrid embedding/BM25 search across documents."""
         requested_k = top_k
         top_k = min(top_k, 5)
@@ -2610,10 +2619,10 @@ class DiscordBot(commands.Bot):
                 "doc_uuid": doc_uuid,
                 "title": original_name,
                 "content": chunk,
-                "score": score,
-                "image_id": image_id,
-                "chunk_index": chunk_index,
-                "total_chunks": total_chunks,
+                "score": float(score),
+                "image_id": int(image_id) if image_id is not None else None,
+                "chunk_index": int(chunk_index),
+                "total_chunks": int(total_chunks),
             }
             for doc_uuid, original_name, chunk, score, image_id, chunk_index, total_chunks in results
         ]
@@ -2755,7 +2764,7 @@ class DiscordBot(commands.Bot):
                             "role": "tool",
                             "tool_call_id": call["id"],
                             "name": name,
-                            "content": json.dumps(result),
+                            "content": json.dumps(result, default=self._json_default),
                         }
                     )
                 continue
