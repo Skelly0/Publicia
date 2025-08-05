@@ -1217,7 +1217,7 @@ class DiscordBot(commands.Bot):
         # Return the modified messages and an empty list for images, as they've been processed into text
         return messages, []
     
-    async def _try_ai_completion(self, model: Union[str, List[str]], messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
+    async def _try_ai_completion(self, model: Union[str, List[str]], messages: List[Dict], image_ids=None, image_attachments=None, temperature=0.1, max_retries=2, min_response_length=5, tools: Optional[List[Dict]] = None, tool_choice: Union[str, Dict] = "auto", parallel_tool_calls: bool = True, **kwargs) -> Tuple[Optional[Any], Optional[str]]:
         """Get AI completion with dynamic fallback options or a specific model list.
 
         Args:
@@ -1229,6 +1229,9 @@ class DiscordBot(commands.Bot):
             temperature (float): The sampling temperature.
             max_retries (int): Max retries for short responses on the *same* model.
             min_response_length (int): Minimum character length for a valid response.
+            tools (Optional[List[Dict]]): Optional list of tool specifications for tool-calling models.
+            tool_choice (Union[str, Dict]): Tool choice parameter passed to the API. Defaults to "auto".
+            parallel_tool_calls (bool): Whether to allow parallel tool calls. Defaults to True.
             **kwargs: Additional arguments for the API call.
 
         Returns:
@@ -1537,7 +1540,12 @@ class DiscordBot(commands.Bot):
                         logger.info(
                             f"Using custom provider configuration for {current_model}: {provider_config}"
                         )
-    
+
+                    if tools is not None:
+                        payload["tools"] = tools
+                        payload["tool_choice"] = tool_choice
+                        payload["parallel_tool_calls"] = parallel_tool_calls
+
                     if current_model.startswith("deepseek/"):
                         payload["max_price"] = {
                             "completion": "4",

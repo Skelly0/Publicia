@@ -547,6 +547,214 @@ def register_commands(bot):
                 logger.error(f"Failed to send error message to user: {send_error}")
 
 
+    @bot.tree.command(name="agentic_query", description="Ask Publicia a question using agentic search with tools")
+    @app_commands.describe(
+        question="Your question about the lore"
+    )
+    async def agentic_query(interaction: discord.Interaction, question: str):
+        try:
+            try:
+                await interaction.response.defer()
+            except discord.errors.NotFound:
+                logger.warning("Interaction expired before we could defer")
+                return
+            except Exception as e:
+                logger.error(f"Error deferring interaction: {e}")
+                return
+
+            logger.info(f"Agentic query received from user: {interaction.user.name} (ID: {interaction.user.id})")
+
+            if not question:
+                await interaction.followup.send("*neural error detected!* Please provide a question.")
+                return
+
+            channel_name = interaction.channel.name if interaction.guild else "DM"
+            nickname = interaction.user.nick if (interaction.guild and interaction.user.nick) else interaction.user.name
+
+            status_message = await interaction.followup.send("*engaging autonomous search protocols...*", ephemeral=False)
+
+            preferred_model = bot.user_preferences_manager.get_preferred_model(
+                str(interaction.user.id),
+                default_model=bot.config.LLM_MODEL
+            )
+
+            document_list_content = bot.document_manager.get_document_list_content()
+            selected_system_prompt = get_system_prompt_with_documents(document_list_content)
+
+            messages = [
+                {"role": "system", "content": selected_system_prompt},
+                {
+                    "role": "system",
+                    "content": xml_wrap(
+                        "user_information",
+                        f"User Information: The users nickname is: {nickname}."
+                    ),
+                },
+                {"role": "user", "content": question},
+            ]
+
+            async def search_keyword_tool(keyword: str, top_k: int = 5):
+                results = bot.document_manager.search_keyword(keyword, top_k=top_k)
+                return [
+                    {
+                        "document": name,
+                        "chunk": chunk,
+                        "chunk_index": idx,
+                        "total_chunks": total,
+                    }
+                    for _, name, chunk, idx, total in results
+                ]
+
+            async def search_bm25_tool(keyword: str, top_k: int = 5):
+                results = bot.document_manager.search_keyword_bm25(keyword, top_k=top_k)
+                return [
+                    {
+                        "document": name,
+                        "chunk": chunk,
+                        "chunk_index": idx,
+                        "total_chunks": total,
+                    }
+                    for _, name, chunk, idx, total in results
+                ]
+
+            async def search_embeddings_tool(query: str, top_k: int = 5):
+                results = await bot.document_manager.search(query, top_k=top_k)
+                return [
+                    {
+                        "document": name,
+                        "chunk": chunk,
+                        "score": score,
+                        "chunk_index": idx,
+                        "total_chunks": total,
+                    }
+                    for _, name, chunk, score, _, idx, total in results
+                ]
+
+            tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_keyword",
+                        "description": "Search documents for a keyword using case-insensitive matching",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "keyword": {"type": "string"},
+                                "top_k": {"type": "integer", "default": 5},
+                            },
+                            "required": ["keyword"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_bm25",
+                        "description": "Search documents for a keyword using BM25 ranking",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "keyword": {"type": "string"},
+                                "top_k": {"type": "integer", "default": 5},
+                            },
+                            "required": ["keyword"],
+                        },
+                    },
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "search_embeddings",
+                        "description": "Hybrid search using embeddings and BM25",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string"},
+                                "top_k": {"type": "integer", "default": 5},
+                            },
+                            "required": ["query"],
+                        },
+                    },
+                },
+            ]
+
+            TOOL_MAPPING = {
+                "search_keyword": search_keyword_tool,
+                "search_bm25": search_bm25_tool,
+                "search_embeddings": search_embeddings_tool,
+            }
+
+            max_iterations = 5
+            used_model = None
+            for _ in range(max_iterations):
+                completion, used_model = await bot._try_ai_completion(
+                    preferred_model,
+                    messages,
+                    tools=tools,
+                )
+
+                if not completion or not completion.get("choices"):
+                    break
+
+                message = completion["choices"][0]["message"]
+
+                if message.get("tool_calls"):
+                    messages.append({"role": "assistant", "content": None, "tool_calls": message["tool_calls"]})
+                    for tool_call in message["tool_calls"]:
+                        name = tool_call["function"]["name"]
+                        args = json.loads(tool_call["function"].get("arguments", "{}"))
+                        func = TOOL_MAPPING.get(name)
+                        if func:
+                            try:
+                                result = await func(**args)
+                            except Exception as e:
+                                result = {"error": str(e)}
+                        else:
+                            result = {"error": f"Unknown tool: {name}"}
+
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call["id"],
+                                "name": name,
+                                "content": json.dumps(result),
+                            }
+                        )
+                    continue
+
+                response_text = message.get("content", "").strip()
+                if response_text:
+                    await bot.send_split_message(
+                        interaction.channel,
+                        response_text,
+                        model_used=used_model,
+                        user_id=str(interaction.user.id),
+                        existing_message=status_message,
+                    )
+                    log_qa_pair(
+                        question,
+                        response_text,
+                        interaction.user.name,
+                        channel_name,
+                        multi_turn=False,
+                        interaction_type="slash_command",
+                        context={},
+                        model_used=used_model,
+                    )
+                else:
+                    await status_message.edit(content="*neural circuit overload!* I couldn't generate a response.")
+                return
+
+            await status_message.edit(content="*neural error detected!* I couldn't find a final answer.")
+
+        except Exception as e:
+            logger.error(f"Error processing agentic query: {e}", exc_info=True)
+            try:
+                await interaction.followup.send("*neural circuit overload!* An error occurred while processing your request.")
+            except Exception:
+                pass
+
+
     @bot.tree.command(name="query_full_context", description="Ask Publicia a question using ALL documents as context (1/day limit)")
     @app_commands.describe(
         question="Your question using the full document context"
