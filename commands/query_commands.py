@@ -567,13 +567,30 @@ def register_commands(bot):
                 return
 
             channel_name = interaction.channel.name if interaction.guild else "DM"
+            logger.info(
+                "Agentic query received from %s (ID: %s) in %s: %s",
+                interaction.user.name,
+                interaction.user.id,
+                channel_name,
+                question,
+            )
+
             preferred_model = bot.user_preferences_manager.get_preferred_model(
                 str(interaction.user.id), default_model=bot.config.LLM_MODEL
+            )
+            logger.debug(
+                "Using model '%s' for agentic query from user %s",
+                preferred_model,
+                interaction.user.id,
             )
 
             status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
 
             response = await bot.agentic_query(question, preferred_model)
+            logger.debug(
+                "Agentic query response length: %s characters",
+                len(response) if response else 0,
+            )
 
             await bot.send_split_message(
                 interaction.channel,

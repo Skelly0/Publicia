@@ -2538,7 +2538,15 @@ class DiscordBot(commands.Bot):
 
     async def _tool_search_keyword(self, keyword: str, top_k: int = 5):
         """Tool: simple keyword search across documents."""
+        requested_k = top_k
+        top_k = min(top_k, 5)
+        if requested_k > 5:
+            logger.debug(
+                "search_keyword requested top_k=%s; clamped to %s", requested_k, top_k
+            )
+        logger.info("search_keyword tool invoked for '%s' with top_k=%s", keyword, top_k)
         results = self.document_manager.search_keyword(keyword, top_k=top_k)
+        logger.debug("search_keyword returned %s results", len(results))
         return [
             {
                 "doc_uuid": doc_uuid,
@@ -2552,7 +2560,17 @@ class DiscordBot(commands.Bot):
 
     async def _tool_search_keyword_bm25(self, keyword: str, top_k: int = 5):
         """Tool: BM25 keyword search across documents."""
+        requested_k = top_k
+        top_k = min(top_k, 5)
+        if requested_k > 5:
+            logger.debug(
+                "search_keyword_bm25 requested top_k=%s; clamped to %s", requested_k, top_k
+            )
+        logger.info(
+            "search_keyword_bm25 tool invoked for '%s' with top_k=%s", keyword, top_k
+        )
         results = self.document_manager.search_keyword_bm25(keyword, top_k=top_k)
+        logger.debug("search_keyword_bm25 returned %s results", len(results))
         return [
             {
                 "doc_uuid": doc_uuid,
@@ -2566,7 +2584,15 @@ class DiscordBot(commands.Bot):
 
     async def _tool_search_documents(self, query: str, top_k: int = 5):
         """Tool: Hybrid embedding/BM25 search across documents."""
+        requested_k = top_k
+        top_k = min(top_k, 5)
+        if requested_k > 5:
+            logger.debug(
+                "search_documents requested top_k=%s; clamped to %s", requested_k, top_k
+            )
+        logger.info("search_documents tool invoked for '%s' with top_k=%s", query, top_k)
         results = await self.document_manager.search(query, top_k=top_k)
+        logger.debug("search_documents returned %s results", len(results))
         return [
             {
                 "doc_uuid": doc_uuid,
@@ -2582,6 +2608,21 @@ class DiscordBot(commands.Bot):
 
     async def agentic_query(self, question: str, model: str) -> str:
         """Answer a question by letting the model call search tools agentically."""
+        logger.info("Starting agentic query with model '%s' for question: %s", model, question)
+
+        # Provide the model with an initial limited context
+        initial_results = await self.document_manager.search(question, top_k=5)
+        logger.info("Initial search yielded %s chunks", len(initial_results))
+        initial_context = "\n\n".join(
+            wrap_document(
+                chunk,
+                f"{title} (Chunk {chunk_index}/{total_chunks})",
+            )
+            for doc_uuid, title, chunk, score, image_id, chunk_index, total_chunks in initial_results
+        )
+
+        document_list_content = self.document_manager.get_document_list_content()
+
         tools = [
             {
                 "type": "function",
@@ -2639,14 +2680,38 @@ class DiscordBot(commands.Bot):
         messages = [
             {
                 "role": "system",
-                "content": INFORMATIONAL_SYSTEM_PROMPT
-                + "\nUse the available search tools to answer the user question.",
+                "content": get_informational_system_prompt_with_documents(document_list_content),
             },
-            {"role": "user", "content": question},
         ]
 
+        if initial_context:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": xml_wrap(
+                        "document_context",
+                        f"Initial document context based on the query:\n{initial_context}",
+                    ),
+                }
+            )
+
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "Only the above 5 chunks were retrieved initially. "
+                    "If you need more information, use the available search tools "
+                    "(search_keyword, search_keyword_bm25, search_documents). "
+                    "Each tool returns at most 5 chunks."
+                ),
+            }
+        )
+
+        messages.append({"role": "user", "content": question})
+
         max_iterations = 10
-        for _ in range(max_iterations):
+        for iteration in range(max_iterations):
+            logger.info("Agentic loop iteration %s", iteration + 1)
             completion, _ = await self._try_ai_completion(
                 model, messages, tools=tools
             )
@@ -2658,14 +2723,21 @@ class DiscordBot(commands.Bot):
 
             tool_calls = message.get("tool_calls")
             if tool_calls:
+                logger.info("Model requested %s tool call(s)", len(tool_calls))
                 for call in tool_calls:
                     name = call["function"]["name"]
                     args = json.loads(call["function"].get("arguments", "{}"))
+                    logger.debug("Executing tool %s with args %s", name, args)
                     func = tool_mapping.get(name)
                     if func:
                         result = await func(**args)
                     else:
                         result = {"error": f"Unknown tool {name}"}
+                    logger.debug(
+                        "Tool %s returned %s item(s)",
+                        name,
+                        len(result) if isinstance(result, list) else result,
+                    )
                     messages.append(
                         {
                             "role": "tool",
@@ -2676,8 +2748,10 @@ class DiscordBot(commands.Bot):
                     )
                 continue
 
+            logger.info("Agentic query completed without further tool calls")
             return message.get("content", "")
 
+        logger.warning("Agentic query reached max iterations without conclusion")
         return "*neural error detected!*"
 
     async def on_message(self, message: discord.Message):

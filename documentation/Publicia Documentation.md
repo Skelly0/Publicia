@@ -452,7 +452,7 @@ The bot will display a startup banner and initialize all components.
 - `/query`: Ask a question with optional image
   - **Parameters**: `question` (your query), `image_url` (optional)
 
-- `/agentic_query`: Ask a question using tool-powered search
+- `/agentic_query`: Ask a question using tool-powered search (initial 5 chunks; tools retrieve up to 5 each)
   - **Parameters**: `question` (your query)
 
 - `/query_full_context`: Ask a question using ALL documents as context (1/day limit)
