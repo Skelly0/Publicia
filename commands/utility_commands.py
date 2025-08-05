@@ -453,6 +453,7 @@ def register_commands(bot):
             response += "**🔍 Asking Questions:**\n"
             response += "- **Mention me** (@Publicia) with your question about Ledus Banum 77 / Imperial lore.\n"
             response += "- Use `/query` for structured questions (supports image URLs).\n"
+            response += "- Use `/agentic_query` for difficult questions and those requiring a very broad context or for comparing multiple things.\n"
             response += "- Use `/query_full_context` for deep dives using all documents (limited use).\n"
             response += "- Attach images directly when mentioning me for visual analysis.\n"
             response += "- Including a Google Doc link when mentiong me me will provide that document as context to me.\n"
