@@ -2757,19 +2757,33 @@ class DiscordBot(commands.Bot):
     async def _tool_view_chunks(
         self,
         document: str,
-        chunk_indices: List[int],
+        chunk_indices: Union[List[int], str],
         contextualized: bool = False,
     ) -> List[Dict[str, Any]]:
         """Tool: Retrieve specific chunks from a document by identifier."""
         if not chunk_indices:
             return []
         view_chunk_limit = getattr(self.config, "VIEW_CHUNK_LIMIT", 5)
+
+        # Allow chunk indices to be provided as a string (e.g. "[1, 2]").
+        # This can happen when user input is passed directly from the CLI
+        # or API layer without parsing into a list. Attempt to decode any
+        # string representation into a Python list before processing so we
+        # don't end up iterating over characters like "[" and ",".
+        if isinstance(chunk_indices, str):
+            try:
+                chunk_indices = json.loads(chunk_indices)
+            except Exception:
+                # Fall back to treating the string as a single index
+                chunk_indices = [chunk_indices]
+
         if len(chunk_indices) > view_chunk_limit:
             logger.debug(
                 "view_chunks requested %s indices; clamped to %s",
                 len(chunk_indices),
                 view_chunk_limit,
             )
+
         indices = [int(i) for i in chunk_indices[:view_chunk_limit]]
 
         doc_uuid = self.document_manager.resolve_doc_uuid(document)

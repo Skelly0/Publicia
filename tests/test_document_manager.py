@@ -294,6 +294,21 @@ def test_view_chunks_respects_limit(tmp_path):
     assert [c["chunk_index"] for c in res] == [1, 2]
 
 
+def test_view_chunks_accepts_string_indices(tmp_path):
+    bot_mod = load_bot_module()
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.chunks = {"doc": ["A", "B"]}
+    manager.metadata = {"doc": {"original_name": "Doc"}}
+
+    dummy_bot = types.SimpleNamespace(
+        document_manager=manager,
+        config=types.SimpleNamespace(USE_CONTEXTUALISED_CHUNKS=True, VIEW_CHUNK_LIMIT=5),
+    )
+
+    res = asyncio.run(bot_mod.DiscordBot._tool_view_chunks(dummy_bot, "doc", "[1,2]"))
+    assert [c["chunk_index"] for c in res] == [1, 2]
+
+
 def test_get_document_summary_existing(tmp_path):
     manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
     manager.metadata = {"abc": {"original_name": "Doc", "summary": "Existing"}}
