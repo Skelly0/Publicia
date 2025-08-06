@@ -584,12 +584,17 @@ def register_commands(bot):
                 interaction.user.id,
             )
 
-            status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
-            progress_lines = ["*neural pathways activating...*"]
+            status_message = await interaction.followup.send(
+                "*neural pathways activating... calibrating search heuristics...*",
+                ephemeral=False,
+            )
+            progress_lines = [
+                "*neural pathways activating... calibrating search heuristics...*"
+            ]
 
             async def progress_update(msg: str) -> None:
                 try:
-                    progress_lines.append(msg)
+                    progress_lines.append(f"➤ {msg}")
                     await status_message.edit(content="\n".join(progress_lines))
                 except Exception as e:
                     logger.error(f"Failed to update progress message: {e}")

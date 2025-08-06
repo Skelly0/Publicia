@@ -2927,23 +2927,25 @@ class DiscordBot(commands.Bot):
 
         def describe_tool(name: str, args: Dict[str, Any]) -> str:
             if name == "list_documents":
-                return "Listing all documents"
+                return "*cataloguing Imperial archives...*"
             if name == "search_keyword":
-                return f"Searching for keyword '{args.get('keyword')}'"
+                return f"*neural mesh hums: scanning for '{args.get('keyword')}'...*"
             if name == "search_keyword_bm25":
-                return f"Searching for keyword '{args.get('keyword')}' with BM25"
+                return f"*BM25 heuristics spin up—hunting '{args.get('keyword')}' among the data spires...*"
             if name == "search_documents":
-                return f"Searching documents for query '{args.get('query')}'"
+                return f"*cross-referencing '{args.get('query')}' with memory banks...*"
             if name == "view_chunks":
-                return f"Viewing chunks {args.get('chunk_indices')} from document '{args.get('document')}'"
+                return (
+                    f"*retrieving chunk(s) {args.get('chunk_indices')} from '{args.get('document')}'...*"
+                )
             if name == "get_document_summary":
-                return f"Getting summary for document '{args.get('document')}'"
-            return f"Using tool {name}"
+                return f"*summoning abridged chronicle of '{args.get('document')}'...*"
+            return f"*invoking tool {name}...*"
 
         def summarize_tool(name: str, result: Any) -> str:
             if isinstance(result, list):
-                return f"Tool {name} returned {len(result)} result(s)"
-            return f"Tool {name} completed"
+                return f"*{name} yielded {len(result)} fragment(s).*"
+            return f"*{name} completed.*"
 
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
