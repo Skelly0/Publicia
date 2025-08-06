@@ -2869,6 +2869,7 @@ class DiscordBot(commands.Bot):
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Each tool returns at most 5 chunks."
+                    "Be comprehensive in your searching so that your final answer is as accurate as possible."
                 ),
             }
         )
