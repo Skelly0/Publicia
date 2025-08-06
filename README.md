@@ -59,6 +59,7 @@ GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=google/gemini-2.5-flash # Default model for text generation
 DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
 CLASSIFIER_MODEL=google/gemini-2.5-flash # Model for classification tasks
+AGENTIC_MODEL=openai/o4-mini # Primary model for agentic queries; fallbacks: o4-mini, gpt-oss-120b
 EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
 EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
 
