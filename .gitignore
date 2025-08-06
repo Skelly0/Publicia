@@ -81,3 +81,4 @@ test_scripts/
 temp_files/
 credentials/
 qa_log.jsonl
+*jsonl
