@@ -3019,7 +3019,7 @@ class DiscordBot(commands.Bot):
         messages = [
             {
                 "role": "system",
-                "content": get_informational_system_prompt_with_documents(document_list_content),
+                "content": get_system_prompt_with_documents(document_list_content),#get_informational_system_prompt_with_documents(document_list_content),
             },
         ]
 
