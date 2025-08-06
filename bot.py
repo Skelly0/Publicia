@@ -2687,12 +2687,14 @@ class DiscordBot(commands.Bot):
         """Tool: Retrieve specific chunks from a document by identifier."""
         if not chunk_indices:
             return []
-
-        if len(chunk_indices) > 5:
+        view_chunk_limit = getattr(self.config, "VIEW_CHUNK_LIMIT", 5)
+        if len(chunk_indices) > view_chunk_limit:
             logger.debug(
-                "view_chunks requested %s indices; clamped to 5", len(chunk_indices)
+                "view_chunks requested %s indices; clamped to %s",
+                len(chunk_indices),
+                view_chunk_limit,
             )
-        indices = [int(i) for i in chunk_indices[:5]]
+        indices = [int(i) for i in chunk_indices[:view_chunk_limit]]
 
         doc_uuid = self.document_manager.resolve_doc_uuid(document)
         if not doc_uuid:
@@ -2803,6 +2805,7 @@ class DiscordBot(commands.Bot):
 
         document_list_content = self.document_manager.get_document_list_content()
         max_results = getattr(self.config, "MAX_TOP_K", 20)
+        view_chunk_limit = getattr(self.config, "VIEW_CHUNK_LIMIT", 5)
 
         tools = [
             {
@@ -2888,7 +2891,8 @@ class DiscordBot(commands.Bot):
                     "name": "view_chunks",
                     "description": (
                         "Retrieve the text of specific chunks from a document by identifier "
-                        "(UUID, name, or Google Doc ID)."
+                        "(UUID, name, or Google Doc ID). "
+                        f"Returns up to {view_chunk_limit} chunks per call."
                     ),
                     "parameters": {
                         "type": "object",
@@ -2962,7 +2966,8 @@ class DiscordBot(commands.Bot):
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Search tools return chunk references without their text; use view_chunks to read them. "
-                    f"Each tool returns up to the number of chunks you request (default 5, maximum {max_results})."
+                    f"Each search tool returns up to the number of chunks you request (default 5, maximum {max_results}). "
+                    f"The view_chunks tool can return up to {view_chunk_limit} chunks at a time. "
                     "Be comprehensive in your searching so that your final answer is as accurate and complete as possible. "
                     "Be sure to check the region documents for information pertaining to natives. "
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord. "
