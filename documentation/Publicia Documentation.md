@@ -453,7 +453,7 @@ The bot will display a startup banner and initialize all components.
 - `/query`: Ask a question with optional image
   - **Parameters**: `question` (your query), `image_url` (optional)
 
-- `/agentic_query`: Ask a question using tool-powered search with progress updates (initial 5 chunks; tools retrieve up to the requested number of chunks—default 5, max 20—and can view specific chunks)
+- `/agentic_query`: Ask a question using tool-powered search with progress updates (initial 5 chunks; search tools list chunk references—use `view_chunks` to fetch text—default 5, max 20)
   - **Parameters**: `question` (your query)
 
 - `/query_full_context`: Ask a question using ALL documents as context (1/day limit)
