@@ -2745,6 +2745,12 @@ class DiscordBot(commands.Bot):
         logger.info("list_documents tool invoked")
         return self.document_manager.get_document_list_content()
 
+    async def _tool_get_document_summary(self, document: str) -> str:
+        """Tool: Retrieve a document's stored summary by identifier."""
+        logger.info("get_document_summary tool invoked for %s", document)
+        summary = await self.document_manager.get_document_summary(document)
+        return summary if summary is not None else "Document not found"
+
     async def agentic_query(self, question: str, model: Union[str, List[str]]) -> Tuple[str, Optional[str]]:
         """Answer a question by letting the model call search tools agentically.
 
@@ -2850,6 +2856,23 @@ class DiscordBot(commands.Bot):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_document_summary",
+                    "description": "Get the stored summary for a document by identifier (UUID, name, or Google Doc ID).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "document": {
+                                "type": "string",
+                                "description": "UUID, document name, or Google Doc ID",
+                            }
+                        },
+                        "required": ["document"],
+                    },
+                },
+            },
         ]
 
         tool_mapping = {
@@ -2858,6 +2881,7 @@ class DiscordBot(commands.Bot):
             "search_keyword_bm25": self._tool_search_keyword_bm25,
             "search_documents": self._tool_search_documents,
             "view_chunks": self._tool_view_chunks,
+            "get_document_summary": self._tool_get_document_summary,
         }
 
         messages = [
