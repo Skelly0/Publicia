@@ -2963,7 +2963,8 @@ class DiscordBot(commands.Bot):
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Search tools return chunk references without their text; use view_chunks to read them. "
                     f"Each tool returns up to the number of chunks you request (default 5, maximum {max_results})."
-                    "Be comprehensive in your searching so that your final answer is as accurate as possible."
+                    "Be comprehensive in your searching so that your final answer is as accurate and complete as possible. "
+                    "Be sure to check the region documents for information pertaining to natives. "
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
                 ),
             }

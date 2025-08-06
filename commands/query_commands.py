@@ -576,7 +576,7 @@ def register_commands(bot):
             )
 
             # Use configured agentic model with fallbacks to o4-mini and gpt-oss-120b
-            model_list = [bot.config.AGENTIC_MODEL, "openai/o4-mini", "openai/gpt-oss-120b"]
+            model_list = [bot.config.AGENTIC_MODEL, "openai/o4-mini", "openai/o4-mini", "qwen/qwen3-235b-a22b-thinking-2507", "switchpoint/router", "openai/gpt-oss-120b"]
             model_list = list(dict.fromkeys(model_list))
             logger.debug(
                 "Using model list %s for agentic query from user %s",
