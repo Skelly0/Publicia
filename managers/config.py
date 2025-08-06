@@ -21,6 +21,7 @@ class Config:
         self.LLM_MODEL = os.getenv('LLM_MODEL', 'google/gemini-2.5-flash')
         self.DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'qwen/qwq-32b')
         self.CLASSIFIER_MODEL = os.getenv('CLASSIFIER_MODEL', 'google/gemini-2.5-flash')
+        self.AGENTIC_MODEL = os.getenv('AGENTIC_MODEL', 'openai/o4-mini')
         
         # New embedding configuration
         self.EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'models/text-embedding-004')
