@@ -2911,6 +2911,7 @@ class DiscordBot(commands.Bot):
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Each tool returns at most 5 chunks."
                     "Be comprehensive in your searching so that your final answer is as accurate as possible."
+                    "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
                 ),
             }
         )
