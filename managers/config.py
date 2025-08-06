@@ -33,7 +33,7 @@ class Config:
         
         # TOP_K configuration with multiplier
         self.TOP_K = int(os.getenv('TOP_K', '5'))
-        self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '20'))
+        self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '50'))
         self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '1'))  # Default to no change
 
         self.MODEL_TOP_K = {
