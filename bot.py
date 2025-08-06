@@ -3061,6 +3061,7 @@ class DiscordBot(commands.Bot):
                     f"Each search tool returns up to the number of chunks you request (default 5, maximum {max_results}). "
                     f"The view_chunks tool can return up to {view_chunk_limit} chunks at a time. "
                     "Be comprehensive in your searching so that your final answer is as accurate and complete as possible. "
+                    "Keep searching until you have enough information to answer the question, or can fully determine that the question is impossible to answer. "
                     "Be sure to check the region documents for information pertaining to natives. "
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord. "
                     "UNDER NO CIRCUMSTANCES SHOULD YOU EVER OUPUT TABLES."
