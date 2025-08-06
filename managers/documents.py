@@ -121,8 +121,52 @@ class DocumentManager:
     def _get_original_name(self, doc_uuid: str) -> str:
         """Retrieve the original document name from metadata given the document's UUID."""
         if doc_uuid in self.metadata:
-            return self.metadata[doc_uuid].get('original_name', doc_uuid) 
+            return self.metadata[doc_uuid].get('original_name', doc_uuid)
         return doc_uuid
+
+    def resolve_doc_identifier(self, identifier: str) -> Optional[str]:
+        """Resolve a document identifier (name, Google Doc ID, or UUID) to its UUID."""
+        if not identifier:
+            return None
+
+        # Direct UUID match
+        if identifier in self.metadata:
+            return identifier
+
+        # Match by original document name (case-sensitive then case-insensitive)
+        for doc_uuid, meta in self.metadata.items():
+            if meta.get('original_name') == identifier:
+                return doc_uuid
+        lower_id = identifier.lower()
+        for doc_uuid, meta in self.metadata.items():
+            if meta.get('original_name', '').lower() == lower_id:
+                return doc_uuid
+
+        # Handle optional .txt extension variations
+        if identifier.endswith('.txt'):
+            stripped = identifier[:-4]
+            for doc_uuid, meta in self.metadata.items():
+                name = meta.get('original_name', '')
+                if name == stripped or name.lower() == stripped.lower():
+                    return doc_uuid
+        else:
+            with_ext = f"{identifier}.txt"
+            for doc_uuid, meta in self.metadata.items():
+                name = meta.get('original_name', '')
+                if name == with_ext or name.lower() == with_ext.lower():
+                    return doc_uuid
+
+        # Check Google Doc ID mapping
+        gdoc_map = self.get_googledoc_id_mapping()
+        if identifier in gdoc_map:
+            return gdoc_map[identifier]
+        match = re.search(r"/d/([a-zA-Z0-9_-]+)/", identifier)
+        if match:
+            gdoc_id = match.group(1)
+            if gdoc_id in gdoc_map:
+                return gdoc_map[gdoc_id]
+
+        return None
 
     def _sanitize_name(self, name: str) -> str:
         """Sanitizes a string to be safe for use as a filename or dictionary key."""

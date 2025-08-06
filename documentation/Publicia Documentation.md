@@ -403,9 +403,9 @@ The bot will display a startup banner and initialize all components.
 - `/summarize_doc`: Generate a concise summary of a document using an LLM. The document can be specified by its UUID or original name.
   - **Parameters**: `identifier` (The UUID or original name of the document to summarize).
 
-- `/view_chunk`: View the content of a specific chunk from a document. The document can be specified by its UUID or original name.
+- `/view_chunk`: View the content of a specific chunk from a document. The document can be specified by its document name, Google Doc ID, or UUID.
   - **Parameters**:
-    - `identifier`: The UUID or original name of the document.
+    - `identifier`: The document name, Google Doc ID, or UUID of the document.
     - `chunk_index`: The 1-based index of the chunk to view.
     - `contextualized`: (Optional, default: False) Whether to view the contextualized version of the chunk (used for embeddings) or the original chunk text.
 

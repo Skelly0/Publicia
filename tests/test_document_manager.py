@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import types
+import json
 
 
 def load_document_module():
@@ -123,3 +124,16 @@ def test_search_keyword_bm25(tmp_path):
     assert name == "TestDoc"
     assert index == 1 and total == 2
     assert "airship" in chunk.lower()
+
+
+def test_resolve_doc_identifier(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    doc_uuid = "abc-123"
+    manager.metadata = {doc_uuid: {"original_name": "TestDoc"}}
+
+    tracked = tmp_path / "tracked_google_docs.json"
+    tracked.write_text(json.dumps([{"google_doc_id": "GID123", "internal_doc_uuid": doc_uuid}]))
+
+    assert manager.resolve_doc_identifier(doc_uuid) == doc_uuid
+    assert manager.resolve_doc_identifier("TestDoc") == doc_uuid
+    assert manager.resolve_doc_identifier("GID123") == doc_uuid
