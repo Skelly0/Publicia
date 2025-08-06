@@ -2566,6 +2566,7 @@ class DiscordBot(commands.Bot):
     ) -> List[Dict[str, Any]]:
         """Tool: simple keyword search across documents.
 
+        Returns metadata about matching chunks (without the chunk text).
         Accepts ``keyword`` or ``query`` as the search term to be more
         forgiving when the model misnames the argument.
         """
@@ -2590,7 +2591,6 @@ class DiscordBot(commands.Bot):
             {
                 "doc_uuid": doc_uuid,
                 "title": original_name,
-                "content": chunk,
                 "chunk_index": int(chunk_index),
                 "total_chunks": int(total_chunks),
             }
@@ -2605,6 +2605,7 @@ class DiscordBot(commands.Bot):
     ) -> List[Dict[str, Any]]:
         """Tool: BM25 keyword search across documents.
 
+        Returns metadata about matching chunks (without the chunk text).
         Accepts ``keyword`` or ``query`` for robustness against argument
         naming mistakes.
         """
@@ -2631,7 +2632,6 @@ class DiscordBot(commands.Bot):
             {
                 "doc_uuid": doc_uuid,
                 "title": original_name,
-                "content": chunk,
                 "chunk_index": int(chunk_index),
                 "total_chunks": int(total_chunks),
             }
@@ -2639,7 +2639,10 @@ class DiscordBot(commands.Bot):
         ]
 
     async def _tool_search_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """Tool: Hybrid embedding/BM25 search across documents."""
+        """Tool: Hybrid embedding/BM25 search across documents.
+
+        Returns metadata about matching chunks (without the chunk text).
+        """
         requested_k = top_k
         max_results = getattr(self.config, "MAX_TOP_K", 20)
         top_k = min(top_k, max_results)
@@ -2656,7 +2659,6 @@ class DiscordBot(commands.Bot):
             {
                 "doc_uuid": doc_uuid,
                 "title": original_name,
-                "content": chunk,
                 "score": float(score),
                 "image_id": int(image_id) if image_id is not None else None,
                 "chunk_index": int(chunk_index),
@@ -2807,7 +2809,10 @@ class DiscordBot(commands.Bot):
                 "type": "function",
                 "function": {
                     "name": "search_keyword",
-                    "description": "Search documents for a specific keyword using simple matching.",
+                    "description": (
+                        "Search documents for a specific keyword using simple matching. "
+                        "Returns chunk references without content; use view_chunks for the text."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2826,7 +2831,10 @@ class DiscordBot(commands.Bot):
                 "type": "function",
                 "function": {
                     "name": "search_keyword_bm25",
-                    "description": "Search documents for a keyword using BM25 ranking.",
+                    "description": (
+                        "Search documents for a keyword using BM25 ranking. "
+                        "Returns chunk references without content; use view_chunks for the text."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2845,7 +2853,10 @@ class DiscordBot(commands.Bot):
                 "type": "function",
                 "function": {
                     "name": "search_documents",
-                    "description": "Hybrid search across documents using embeddings and BM25.",
+                    "description": (
+                        "Hybrid search across documents using embeddings and BM25. "
+                        "Returns chunk references without content; use view_chunks for the text."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2864,7 +2875,10 @@ class DiscordBot(commands.Bot):
                 "type": "function",
                 "function": {
                     "name": "view_chunks",
-                    "description": "Retrieve specific chunks from a document by identifier (UUID, name, or Google Doc ID).",
+                    "description": (
+                        "Retrieve the text of specific chunks from a document by identifier "
+                        "(UUID, name, or Google Doc ID)."
+                    ),
                     "parameters": {
                         "type": "object",
                         "properties": {
@@ -2936,6 +2950,7 @@ class DiscordBot(commands.Bot):
                     "Only the above 5 chunks were retrieved initially. "
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
+                    "Search tools return chunk references without their text; use view_chunks to read them. "
                     f"Each tool returns up to the number of chunks you request (default 5, maximum {max_results})."
                     "Be comprehensive in your searching so that your final answer is as accurate as possible."
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
