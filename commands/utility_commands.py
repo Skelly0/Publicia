@@ -174,6 +174,7 @@ def register_commands(bot):
         app_commands.Choice(name="Qwen 3 235B A22B", value="qwen/qwen3-235b-a22b-thinking-2507"),
         app_commands.Choice(name="DeepSeek V3 0324", value="deepseek/deepseek-chat-v3-0324:floor"), # Added as per request
         app_commands.Choice(name="DeepSeek-R1", value="deepseek/deepseek-r1-0528"),
+        app_commands.Choice(name="GLM-4.5", value="z-ai/glm-4.5"),
         app_commands.Choice(name="Claude 3.5 Haiku", value="anthropic/claude-3.5-haiku"),
         app_commands.Choice(name="Claude 4 Sonnet", value="anthropic/claude-sonnet-4"),
         app_commands.Choice(name="Nous: Hermes 405B", value="nousresearch/hermes-3-llama-3.1-405b"),
@@ -232,6 +233,8 @@ def register_commands(bot):
                 model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b-thinking-2507" in model:
                 model_name = "Qwen 3 235B A22B"
+            elif "z-ai/glm-4.5" in model:
+                model_name = "GLM-4.5"
             elif "moonshotai/kimi-k2" in model:
                 model_name = "Kimi K2"
             elif "switchpoint/router" in model:
@@ -270,6 +273,7 @@ def register_commands(bot):
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
+                    f"**GLM-4.5**: __RECOMMENDED__ - Known for good factual accuracy and reliable responses. Uses ({bot.config.get_top_k_for_model('z-ai/glm-4.5')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",
@@ -339,6 +343,8 @@ def register_commands(bot):
                 model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b-thinking-2507" in preferred_model:
                 model_name = "Qwen 3 235B A22B"
+            elif "z-ai/glm-4.5" in preferred_model:
+                model_name = "GLM-4.5"
             elif "moonshotai/kimi-k2" in preferred_model:
                 model_name = "Kimi K2"
             elif "switchpoint/router" in preferred_model:
@@ -375,6 +381,7 @@ def register_commands(bot):
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
                     f"**Switchpoint Router**: Instantly routes requests to the optimal model from Switchpoint AI's evolving library. Uses ({bot.config.get_top_k_for_model('switchpoint/router')}) search results.",
+                    f"**GLM-4.5**: __RECOMMENDED__ - Known for good factual accuracy and reliable responses. Uses ({bot.config.get_top_k_for_model('z-ai/glm-4.5')}) search results.",
                     f"**Gemini 2.5 Flash**: - Fine for prompt adherence, accurate citations, image viewing capabilities, and fast response times. Prone to hallucinating if asked about something not in it's supplied documents. Uses more search results ({bot.config.get_top_k_for_model('google/gemini-2.5-flash:thinking')}).",
                     #f"**Gemini 2.5 Pro**: (admin only) Uses ({bot.config.get_top_k_for_model('google/gemini-2.5-pro')}) search results.",
                     f"**Qwen QwQ 32B**: __RECOMMENDED__ - Great for roleplaying and creativity with strong factual accuracy and in-character immersion. Produces detailed, nuanced responses with structured formatting. Uses ({bot.config.get_top_k_for_model('qwen/qwq-32b')}) search results.",

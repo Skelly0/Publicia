@@ -3741,6 +3741,7 @@ class DiscordBot(commands.Bot):
             elif "maverick" in preferred_model: model_name = "Llama 4 Maverick"
             elif "qwen/qwq-32b" in preferred_model: model_name = "Qwen QwQ 32B"
             elif "qwen/qwen3-235b-a22b-thinking-2507" in preferred_model: model_name = "Qwen 3 235B A22B"
+            elif "z-ai/glm-4.5" in preferred_model: model_name = "GLM-4.5"
             elif "moonshotai/kimi-k2" in preferred_model: model_name = "Kimi K2"
             elif "switchpoint/router" in preferred_model: model_name = "Switchpoint Router"
             elif "eva-unit-01/eva-qwen-2.5-72b" in preferred_model: model_name = "EVA Qwen 2.5 72B"

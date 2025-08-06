@@ -137,6 +137,7 @@ Users can select their preferred AI model for responses:
 - **Nous: Hermes 405B**: Balanced between creativity and precision
 - **Kimi K2**: Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing (not tested much yet)
 - **Switchpoint Router**: Instantly routes your request to the best available model from Switchpoint AI's evolving library
+- **GLM-4.5**: Known for good factual accuracy and reliable reasoning
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
 - **GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Serves as an open-source alternative to o4-mini, activates 5.1B parameters per pass, runs on a single H100 with MXFP4 quantization, and supports configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output)
 

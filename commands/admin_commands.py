@@ -117,6 +117,9 @@ def register_commands(bot):
                 "switchpoint": [
                     "switchpoint/router",
                 ],
+                "zai": [
+                    "z-ai/glm-4.5",
+                ],
                 "storytelling": [
                     "latitudegames/wayfarer-large-70b-llama-3.3",
                     "thedrummer/anubis-pro-105b-v1"
