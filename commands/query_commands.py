@@ -607,7 +607,10 @@ def register_commands(bot):
                     logger.error(f"Failed to update progress message: {e}")
 
             response, actual_model = await bot.agentic_query(
-                question, model_list, progress_callback=progress_update
+                question,
+                model_list,
+                progress_callback=progress_update,
+                user_id=str(interaction.user.id),
             )
             logger.debug(
                 "Agentic query response length: %s characters",

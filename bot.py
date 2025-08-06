@@ -2856,12 +2856,15 @@ class DiscordBot(commands.Bot):
         question: str,
         model: Union[str, List[str]],
         progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+        user_id: Optional[str] = None,
     ) -> Tuple[str, Optional[str]]:
         """Answer a question by letting the model call search tools agentically.
 
         Args:
             question: The user's question.
             model: The model ID or list of model IDs to try.
+            progress_callback: Optional callback for progress updates.
+            user_id: The ID of the user asking the question.
 
         Returns:
             A tuple of the response content and the actual model used.
@@ -2882,6 +2885,19 @@ class DiscordBot(commands.Bot):
         document_list_content = self.document_manager.get_document_list_content()
         max_results = getattr(self.config, "MAX_TOP_K", 20)
         view_chunk_limit = getattr(self.config, "VIEW_CHUNK_LIMIT", 5)
+
+        # Determine system prompt based on user preference
+        use_informational_prompt = False
+        if user_id is not None:
+            use_informational_prompt = self.user_preferences_manager.get_informational_prompt_mode(user_id)
+        base_system_prompt = (
+            get_informational_system_prompt_with_documents(document_list_content)
+            if use_informational_prompt
+            else get_system_prompt_with_documents(document_list_content)
+        )
+        logger.debug(
+            f"Using {'Informational' if use_informational_prompt else 'Standard'} System Prompt with document list for user {user_id} in agentic_query"
+        )
 
         tools = [
             {
@@ -3019,7 +3035,7 @@ class DiscordBot(commands.Bot):
         messages = [
             {
                 "role": "system",
-                "content": get_system_prompt_with_documents(document_list_content),#get_informational_system_prompt_with_documents(document_list_content),
+                "content": base_system_prompt,
             },
         ]
 
