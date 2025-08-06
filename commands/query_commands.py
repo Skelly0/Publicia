@@ -595,7 +595,12 @@ def register_commands(bot):
             async def progress_update(msg: str) -> None:
                 try:
                     progress_lines.append(f"➤ {msg}")
-                    await status_message.edit(content="\n".join(progress_lines))
+                    content = "\n".join(progress_lines)
+                    if len(content) > 2000:
+                        while progress_lines and len("\n".join(progress_lines)) > 2000:
+                            progress_lines.pop(0)
+                        content = "\n".join(progress_lines)
+                    await status_message.edit(content=content)
                 except Exception as e:
                     logger.error(f"Failed to update progress message: {e}")
 
