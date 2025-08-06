@@ -2978,7 +2978,7 @@ class DiscordBot(commands.Bot):
 
         messages.append({"role": "user", "content": question})
 
-        max_iterations = 50
+        max_iterations = getattr(self.config, "MAX_ITERATIONS", 50)
         actual_model = None
 
         def describe_tool(name: str, args: Dict[str, Any]) -> str:
