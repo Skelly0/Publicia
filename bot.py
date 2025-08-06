@@ -2658,11 +2658,11 @@ class DiscordBot(commands.Bot):
 
     async def _tool_view_chunks(
         self,
-        doc_uuid: str,
+        document: str,
         chunk_indices: List[int],
         contextualized: bool = False,
     ) -> List[Dict[str, Any]]:
-        """Tool: Retrieve specific chunks from a document by UUID."""
+        """Tool: Retrieve specific chunks from a document by identifier."""
         if not chunk_indices:
             return []
 
@@ -2671,8 +2671,22 @@ class DiscordBot(commands.Bot):
                 "view_chunks requested %s indices; clamped to 5", len(chunk_indices)
             )
         indices = [int(i) for i in chunk_indices[:5]]
+
+        doc_uuid = self.document_manager.resolve_doc_uuid(document)
+        if not doc_uuid:
+            logger.warning("view_chunks document %s not found", document)
+            return [
+                {
+                    "chunk_index": int(idx),
+                    "total_chunks": 0,
+                    "content": "Document not found",
+                }
+                for idx in indices
+            ]
+
         logger.info(
-            "view_chunks tool invoked for %s with indices %s (contextualized=%s)",
+            "view_chunks tool invoked for %s (resolved to %s) with indices %s (contextualized=%s)",
+            document,
             doc_uuid,
             indices,
             contextualized,
@@ -2801,11 +2815,11 @@ class DiscordBot(commands.Bot):
                 "type": "function",
                 "function": {
                     "name": "view_chunks",
-                    "description": "Retrieve specific chunks from a document by UUID.",
+                    "description": "Retrieve specific chunks from a document by identifier (UUID, name, or Google Doc ID).",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "doc_uuid": {"type": "string"},
+                            "document": {"type": "string", "description": "UUID, document name, or Google Doc ID"},
                             "chunk_indices": {
                                 "type": "array",
                                 "items": {"type": "integer"},
@@ -2816,7 +2830,7 @@ class DiscordBot(commands.Bot):
                                 "default": False,
                             },
                         },
-                        "required": ["doc_uuid", "chunk_indices"],
+                        "required": ["document", "chunk_indices"],
                     },
                 },
             },

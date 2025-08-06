@@ -208,6 +208,37 @@ class DocumentManager:
         logger.warning(f"Could not find any matching sanitized name for original name: '{original_name}'")
         return None # Not found
 
+    def resolve_doc_uuid(self, identifier: str) -> Optional[str]:
+        """Resolve a document identifier to an internal UUID.
+
+        The identifier may be:
+        - an existing internal UUID
+        - the original document name
+        - a Google Doc ID or full Google Docs URL
+        """
+        if not identifier:
+            return None
+
+        # Direct UUID match
+        if identifier in self.metadata:
+            return identifier
+
+        # Try original name lookup
+        by_name = self._get_sanitized_name_from_original(identifier)
+        if by_name and by_name in self.metadata:
+            return by_name
+
+        # Try Google Doc ID or URL
+        gdoc_mapping = self.get_googledoc_id_mapping()
+        gdoc_id = identifier
+        match = re.search(r"/d/([a-zA-Z0-9_-]+)", identifier)
+        if match:
+            gdoc_id = match.group(1)
+        if gdoc_id in gdoc_mapping:
+            return gdoc_mapping[gdoc_id]
+
+        return None
+
     def __init__(self, base_dir: str = "documents", top_k: int = 5, config=None):
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
