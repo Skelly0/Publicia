@@ -1627,6 +1627,61 @@ class DiscordBot(commands.Bot):
                                         logger.error(f"API error (Status {response.status}): {error_text}")
                                         # Log additional context like headers to help diagnose issues
                                         logger.error(f"Request context: URL={response.url}, Headers={response.headers}")
+
+                                        # Some OpenRouter providers return a 400 error when
+                                        # image data cannot be verified. In that case, retry
+                                        # once without any image attachments.
+                                        if (
+                                            "could not be verified" in error_text.lower()
+                                            and any(
+                                                isinstance(msg.get("content"), list)
+                                                for msg in processed_messages
+                                            )
+                                        ):
+                                            logger.warning(
+                                                "Encrypted content verification failed. Retrying without images."
+                                            )
+
+                                            # Strip image parts from messages, keeping only text
+                                            text_only_messages = []
+                                            for msg in processed_messages:
+                                                content = msg.get("content")
+                                                if isinstance(content, list):
+                                                    text_content = "".join(
+                                                        part.get("text", "")
+                                                        for part in content
+                                                        if part.get("type") == "text"
+                                                    )
+                                                    text_only_messages.append(
+                                                        {"role": msg["role"], "content": text_content}
+                                                    )
+                                                else:
+                                                    text_only_messages.append(msg)
+
+                                            retry_payload = payload.copy()
+                                            retry_payload["messages"] = text_only_messages
+
+                                            async with session.post(
+                                                "https://openrouter.ai/api/v1/chat/completions",
+                                                headers=headers,
+                                                json=retry_payload,
+                                                timeout=self.timeout_duration,
+                                            ) as retry_response:
+                                                logger.debug(
+                                                    f"Retry without images returned status {retry_response.status}"
+                                                )
+                                                if retry_response.status == 200:
+                                                    retry_result = await retry_response.json()
+                                                    logger.debug(
+                                                        "Retry without images succeeded for %s",
+                                                        current_model,
+                                                    )
+                                                    return retry_result
+                                                retry_error = await retry_response.text()
+                                                logger.error(
+                                                    f"Retry after stripping images failed (Status {retry_response.status}): {retry_error}"
+                                                )
+
                                         return None
                                     
                                     # Log content length if available
