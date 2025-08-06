@@ -93,6 +93,8 @@ class Config:
             "minimax/minimax-m1": 20,
             # Moonshot AI Models
             "moonshotai/kimi-k2": 20,
+            # Zhipu AI Models
+            "z-ai/glm-4.5": 20,
             "switchpoint/router": 12,
         }
         
