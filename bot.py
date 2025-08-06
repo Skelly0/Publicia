@@ -1523,6 +1523,24 @@ class DiscordBot(commands.Bot):
                                 logger.info(f"Added {image_count} images to message for vision model")
                                 break
 
+                    # Strip out any image references that use OpenRouter resource
+                    # identifiers (rs_*). These references can expire and cause the
+                    # API to respond with errors like:
+                    # "The encrypted content for item rs_... could not be verified."
+                    for msg in processed_messages:
+                        if isinstance(msg.get("content"), list):
+                            cleaned = []
+                            for part in msg["content"]:
+                                if part.get("type") == "image_url":
+                                    url = part.get("image_url", {}).get("url", "")
+                                    if url.startswith("rs_"):
+                                        logger.warning(
+                                            f"Removing unverified image reference {url} from message"
+                                        )
+                                        continue
+                                cleaned.append(part)
+                            msg["content"] = cleaned
+
                     provider_config = provider_base
                     if provider_choice:
                         provider_config = provider_config.copy() if provider_config else {}
