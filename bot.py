@@ -2875,7 +2875,7 @@ class DiscordBot(commands.Bot):
 
         messages.append({"role": "user", "content": question})
 
-        max_iterations = 20
+        max_iterations = 30
         actual_model = None
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
