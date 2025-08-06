@@ -342,6 +342,7 @@ class DocumentManager:
             
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 200}
+                payload["reasoning"] = {"enabled": True}
                 for _ in range(2):  # Retry once per model
                     try:
                         async with aiohttp.ClientSession() as session:
@@ -651,7 +652,8 @@ class DocumentManager:
             fallback_models = ["google/gemini-2.5-flash-lite-preview-06-17", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
-                for _ in range(2): 
+                payload["reasoning"] = {"enabled": True}
+                for _ in range(2):
                     try:
                         async with aiohttp.ClientSession() as session:
                             async with session.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=45) as response:
