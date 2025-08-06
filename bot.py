@@ -320,19 +320,30 @@ class DiscordBot(commands.Bot):
         Includes improved error handling, rate limiting awareness, and recovery mechanisms."""
         # Split the text into chunks
         chunks = split_message(text)
-        
+
+        # Track whether debug mode is enabled for the user
+        debug_mode = False
         if model_used and user_id:
             debug_mode = self.user_preferences_manager.get_debug_mode(user_id)
             if debug_mode:
                 # Format the debug info to show the actual model used
                 debug_info = f"\n\n*[Debug: Response generated using {model_used}]*"
-                
-                # Check if adding debug info would exceed the character limit
-                if len(chunks[-1]) + len(debug_info) > 1750:
-                    # Create a new chunk for the debug info
-                    chunks.append(debug_info)
+
+                if chunks:
+                    # Check if adding debug info would exceed the character limit
+                    if len(chunks[-1]) + len(debug_info) > 1750:
+                        # Create a new chunk for the debug info
+                        chunks.append(debug_info)
+                    else:
+                        chunks[-1] += debug_info
                 else:
-                    chunks[-1] += debug_info
+                    # No chunks to append to; start with debug info
+                    chunks = [debug_info]
+
+        # If there's still nothing to send, exit early
+        if not chunks:
+            logger.warning("send_split_message called with no content to send.")
+            return
         
         # Keep track of the last message sent to use as reference for the next chunk
         last_message = None
