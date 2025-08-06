@@ -196,7 +196,7 @@ Comprehensive tools to help troubleshoot issues:
 | Command | Description |
 |---------|-------------|
 | `/query` | Ask a question with optional image URL |
-| `/agentic_query` | Ask a question using tool-powered search (starts with 5 chunks; tools fetch up to 5 each and can retrieve specific chunks) |
+| `/agentic_query` | Ask a question using tool-powered search (starts with 5 chunks; tools can fetch a custom number of chunks via `top_k`, default 5, up to the model's limit, and can retrieve specific chunks) |
 | `/history` | View your conversation history |
 | `/manage_history` | View and manage history with indices |
 | `/delete_history_messages` | Delete specific messages |

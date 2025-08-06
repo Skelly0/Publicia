@@ -2575,8 +2575,9 @@ class DiscordBot(commands.Bot):
             raise TypeError("keyword (or query) must be provided")
 
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_k = getattr(self, "_agentic_top_k_limit", getattr(self.config, "MAX_TOP_K", 5))
+        top_k = min(top_k, max_k)
+        if requested_k > max_k:
             logger.debug(
                 "search_keyword requested top_k=%s; clamped to %s", requested_k, top_k
             )
@@ -2611,8 +2612,9 @@ class DiscordBot(commands.Bot):
             raise TypeError("keyword (or query) must be provided")
 
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_k = getattr(self, "_agentic_top_k_limit", getattr(self.config, "MAX_TOP_K", 5))
+        top_k = min(top_k, max_k)
+        if requested_k > max_k:
             logger.debug(
                 "search_keyword_bm25 requested top_k=%s; clamped to %s", requested_k, top_k
             )
@@ -2635,8 +2637,9 @@ class DiscordBot(commands.Bot):
     async def _tool_search_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Tool: Hybrid embedding/BM25 search across documents."""
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_k = getattr(self, "_agentic_top_k_limit", getattr(self.config, "MAX_TOP_K", 5))
+        top_k = min(top_k, max_k)
+        if requested_k > max_k:
             logger.debug(
                 "search_documents requested top_k=%s; clamped to %s", requested_k, top_k
             )
@@ -2909,7 +2912,8 @@ class DiscordBot(commands.Bot):
                     "Only the above 5 chunks were retrieved initially. "
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
-                    "Each tool returns at most 5 chunks."
+                    f"Each tool returns at most the number of chunks you request via the top_k parameter "
+                    f"(default 5, maximum {getattr(self.config, 'MAX_TOP_K', 5)})."
                     "Be comprehensive in your searching so that your final answer is as accurate as possible."
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
                 ),
@@ -2920,6 +2924,7 @@ class DiscordBot(commands.Bot):
 
         max_iterations = 30
         actual_model = None
+        self._agentic_top_k_limit = getattr(self.config, "MAX_TOP_K", 5)
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
 
@@ -2931,6 +2936,9 @@ class DiscordBot(commands.Bot):
             )
             if not completion or not completion.get("choices"):
                 return "*neural error detected!*", actual_model
+
+            if actual_model and self.config:
+                self._agentic_top_k_limit = self.config.get_top_k_for_model(actual_model)
 
             message = completion["choices"][0]["message"]
             messages.append(message)
