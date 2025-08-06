@@ -2740,6 +2740,11 @@ class DiscordBot(commands.Bot):
         logger.debug("view_chunks returned %s chunks", len(results))
         return results
 
+    async def _tool_list_documents(self) -> str:
+        """Tool: Return the list of documents available to the assistant."""
+        logger.info("list_documents tool invoked")
+        return self.document_manager.get_document_list_content()
+
     async def agentic_query(self, question: str, model: Union[str, List[str]]) -> Tuple[str, Optional[str]]:
         """Answer a question by letting the model call search tools agentically.
 
@@ -2766,6 +2771,17 @@ class DiscordBot(commands.Bot):
         document_list_content = self.document_manager.get_document_list_content()
 
         tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_documents",
+                    "description": "Return a list of all documents available to the assistant.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    },
+                },
+            },
             {
                 "type": "function",
                 "function": {
@@ -2837,6 +2853,7 @@ class DiscordBot(commands.Bot):
         ]
 
         tool_mapping = {
+            "list_documents": self._tool_list_documents,
             "search_keyword": self._tool_search_keyword,
             "search_keyword_bm25": self._tool_search_keyword_bm25,
             "search_documents": self._tool_search_documents,
