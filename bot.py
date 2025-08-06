@@ -3131,7 +3131,26 @@ class DiscordBot(commands.Bot):
                 logger.info("Model requested %s tool call(s)", len(tool_calls))
                 for call in tool_calls:
                     name = call["function"]["name"]
-                    args = json.loads(call["function"].get("arguments", "{}"))
+                    args_str = call["function"].get("arguments", "{}")
+                    try:
+                        args = json.loads(args_str)
+                    except json.JSONDecodeError:
+                        try:
+                            decoder = json.JSONDecoder()
+                            args, _ = decoder.raw_decode(args_str)
+                            logger.warning(
+                                "Extra data found in tool arguments for %s: %s",
+                                name,
+                                args_str,
+                            )
+                        except Exception:
+                            logger.error(
+                                "Failed to parse tool arguments for %s: %s",
+                                name,
+                                args_str,
+                                exc_info=True,
+                            )
+                            args = {}
                     if progress_callback:
                         try:
                             await progress_callback(describe_tool(name, args))
