@@ -2865,8 +2865,12 @@ class DiscordBot(commands.Bot):
         actual_model = None
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
+
             completion, actual_model = await self._try_ai_completion(
-                model, messages, tools=tools
+                model,
+                messages,
+                tools=tools,
+                min_response_length=0,
             )
             if not completion or not completion.get("choices"):
                 return "*neural error detected!*", actual_model
