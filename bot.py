@@ -2740,6 +2740,15 @@ class DiscordBot(commands.Bot):
         logger.debug("view_chunks returned %s chunks", len(results))
         return results
 
+    async def _tool_get_document_summary(
+        self, document: str
+    ) -> Dict[str, Any]:
+        """Tool: Retrieve the stored summary for a document."""
+        summary = await self.document_manager.get_document_summary(document)
+        if summary is None:
+            return {"error": "Document not found"}
+        return {"summary": summary}
+
     async def agentic_query(self, question: str, model: Union[str, List[str]]) -> Tuple[str, Optional[str]]:
         """Answer a question by letting the model call search tools agentically.
 
@@ -2834,6 +2843,20 @@ class DiscordBot(commands.Bot):
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_document_summary",
+                    "description": "Retrieve the stored summary for a document by identifier (UUID, name, or Google Doc ID).",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "document": {"type": "string", "description": "UUID, document name, or Google Doc ID"},
+                        },
+                        "required": ["document"],
+                    },
+                },
+            },
         ]
 
         tool_mapping = {
@@ -2841,6 +2864,7 @@ class DiscordBot(commands.Bot):
             "search_keyword_bm25": self._tool_search_keyword_bm25,
             "search_documents": self._tool_search_documents,
             "view_chunks": self._tool_view_chunks,
+            "get_document_summary": self._tool_get_document_summary,
         }
 
         messages = [
@@ -2867,7 +2891,7 @@ class DiscordBot(commands.Bot):
                 "content": (
                     "Only the above 5 chunks were retrieved initially. "
                     "If you need more information, use the available search tools "
-                    "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
+                    "(search_keyword, search_keyword_bm25, search_documents, view_chunks, get_document_summary). "
                     "Each tool returns at most 5 chunks."
                     "Be comprehensive in your searching so that your final answer is as accurate as possible."
                 ),

@@ -276,3 +276,34 @@ def test_view_chunks_accepts_identifiers(tmp_path):
 
     assert res_uuid == res_name == res_gdoc == res_gdoc_url
     assert res_uuid[0]["content"] == "First chunk"
+
+
+def test_get_document_summary_returns_existing(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.metadata = {"uuid-123": {"original_name": "MyDoc", "summary": "Existing"}}
+    summary = asyncio.run(manager.get_document_summary("MyDoc"))
+    assert summary == "Existing"
+
+
+def test_get_document_summary_generates_if_missing(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.metadata = {"uuid-123": {"original_name": "MyDoc"}}
+    (Path(tmp_path) / "uuid-123.txt").write_text("Some content", encoding="utf-8")
+
+    async def fake_gen(content):
+        assert content == "Some content"
+        return "Generated"
+
+    manager._generate_document_summary = fake_gen
+    summary = asyncio.run(manager.get_document_summary("uuid-123"))
+    assert summary == "Generated"
+    assert manager.metadata["uuid-123"]["summary"] == "Generated"
+
+
+def test_tool_get_document_summary(tmp_path):
+    bot_mod = load_bot_module()
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.metadata = {"uuid-123": {"original_name": "Doc", "summary": "Hello"}}
+    dummy_bot = types.SimpleNamespace(document_manager=manager)
+    result = asyncio.run(bot_mod.DiscordBot._tool_get_document_summary(dummy_bot, "Doc"))
+    assert result == {"summary": "Hello"}

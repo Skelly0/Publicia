@@ -364,6 +364,44 @@ class DocumentManager:
             logger.error(f"Error in document summary generation: {e}", exc_info=True)
             return "No summary could be generated for this document."
 
+    async def get_document_summary(self, document: str) -> Optional[str]:
+        """Retrieve or generate the stored summary for a document."""
+        doc_uuid = self.resolve_doc_uuid(document)
+        if not doc_uuid:
+            logger.warning(f"Summary requested for unknown document identifier: {document}")
+            return None
+
+        meta = self.metadata.get(doc_uuid, {})
+        summary = meta.get("summary")
+        if summary:
+            return summary
+
+        doc_path = self.base_dir / f"{doc_uuid}.txt"
+        if not doc_path.exists():
+            logger.warning(f"Could not find document file for UUID {doc_uuid} to generate summary.")
+            return None
+        try:
+            content = doc_path.read_text(encoding="utf-8")
+        except Exception as e:
+            logger.error(f"Error reading document {doc_uuid} for summary: {e}")
+            return None
+
+        if not content.strip():
+            summary = "Document is empty."
+        else:
+            try:
+                summary = await self._generate_document_summary(content)
+            except Exception as e:
+                logger.error(f"Error generating summary for document {doc_uuid}: {e}")
+                summary = "No summary could be generated for this document."
+
+        meta.setdefault("uuid", doc_uuid)
+        meta.setdefault("original_name", self._get_original_name(doc_uuid))
+        meta["summary"] = summary
+        self.metadata[doc_uuid] = meta
+        self._save_to_disk()
+        return summary
+
     async def _get_google_embedding_async(self, text: str, task_type: str, title: Optional[str] = None, max_retries: int = 3) -> Optional[np.ndarray]:
         if not text or not text.strip(): return None
         if not self.config.GOOGLE_API_KEY: return None
