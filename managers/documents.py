@@ -1018,6 +1018,34 @@ class DocumentManager:
             logger.error(f"Error getting document list content: {e}")
             return "Error: Unable to retrieve document list."
 
+    async def get_document_summary(self, document: str) -> Optional[str]:
+        """Retrieve or generate a summary for the specified document."""
+        doc_uuid = self.resolve_doc_uuid(document)
+        if not doc_uuid:
+            logger.warning(f"get_document_summary: document not found: {document}")
+            return None
+
+        summary = self.metadata.get(doc_uuid, {}).get("summary")
+        if summary:
+            return summary
+
+        logger.info(f"Generating summary for document {doc_uuid}")
+        doc_path = self.base_dir / f"{doc_uuid}.txt"
+        if doc_path.exists():
+            content = doc_path.read_text(encoding="utf-8-sig")
+            if content.strip():
+                summary = await self._generate_document_summary(content)
+            else:
+                summary = "Document is empty."
+        else:
+            summary = "Document file not found."
+
+        self.metadata.setdefault(doc_uuid, {})["summary"] = summary
+        self.metadata[doc_uuid]["updated"] = datetime.now().isoformat()
+        self._save_to_disk()
+        await self._update_document_list_file()
+        return summary
+
     async def search(self, query: str, top_k: int = None, apply_reranking: bool = None) -> List[Tuple[str, str, str, float, Optional[str], int, int]]:
         if top_k is None: top_k = self.top_k
         if apply_reranking is None and self.config: apply_reranking = self.config.RERANKING_ENABLED

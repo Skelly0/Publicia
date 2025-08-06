@@ -276,3 +276,29 @@ def test_view_chunks_accepts_identifiers(tmp_path):
 
     assert res_uuid == res_name == res_gdoc == res_gdoc_url
     assert res_uuid[0]["content"] == "First chunk"
+
+
+def test_get_document_summary_existing(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    manager.metadata = {"abc": {"original_name": "Doc", "summary": "Existing"}}
+    summary = asyncio.run(manager.get_document_summary("abc"))
+    assert summary == "Existing"
+
+
+def test_get_document_summary_generates(tmp_path):
+    manager = DocumentManager(base_dir=str(tmp_path), config=DummyConfig())
+    doc_uuid = "abc"
+    (Path(tmp_path) / f"{doc_uuid}.txt").write_text("Hello world")
+    manager.metadata = {doc_uuid: {"original_name": "Doc"}}
+
+    async def fake_generate(content: str) -> str:
+        return "Stub summary"
+
+    async def dummy_update():
+        pass
+
+    manager._update_document_list_file = dummy_update
+    manager._generate_document_summary = fake_generate
+    summary = asyncio.run(manager.get_document_summary(doc_uuid))
+    assert summary == "Stub summary"
+    assert manager.metadata[doc_uuid]["summary"] == "Stub summary"
