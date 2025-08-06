@@ -35,6 +35,7 @@ class Config:
         self.TOP_K = int(os.getenv('TOP_K', '5'))
         self.MAX_TOP_K = int(os.getenv('MAX_TOP_K', '50'))
         self.VIEW_CHUNK_LIMIT = int(os.getenv('VIEW_CHUNK_LIMIT', '5'))
+        self.MAX_ITERATIONS = int(os.getenv('MAX_ITERATIONS', '50'))
 
         self.TOP_K_MULTIPLIER = float(os.getenv('TOP_K_MULTIPLIER', '1'))  # Default to no change
 
