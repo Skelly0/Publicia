@@ -82,3 +82,4 @@ temp_files/
 credentials/
 qa_log.jsonl
 *jsonl
+tool_call_log.jsonl
