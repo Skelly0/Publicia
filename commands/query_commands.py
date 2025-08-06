@@ -575,18 +575,17 @@ def register_commands(bot):
                 question,
             )
 
-            preferred_model = bot.user_preferences_manager.get_preferred_model(
-                str(interaction.user.id), default_model=bot.config.LLM_MODEL
-            )
+            # Always use o4-mini for agentic queries with gpt-oss-120b as fallback
+            model_list = ["openai/o4-mini", "openai/gpt-oss-120b"]
             logger.debug(
-                "Using model '%s' for agentic query from user %s",
-                preferred_model,
+                "Using model list %s for agentic query from user %s",
+                model_list,
                 interaction.user.id,
             )
 
             status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
 
-            response = await bot.agentic_query(question, preferred_model)
+            response, actual_model = await bot.agentic_query(question, model_list)
             logger.debug(
                 "Agentic query response length: %s characters",
                 len(response) if response else 0,
@@ -595,7 +594,7 @@ def register_commands(bot):
             await bot.send_split_message(
                 interaction.channel,
                 response,
-                model_used=preferred_model,
+                model_used=actual_model,
                 user_id=str(interaction.user.id),
                 existing_message=status_message,
             )
@@ -609,7 +608,7 @@ def register_commands(bot):
                 multi_turn=False,
                 interaction_type="slash_command",
                 context=context_info,
-                model_used=preferred_model,
+                model_used=actual_model,
             )
 
         except Exception as e:
