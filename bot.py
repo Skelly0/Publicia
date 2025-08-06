@@ -37,7 +37,7 @@ from utils.helpers import (
     xml_wrap,
     wrap_document,
 )
-from utils.logging import sanitize_for_logging, log_qa_pair
+from utils.logging import sanitize_for_logging, log_qa_pair, log_tool_call_trace
 from managers.keywords import KeywordManager # Added import
 # Import the docx processing function and availability flag
 from managers.documents import tag_lore_in_docx, DOCX_AVAILABLE
@@ -3088,6 +3088,7 @@ class DiscordBot(commands.Bot):
 
         max_iterations = getattr(self.config, "MAX_ITERATIONS", 50)
         actual_model = None
+        tool_call_trace: List[Dict[str, Any]] = []
 
         def describe_tool(name: str, args: Dict[str, Any]) -> str:
             if name == "list_documents":
@@ -3121,6 +3122,7 @@ class DiscordBot(commands.Bot):
                 min_response_length=0,
             )
             if not completion or not completion.get("choices"):
+                log_tool_call_trace(question, tool_call_trace)
                 return "*neural error detected!*", actual_model
 
             message = completion["choices"][0]["message"]
@@ -3143,6 +3145,7 @@ class DiscordBot(commands.Bot):
                         result = await func(**args)
                     else:
                         result = {"error": f"Unknown tool {name}"}
+                    tool_call_trace.append({"name": name, "args": args, "result": result})
                     if progress_callback:
                         try:
                             await progress_callback(summarize_tool(name, result))
@@ -3173,9 +3176,11 @@ class DiscordBot(commands.Bot):
                 continue
 
             logger.info("Agentic query completed without further tool calls")
+            log_tool_call_trace(question, tool_call_trace)
             return message.get("content", ""), actual_model
 
         logger.warning("Agentic query reached max iterations without conclusion")
+        log_tool_call_trace(question, tool_call_trace)
         return "*neural error detected!*", actual_model
 
     async def on_message(self, message: discord.Message):

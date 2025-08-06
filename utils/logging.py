@@ -97,7 +97,10 @@ def configure_logging():
 # File to store question/response pairs as JSON Lines
 QA_LOG_FILE = 'qa_log.jsonl'
 
-from typing import Optional, Dict, Any
+# File to store tool call traces from agentic queries
+TOOL_CALL_LOG_FILE = 'tool_call_log.jsonl'
+
+from typing import Optional, Dict, Any, List
 
 
 def log_qa_pair(
@@ -176,6 +179,43 @@ def log_qa_pair(
             f.write(json.dumps(entry, ensure_ascii=False) + '\n')
     except Exception as log_err:
         logging.getLogger(__name__).error(f"Failed to write QA log: {log_err}")
+
+
+def log_tool_call_trace(question: str, tool_calls: List[Dict[str, Any]]):
+    """Append tool call traces for an agentic query to the log.
+
+    Parameters
+    ----------
+    question: str
+        The user's original question.
+    tool_calls: list of dict
+        Sequence of tool call records with ``name``, ``args``, and ``result``.
+    """
+    entry = {
+        'timestamp': datetime.now().isoformat(),
+        'question': sanitize_for_logging(question),
+        'tool_calls': []
+    }
+    for call in tool_calls:
+        record = {'name': call.get('name')}
+        args = call.get('args', {})
+        if args:
+            record['args'] = {k: sanitize_for_logging(str(v)) for k, v in args.items()}
+        result = call.get('result')
+        if result is not None:
+            try:
+                result_text = json.dumps(result, ensure_ascii=False)
+            except Exception:
+                result_text = str(result)
+            if len(result_text) > 1000:
+                result_text = result_text[:1000] + '...[truncated]'
+            record['result'] = sanitize_for_logging(result_text)
+        entry['tool_calls'].append(record)
+    try:
+        with open(TOOL_CALL_LOG_FILE, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception as log_err:
+        logging.getLogger(__name__).error(f"Failed to write tool call log: {log_err}")
 
 def display_startup_banner():
     """Display super cool ASCII art banner on startup with simple search indicator."""

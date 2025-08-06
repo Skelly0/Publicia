@@ -4,6 +4,7 @@ from .logging import (
     display_startup_banner,
     sanitize_for_logging,
     log_qa_pair,
+    log_tool_call_trace,
 )
 from .helpers import check_permissions, is_image, split_message
 
@@ -12,6 +13,7 @@ __all__ = [
     'display_startup_banner',
     'sanitize_for_logging',
     'log_qa_pair',
+    'log_tool_call_trace',
     'check_permissions',
     'is_image',
     'split_message'

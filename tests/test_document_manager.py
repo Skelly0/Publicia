@@ -64,6 +64,7 @@ def load_document_module():
         def dummy(*args, **kwargs):
             return None
         logging_pkg.log_qa_pair = dummy
+        logging_pkg.log_tool_call_trace = dummy
         helpers_pkg.check_permissions = dummy
         helpers_pkg.is_image = lambda *a, **kw: False
         helpers_pkg.split_message = lambda msg, limit=2000: [msg]

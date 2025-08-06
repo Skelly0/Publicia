@@ -181,6 +181,7 @@ Comprehensive tools to help troubleshoot issues:
 - Toggle debug mode to show which model generated responses
 - Export prompts to see exactly what's being sent to the models
 - Detailed logs for tracking operations and errors
+- `/agentic_query` tool call traces recorded in `tool_call_log.jsonl`
 - Performance monitoring and optimization
 
 ## Commands
