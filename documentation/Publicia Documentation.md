@@ -282,6 +282,7 @@ TOP_K=5 # Base number of search results
 MAX_TOP_K=20 # Maximum search results
 TOP_K_MULTIPLIER=1.0 # Multiplier for TOP_K
 BM25_WEIGHT=0.25 # Weight for BM25 vs embedding search (0.25 = 25% BM25, 75% embedding)
+VIEW_CHUNK_LIMIT=5 # Maximum chunks returned by view_chunks tool
 
 # API settings
 API_TIMEOUT=180 # Seconds
