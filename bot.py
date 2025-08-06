@@ -3056,6 +3056,15 @@ class DiscordBot(commands.Bot):
                             "content": json.dumps(result, default=self._json_default),
                         }
                     )
+
+                # After completing all requested tool calls, prompt the model
+                # to provide a final response using the gathered information.
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "All tool calls have finished. If you have enough information, please provide your final answer.",
+                    }
+                )
                 continue
 
             logger.info("Agentic query completed without further tool calls")
