@@ -1345,9 +1345,9 @@ def register_commands(bot):
             except Exception as send_err:
                  logger.error(f"Failed to send error message for summarize_doc: {send_err}")
 
-    @bot.tree.command(name="view_chunk", description="View the content of a specific document chunk by UUID or name")
+    @bot.tree.command(name="view_chunk", description="View the content of a specific document chunk")
     @app_commands.describe(
-        identifier="UUID or original name of the document",
+        identifier="Document name, Google Doc ID, or UUID",
         chunk_index="The index of the chunk to view (starting from 1)",
         contextualized="View the contextualized version used for embeddings (default: False)"
     )
@@ -1356,35 +1356,18 @@ def register_commands(bot):
         await interaction.response.defer()
         try:
             if not identifier:
-                await interaction.followup.send("*neural error detected!* Please provide a document UUID or original name.")
+                await interaction.followup.send("*neural error detected!* Please provide a document identifier.")
                 return
             if chunk_index <= 0:
                 await interaction.followup.send("*neural error detected!* Chunk index must be 1 or greater.")
                 return
 
             doc_mgr = bot.document_manager
-            doc_uuid_to_view = None
-            original_name_for_display = identifier # Default
-
-            # Try to resolve identifier to UUID
-            try:
-                uuid.UUID(identifier) # Check if it's a UUID format
-                if identifier in doc_mgr.metadata:
-                    doc_uuid_to_view = identifier
-                    original_name_for_display = doc_mgr.metadata[identifier].get('original_name', identifier)
-            except ValueError: # Not a UUID, assume it's an original name
-                pass
-
-            if not doc_uuid_to_view: # If not resolved as UUID or not found by UUID, search by original name
-                for d_uuid, meta in doc_mgr.metadata.items():
-                    if meta.get('original_name') == identifier:
-                        doc_uuid_to_view = d_uuid
-                        original_name_for_display = identifier
-                        break
-            
+            doc_uuid_to_view = doc_mgr.resolve_doc_identifier(identifier)
             if not doc_uuid_to_view:
                 await interaction.followup.send(f"*neural error!* Document with identifier '{identifier}' not found.")
                 return
+            original_name_for_display = doc_mgr.metadata.get(doc_uuid_to_view, {}).get('original_name', identifier)
 
             # Check if contextualised chunks are globally disabled
             use_contextualised = bot.config.USE_CONTEXTUALISED_CHUNKS if hasattr(bot, 'config') and hasattr(bot.config, 'USE_CONTEXTUALISED_CHUNKS') else True

@@ -226,7 +226,7 @@ Comprehensive tools to help troubleshoot issues:
 | `/retrieve_file` | Retrieve a specific file by its UUID (`doc_uuid`) |
 | `/archive_channel` | Archive messages from a Discord channel as a document (admin only). Params: `channel`, `message_limit`, `document_name`, `include_bots`, `include_attachments`. |
 | `/summarize_doc` | Generate a summary of a document by its UUID or original name. Param: `identifier`. |
-| `/view_chunk` | View the content of a specific document chunk by UUID or original name. Params: `identifier`, `chunk_index`, `contextualized`. |
+| `/view_chunk` | View the content of a specific document chunk by document name, Google Doc ID, or UUID. Params: `identifier`, `chunk_index`, `contextualized`. |
 | `/process_docx_lore` | Process a .docx file to tag specific colored text with XML tags (admin only). Params: `docx_file`, `output_filename`. |
 | `/track_channel` | Start tracking a Discord channel and archive it periodically (admin only). Params: `channel`, `update_interval_hours`. |
 | `/untrack_channel` | Stop tracking a Discord channel (admin only). Param: `channel`. |
