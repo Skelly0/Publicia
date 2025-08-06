@@ -585,12 +585,14 @@ def register_commands(bot):
             )
 
             status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
+            progress_lines = ["*neural pathways activating...*"]
 
             async def progress_update(msg: str) -> None:
                 try:
-                    await interaction.followup.send(msg, ephemeral=False)
+                    progress_lines.append(msg)
+                    await status_message.edit(content="\n".join(progress_lines))
                 except Exception as e:
-                    logger.error(f"Failed to send progress update: {e}")
+                    logger.error(f"Failed to update progress message: {e}")
 
             response, actual_model = await bot.agentic_query(
                 question, model_list, progress_callback=progress_update
