@@ -21,7 +21,7 @@ import numpy as np
 from datetime import datetime
 from textwrap import shorten
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional, Any, Set, Union # Added Union
+from typing import List, Dict, Tuple, Optional, Any, Set, Union, Callable, Awaitable # Added Union
 from discord import app_commands
 from discord.ext import commands
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -2751,7 +2751,12 @@ class DiscordBot(commands.Bot):
         summary = await self.document_manager.get_document_summary(document)
         return summary if summary is not None else "Document not found"
 
-    async def agentic_query(self, question: str, model: Union[str, List[str]]) -> Tuple[str, Optional[str]]:
+    async def agentic_query(
+        self,
+        question: str,
+        model: Union[str, List[str]],
+        progress_callback: Optional[Callable[[str], Awaitable[None]]] = None,
+    ) -> Tuple[str, Optional[str]]:
         """Answer a question by letting the model call search tools agentically.
 
         Args:
@@ -2919,6 +2924,27 @@ class DiscordBot(commands.Bot):
 
         max_iterations = 30
         actual_model = None
+
+        def describe_tool(name: str, args: Dict[str, Any]) -> str:
+            if name == "list_documents":
+                return "Listing all documents"
+            if name == "search_keyword":
+                return f"Searching for keyword '{args.get('keyword')}'"
+            if name == "search_keyword_bm25":
+                return f"Searching for keyword '{args.get('keyword')}' with BM25"
+            if name == "search_documents":
+                return f"Searching documents for query '{args.get('query')}'"
+            if name == "view_chunks":
+                return f"Viewing chunks {args.get('chunk_indices')} from document '{args.get('document')}'"
+            if name == "get_document_summary":
+                return f"Getting summary for document '{args.get('document')}'"
+            return f"Using tool {name}"
+
+        def summarize_tool(name: str, result: Any) -> str:
+            if isinstance(result, list):
+                return f"Tool {name} returned {len(result)} result(s)"
+            return f"Tool {name} completed"
+
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
 
@@ -2940,12 +2966,22 @@ class DiscordBot(commands.Bot):
                 for call in tool_calls:
                     name = call["function"]["name"]
                     args = json.loads(call["function"].get("arguments", "{}"))
+                    if progress_callback:
+                        try:
+                            await progress_callback(describe_tool(name, args))
+                        except Exception as e:
+                            logger.warning("Progress callback failed: %s", e)
                     logger.debug("Executing tool %s with args %s", name, args)
                     func = tool_mapping.get(name)
                     if func:
                         result = await func(**args)
                     else:
                         result = {"error": f"Unknown tool {name}"}
+                    if progress_callback:
+                        try:
+                            await progress_callback(summarize_tool(name, result))
+                        except Exception as e:
+                            logger.warning("Progress callback failed: %s", e)
                     logger.debug(
                         "Tool %s returned %s item(s)",
                         name,

@@ -586,7 +586,15 @@ def register_commands(bot):
 
             status_message = await interaction.followup.send("*neural pathways activating...*", ephemeral=False)
 
-            response, actual_model = await bot.agentic_query(question, model_list)
+            async def progress_update(msg: str) -> None:
+                try:
+                    await interaction.followup.send(msg, ephemeral=False)
+                except Exception as e:
+                    logger.error(f"Failed to send progress update: {e}")
+
+            response, actual_model = await bot.agentic_query(
+                question, model_list, progress_callback=progress_update
+            )
             logger.debug(
                 "Agentic query response length: %s characters",
                 len(response) if response else 0,
