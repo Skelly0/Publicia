@@ -2726,9 +2726,17 @@ class DiscordBot(commands.Bot):
         logger.debug("view_chunks returned %s chunks", len(results))
         return results
 
-    async def agentic_query(self, question: str, model: str) -> str:
-        """Answer a question by letting the model call search tools agentically."""
-        logger.info("Starting agentic query with model '%s' for question: %s", model, question)
+    async def agentic_query(self, question: str, model: Union[str, List[str]]) -> Tuple[str, Optional[str]]:
+        """Answer a question by letting the model call search tools agentically.
+
+        Args:
+            question: The user's question.
+            model: The model ID or list of model IDs to try.
+
+        Returns:
+            A tuple of the response content and the actual model used.
+        """
+        logger.info("Starting agentic query with model(s) '%s' for question: %s", model, question)
 
         # Provide the model with an initial limited context
         initial_results = await self.document_manager.search(question, top_k=5)
@@ -2854,13 +2862,14 @@ class DiscordBot(commands.Bot):
         messages.append({"role": "user", "content": question})
 
         max_iterations = 20
+        actual_model = None
         for iteration in range(max_iterations):
             logger.info("Agentic loop iteration %s", iteration + 1)
-            completion, _ = await self._try_ai_completion(
+            completion, actual_model = await self._try_ai_completion(
                 model, messages, tools=tools
             )
             if not completion or not completion.get("choices"):
-                return "*neural error detected!*"
+                return "*neural error detected!*", actual_model
 
             message = completion["choices"][0]["message"]
             messages.append(message)
@@ -2893,10 +2902,10 @@ class DiscordBot(commands.Bot):
                 continue
 
             logger.info("Agentic query completed without further tool calls")
-            return message.get("content", "")
+            return message.get("content", ""), actual_model
 
         logger.warning("Agentic query reached max iterations without conclusion")
-        return "*neural error detected!*"
+        return "*neural error detected!*", actual_model
 
     async def on_message(self, message: discord.Message):
         """Handle incoming messages, processing commands, checking for tracked docs, and responding to mentions."""
