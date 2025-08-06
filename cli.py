@@ -153,6 +153,7 @@ async def _cli_try_ai_completion(
                 "temperature": temperature,
                 "max_tokens": 8000,  # Keep max tokens high
             }
+            payload["reasoning"] = {"enabled": True}
 
             provider_config = provider_base
             if provider_choice:
