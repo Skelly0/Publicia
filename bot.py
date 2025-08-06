@@ -2575,10 +2575,13 @@ class DiscordBot(commands.Bot):
             raise TypeError("keyword (or query) must be provided")
 
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_results = getattr(self.config, "MAX_TOP_K", 20)
+        top_k = min(top_k, max_results)
+        if requested_k > max_results:
             logger.debug(
-                "search_keyword requested top_k=%s; clamped to %s", requested_k, top_k
+                "search_keyword requested top_k=%s; clamped to %s",
+                requested_k,
+                top_k,
             )
         logger.info("search_keyword tool invoked for '%s' with top_k=%s", keyword, top_k)
         results = self.document_manager.search_keyword(keyword, top_k=top_k)
@@ -2611,10 +2614,13 @@ class DiscordBot(commands.Bot):
             raise TypeError("keyword (or query) must be provided")
 
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_results = getattr(self.config, "MAX_TOP_K", 20)
+        top_k = min(top_k, max_results)
+        if requested_k > max_results:
             logger.debug(
-                "search_keyword_bm25 requested top_k=%s; clamped to %s", requested_k, top_k
+                "search_keyword_bm25 requested top_k=%s; clamped to %s",
+                requested_k,
+                top_k,
             )
         logger.info(
             "search_keyword_bm25 tool invoked for '%s' with top_k=%s", keyword, top_k
@@ -2635,10 +2641,13 @@ class DiscordBot(commands.Bot):
     async def _tool_search_documents(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """Tool: Hybrid embedding/BM25 search across documents."""
         requested_k = top_k
-        top_k = min(top_k, 5)
-        if requested_k > 5:
+        max_results = getattr(self.config, "MAX_TOP_K", 20)
+        top_k = min(top_k, max_results)
+        if requested_k > max_results:
             logger.debug(
-                "search_documents requested top_k=%s; clamped to %s", requested_k, top_k
+                "search_documents requested top_k=%s; clamped to %s",
+                requested_k,
+                top_k,
             )
         logger.info("search_documents tool invoked for '%s' with top_k=%s", query, top_k)
         results = await self.document_manager.search(query, top_k=top_k)
@@ -2780,6 +2789,7 @@ class DiscordBot(commands.Bot):
         )
 
         document_list_content = self.document_manager.get_document_list_content()
+        max_results = getattr(self.config, "MAX_TOP_K", 20)
 
         tools = [
             {
@@ -2802,7 +2812,11 @@ class DiscordBot(commands.Bot):
                         "type": "object",
                         "properties": {
                             "keyword": {"type": "string"},
-                            "top_k": {"type": "integer", "default": 5},
+                            "top_k": {
+                                "type": "integer",
+                                "default": 5,
+                                "description": f"Number of results to return (max {max_results})",
+                            },
                         },
                         "required": ["keyword"],
                     },
@@ -2817,7 +2831,11 @@ class DiscordBot(commands.Bot):
                         "type": "object",
                         "properties": {
                             "keyword": {"type": "string"},
-                            "top_k": {"type": "integer", "default": 5},
+                            "top_k": {
+                                "type": "integer",
+                                "default": 5,
+                                "description": f"Number of results to return (max {max_results})",
+                            },
                         },
                         "required": ["keyword"],
                     },
@@ -2832,7 +2850,11 @@ class DiscordBot(commands.Bot):
                         "type": "object",
                         "properties": {
                             "query": {"type": "string"},
-                            "top_k": {"type": "integer", "default": 5},
+                            "top_k": {
+                                "type": "integer",
+                                "default": 5,
+                                "description": f"Number of results to return (max {max_results})",
+                            },
                         },
                         "required": ["query"],
                     },
@@ -2914,7 +2936,7 @@ class DiscordBot(commands.Bot):
                     "Only the above 5 chunks were retrieved initially. "
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
-                    "Each tool returns at most 5 chunks."
+                    f"Each tool returns up to the number of chunks you request (default 5, maximum {max_results})."
                     "Be comprehensive in your searching so that your final answer is as accurate as possible."
                     "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
                 ),
