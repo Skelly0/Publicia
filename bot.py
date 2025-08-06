@@ -234,7 +234,8 @@ class DiscordBot(commands.Bot):
             payload = {
                 "model": "google/gemini-2.5-flash:thinking",  # Use a vision-capable model
                 "messages": messages,
-                "temperature": 0.1
+                "temperature": 0.1,
+                "reasoning": {"enabled": True},
             }
             
             async with aiohttp.ClientSession() as session:
@@ -1535,6 +1536,8 @@ class DiscordBot(commands.Bot):
                         "max_tokens": 20000,
                         **kwargs,
                     }
+                    if "reasoning" not in payload:
+                        payload["reasoning"] = {"enabled": True}
 
                     if provider_config:
                         payload["provider"] = provider_config
@@ -3053,6 +3056,15 @@ class DiscordBot(commands.Bot):
                             "content": json.dumps(result, default=self._json_default),
                         }
                     )
+
+                # After completing all requested tool calls, prompt the model
+                # to provide a final response using the gathered information.
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": "All tool calls have finished. If you have enough information, please provide your final answer.",
+                    }
+                )
                 continue
 
             logger.info("Agentic query completed without further tool calls")
