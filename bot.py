@@ -2909,7 +2909,7 @@ class DiscordBot(commands.Bot):
                             "keyword": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 25,
+                                "default": 10,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
@@ -2931,7 +2931,7 @@ class DiscordBot(commands.Bot):
                             "keyword": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 25,
+                                "default": 10,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
@@ -2953,7 +2953,7 @@ class DiscordBot(commands.Bot):
                             "query": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 25,
+                                "default": 10,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
