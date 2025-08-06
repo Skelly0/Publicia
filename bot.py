@@ -2965,7 +2965,8 @@ class DiscordBot(commands.Bot):
                     f"Each tool returns up to the number of chunks you request (default 5, maximum {max_results})."
                     "Be comprehensive in your searching so that your final answer is as accurate and complete as possible. "
                     "Be sure to check the region documents for information pertaining to natives. "
-                    "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord."
+                    "Do not output tables or other complex formats, just text and markdown that can be outputted in Discord. "
+                    "UNDER NO CIRCUMSTANCES SHOULD YOU EVER OUPUT TABLES."
                 ),
             }
         )
