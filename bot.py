@@ -2572,7 +2572,7 @@ class DiscordBot(commands.Bot):
     async def _tool_search_keyword(
         self,
         keyword: Optional[str] = None,
-        top_k: int = 5,
+        top_k: int = 25,
         query: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Tool: simple keyword search across documents.
@@ -2587,7 +2587,7 @@ class DiscordBot(commands.Bot):
             raise TypeError("keyword (or query) must be provided")
 
         requested_k = top_k
-        max_results = getattr(self.config, "MAX_TOP_K", 20)
+        max_results = getattr(self.config, "MAX_TOP_K", 50)
         top_k = min(top_k, max_results)
         if requested_k > max_results:
             logger.debug(
@@ -2833,7 +2833,7 @@ class DiscordBot(commands.Bot):
                             "keyword": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 5,
+                                "default": 25,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
@@ -2855,7 +2855,7 @@ class DiscordBot(commands.Bot):
                             "keyword": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 5,
+                                "default": 25,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
@@ -2877,7 +2877,7 @@ class DiscordBot(commands.Bot):
                             "query": {"type": "string"},
                             "top_k": {
                                 "type": "integer",
-                                "default": 5,
+                                "default": 25,
                                 "description": f"Number of results to return (max {max_results})",
                             },
                         },
