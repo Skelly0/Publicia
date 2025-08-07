@@ -3122,7 +3122,7 @@ class DiscordBot(commands.Bot):
                 min_response_length=0,
             )
             if not completion or not completion.get("choices"):
-                log_tool_call_trace(question, tool_call_trace)
+                log_tool_call_trace(question, tool_call_trace, max_result_length=None)
                 return "*neural error detected!*", actual_model
 
             message = completion["choices"][0]["message"]
@@ -3195,11 +3195,11 @@ class DiscordBot(commands.Bot):
                 continue
 
             logger.info("Agentic query completed without further tool calls")
-            log_tool_call_trace(question, tool_call_trace)
+            log_tool_call_trace(question, tool_call_trace, max_result_length=None)
             return message.get("content", ""), actual_model
 
         logger.warning("Agentic query reached max iterations without conclusion")
-        log_tool_call_trace(question, tool_call_trace)
+        log_tool_call_trace(question, tool_call_trace, max_result_length=None)
         return "*neural error detected!*", actual_model
 
     async def on_message(self, message: discord.Message):
