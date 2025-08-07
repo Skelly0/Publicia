@@ -59,7 +59,7 @@ GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=google/gemini-2.5-flash # Default model for text generation
 DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
 CLASSIFIER_MODEL=google/gemini-2.5-flash # Model for classification tasks
-AGENTIC_MODEL=openai/o4-mini # Primary model for agentic queries; fallbacks: gpt-5-mini, o4-mini, gpt-oss-120b
+AGENTIC_MODEL=openai/o4-mini # Primary model for agentic queries; fallbacks: gpt-5, o4-mini, gpt-oss-120b
 EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
 EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
 
@@ -139,7 +139,7 @@ Users can select their preferred AI model for responses:
 - **Switchpoint Router**: Instantly routes your request to the best available model from Switchpoint AI's evolving library
 - **GLM-4.5**: Known for good factual accuracy and reliable reasoning
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
-- **GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Serves as an open-source alternative to gpt-5-mini and o4-mini, activates 5.1B parameters per pass, runs on a single H100 with MXFP4 quantization, and supports configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output)
+- **GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Serves as an open-source alternative to gpt-5 and o4-mini, activates 5.1B parameters per pass, runs on a single H100 with MXFP4 quantization, and supports configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output)
 
 Additional admin-only models include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
 
