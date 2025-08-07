@@ -338,7 +338,7 @@ class DocumentManager:
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
             
             # Using a list of reliable and fast models for summarization
-            fallback_models = ["google/gemini-2.5-flash-lite", "google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
+            fallback_models = ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite", "google/gemini-2.0-flash-lite-001", "cohere/command-r-08-2024", "mistralai/mistral-7b-instruct"]
             
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.2, "max_tokens": 200}
@@ -649,7 +649,7 @@ class DocumentManager:
             )
             messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}]
             headers = {"Authorization": f"Bearer {self.config.OPENROUTER_API_KEY}", "HTTP-Referer": "https://dps.miraheze.org/wiki/Main_Page/dpsrp", "X-Title": "Publicia for DPS Season 7", "Content-Type": "application/json"}
-            fallback_models = ["google/gemini-2.5-flash-lite", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
+            fallback_models = ["openai/gpt-5-nano", "google/gemini-2.5-flash-lite", "amazon/nova-lite-v1", "google/gemini-2.0-flash-lite-001", "gryphe/gryphe-mistral-7b-instruct-v2", "mistralai/mistral-7b-instruct"]
             for model in fallback_models:
                 payload = {"model": model, "messages": messages, "temperature": 0.1, "max_tokens": 150}
                 payload["reasoning"] = {"enabled": True}
