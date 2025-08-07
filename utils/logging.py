@@ -181,7 +181,11 @@ def log_qa_pair(
         logging.getLogger(__name__).error(f"Failed to write QA log: {log_err}")
 
 
-def log_tool_call_trace(question: str, tool_calls: List[Dict[str, Any]]):
+def log_tool_call_trace(
+    question: str,
+    tool_calls: List[Dict[str, Any]],
+    max_result_length: Optional[int] = 1000,
+):
     """Append tool call traces for an agentic query to the log.
 
     Parameters
@@ -190,6 +194,10 @@ def log_tool_call_trace(question: str, tool_calls: List[Dict[str, Any]]):
         The user's original question.
     tool_calls: list of dict
         Sequence of tool call records with ``name``, ``args``, and ``result``.
+    max_result_length: int or None, optional
+        Maximum number of characters to keep from the tool result. If ``None``,
+        the full result is logged without truncation. Defaults to 1000 to avoid
+        excessively large log entries.
     """
     entry = {
         'timestamp': datetime.now().isoformat(),
@@ -207,8 +215,8 @@ def log_tool_call_trace(question: str, tool_calls: List[Dict[str, Any]]):
                 result_text = json.dumps(result, ensure_ascii=False)
             except Exception:
                 result_text = str(result)
-            if len(result_text) > 1000:
-                result_text = result_text[:1000] + '...[truncated]'
+            if max_result_length is not None and len(result_text) > max_result_length:
+                result_text = result_text[:max_result_length] + '...[truncated]'
             record['result'] = sanitize_for_logging(result_text)
         entry['tool_calls'].append(record)
     try:
