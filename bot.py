@@ -1550,10 +1550,17 @@ class DiscordBot(commands.Bot):
                     payload = {
                         "model": current_model,
                         "messages": processed_messages,
-                        "temperature": temperature,
                         "max_tokens": 20000,
                         **kwargs,
                     }
+
+                    # Some models (e.g. GPT-5) reject the temperature parameter.
+                    if "gpt-5" not in current_model.lower():
+                        payload["temperature"] = temperature
+                    else:
+                        logger.debug(
+                            "Skipping temperature for %s as it is not supported", current_model
+                        )
                     if "reasoning" not in payload:
                         payload["reasoning"] = {"enabled": True}
 
