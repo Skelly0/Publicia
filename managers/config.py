@@ -85,6 +85,7 @@ class Config:
             # OpenAI Models
             "openai/gpt-4.1-mini": 11,
             "openai/gpt-4.1-nano": 17,
+            "openai/gpt-5-mini": 8,
             "openai/o4-mini": 8,
             "openai/gpt-oss-120b": 18,
             # X AI Models

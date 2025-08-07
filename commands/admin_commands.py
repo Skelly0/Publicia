@@ -107,6 +107,7 @@ def register_commands(bot):
                     "nousresearch/hermes-3-llama-3.1-405b",
                 ],
                 "openai": [
+                    "openai/gpt-5-mini",
                     "openai/o4-mini",
                     "openai/gpt-oss-120b",
                 ],

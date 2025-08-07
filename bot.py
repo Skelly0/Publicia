@@ -108,6 +108,7 @@ class DiscordBot(commands.Bot):
             "meta-llama/llama-4-maverick:floor",
             "openai/gpt-4.1-mini",
             "openai/gpt-4.1-nano",
+            "openai/gpt-5-mini",
             "openai/o4-mini",
         ]
 
@@ -1413,6 +1414,11 @@ class DiscordBot(commands.Bot):
                         "openai/gpt-4.1-nano",
                     ]
                     models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
+                elif "gpt-5-mini" in model:
+                    fallbacks = [
+                        "openai/gpt-5-mini",
+                    ]
+                    models_to_try.extend([fb for fb in fallbacks if fb not in models_to_try])
                 elif "o4-mini" in model:
                     fallbacks = [
                         "openai/o4-mini",
@@ -1436,6 +1442,7 @@ class DiscordBot(commands.Bot):
             general_fallbacks = [
                 # "qwen/qwq-32b",
                 "openai/gpt-oss-120b",
+                "openai/gpt-5-mini",
                 "openai/o4-mini",
                 "qwen/qwq-32b:floor",
                 "google/gemini-2.5-flash",
@@ -3817,6 +3824,8 @@ class DiscordBot(commands.Bot):
                 model_name = "4.1 Nano"
             elif preferred_model == "minimax/minimax-m1":
                 model_name = "MiniMax M1"
+            elif preferred_model == "openai/gpt-5-mini":
+                model_name = "OpenAI GPT-5 Mini"
             elif preferred_model == "openai/o4-mini":
                 model_name = "OpenAI o4 Mini"
             elif preferred_model == "openai/gpt-oss-120b":
