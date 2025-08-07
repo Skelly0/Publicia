@@ -95,7 +95,7 @@ class Config:
             # Moonshot AI Models
             "moonshotai/kimi-k2": 20,
             # Zhipu AI Models
-            "z-ai/glm-4.5": 20,
+            "z-ai/glm-4.5": 16,
             "switchpoint/router": 12,
         }
         
