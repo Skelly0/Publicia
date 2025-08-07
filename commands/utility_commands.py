@@ -163,6 +163,7 @@ def register_commands(bot):
     @bot.tree.command(name="set_model", description="Set your preferred AI model for responses")
     @app_commands.describe(model="Choose the AI model you prefer")
     @app_commands.choices(model=[
+        app_commands.Choice(name="OpenAI GPT-5 Mini", value="openai/gpt-5-mini"),
         app_commands.Choice(name="OpenAI o4 Mini", value="openai/o4-mini"),
         app_commands.Choice(name="GPT-OSS 120B", value="openai/gpt-oss-120b"),
         app_commands.Choice(name="MiniMax M1", value="minimax/minimax-m1"),
@@ -257,6 +258,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif model == "openai/gpt-5-mini":
+                model_name = "OpenAI GPT-5 Mini"
             elif model == "openai/gpt-oss-120b":
                 model_name = "GPT-OSS 120B"
             elif model == "openai/o4-mini":
@@ -269,6 +272,7 @@ def register_commands(bot):
                 # Create a description of all model strengths
                 model_descriptions = [
                     f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Great for factual accuracy, avoiding hallucinations, understanding, and speed of response. Not great at formatting its responses. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
+                    f"**OpenAI GPT-5 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/gpt-5-mini')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",
@@ -367,6 +371,8 @@ def register_commands(bot):
                 model_name = "OpenAI GPT-4.1 Mini"
             elif preferred_model == "openai/gpt-4.1-nano":
                 model_name = "OpenAI GPT-4.1 Nano"
+            elif preferred_model == "openai/gpt-5-mini":
+                model_name = "OpenAI GPT-5 Mini"
             elif preferred_model == "openai/gpt-oss-120b":
                 model_name = "GPT-OSS 120B"
             elif preferred_model == "openai/o4-mini":
@@ -377,6 +383,7 @@ def register_commands(bot):
             # Create a description of all model strengths
             model_descriptions = [
                     f"**GPT-OSS 120B**: __RECOMMENDED__ An open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Great for factual accuracy, avoiding hallucinations, understanding, and speed of response. Not great at formatting its responses. Uses ({bot.config.get_top_k_for_model('openai/gpt-oss-120b')}) search results.",
+                    f"**OpenAI GPT-5 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/gpt-5-mini')}) search results.",
                     f"**OpenAI o4 Mini**: __RECOMMENDED__ An OpenAI model that is very good for factual accuracy, avoiding hallucinations, and speed of response. Uses ({bot.config.get_top_k_for_model('openai/o4-mini')}) search results.",
                     f"**MiniMax M1**: __RECOMMENDED__ A large-scale, open-weight reasoning model from MiniMax, good for general tasks and long-context understanding. Great for finding accurate information. Good prompt adherence and an interesting personality. Uses ({bot.config.get_top_k_for_model('minimax/minimax-m1')}) search results.",
                     f"**Kimi K2**: __RECOMMENDED__ An opensource Large-scale Mixture-of-Experts model from Moonshot AI with 1 trillion parameters (32B active per forward pass), great for creative writing and accuracy. Uses ({bot.config.get_top_k_for_model('moonshotai/kimi-k2')}) search results.",

@@ -163,7 +163,7 @@ Users can choose their preferred AI model:
 - **GLM-4.5**: Known for good factual accuracy and reliable reasoning
 - **Wayfarer 70B**: Optimized for narrative-driven roleplay
 - **Grok 3 Mini**: X.AI's efficient model for quick responses
-- **GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Functions as an open-source alternative to o4-mini, activating 5.1B parameters per pass, running on a single H100 with native MXFP4 quantization, and supporting configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output generation)
+- **GPT-OSS 120B**: Open-weight 117B-parameter Mixture-of-Experts model from OpenAI. Functions as an open-source alternative to gpt-5-mini and o4-mini, activating 5.1B parameters per pass, running on a single H100 with native MXFP4 quantization, and supporting configurable reasoning depth, full chain-of-thought access, and native tool use (function calling, browsing, structured output generation)
 
 Additional models available to administrators include Gemini 2.5 Pro, Claude 3.7 Sonnet, Anubis Pro 105B, Llama 4 Maverick, OpenAI GPT-4.1 models, and Phi-4 Multimodal.
 
@@ -261,7 +261,7 @@ GOOGLE_API_KEY=your_google_api_key
 LLM_MODEL=google/gemini-2.5-flash # Default model for text generation
 DEFAULT_MODEL=qwen/qwq-32b # Default user preference model
 CLASSIFIER_MODEL=google/gemini-2.5-flash # Model for classification tasks
-AGENTIC_MODEL=openai/o4-mini # Primary model for agentic queries; fallbacks: o4-mini, gpt-oss-120b
+AGENTIC_MODEL=openai/o4-mini # Primary model for agentic queries; fallbacks: gpt-5-mini, o4-mini, gpt-oss-120b
 EMBEDDING_MODEL=models/text-embedding-004 # Model for document embeddings
 EMBEDDING_DIMENSIONS=0 # Set to positive number to truncate embeddings (0 = no truncation)
 
