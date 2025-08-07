@@ -3072,7 +3072,7 @@ class DiscordBot(commands.Bot):
                     "If you need more information, use the available search tools "
                     "(search_keyword, search_keyword_bm25, search_documents, view_chunks). "
                     "Search tools return chunk references without their text; use view_chunks to read them. "
-                    f"Each search tool returns up to the number of chunks you request (default 5, maximum {max_results}). "
+                    f"Each search tool returns up to the number of chunks you request (default 10, maximum {max_results}). "
                     f"The view_chunks tool can return up to {view_chunk_limit} chunks at a time. "
                     "Be comprehensive in your searching so that your final answer is as accurate and complete as possible. "
                     "Make sure you get a clear picture of the topic and related things before answering. "
