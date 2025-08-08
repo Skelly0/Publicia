@@ -89,17 +89,17 @@ class UserPreferencesManager:
             return False
 
     def get_debug_mode(self, user_id: str) -> bool:
-        """Get the user's debug mode preference, default is False."""
+        """Get the user's debug mode preference, default is True."""
         file_path = self.get_file_path(user_id)
         if not os.path.exists(file_path):
-            return False
+            return True
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 preferences = json.load(file)
-                return preferences.get("debug_mode", False)
+                return preferences.get("debug_mode", True)
         except Exception as e:
             logger.error(f"Error reading debug mode preference for {user_id}: {e}")
-            return False
+            return True
 
     def toggle_debug_mode(self, user_id: str) -> bool:
         """Toggle the user's debug mode preference and return the new state."""
@@ -116,7 +116,7 @@ class UserPreferencesManager:
                     )
                     preferences = {}  # Reset if invalid
 
-            current_mode = preferences.get("debug_mode", False)
+            current_mode = preferences.get("debug_mode", True)
             new_mode = not current_mode
             preferences["debug_mode"] = new_mode
 
